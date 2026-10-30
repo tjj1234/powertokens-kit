@@ -4,7 +4,7 @@
 PT Task Gateway —— 跨模型统一的异步任务接口（独立模块，零外部依赖）。
 
 为什么需要它（与 PT 真实接口的关系）：
-  PT 底层是 OneAPI 按供应商透明路由，对调用方来说**所有视频 / Seedance 模型共用同一传输层**：
+  PT 底层是 OneAPI 按供应商透明路由，对调用方来说视频 / Seedance 的**提交与查询**共用同一传输层：
     - 提交：POST /v1/videos
     - 轮询：GET  /v1/videos/{id}
   所以「Seedance / Vidu / Wan 各有独立提交/查询接口」是**误判**——PT 已统一了路径。
@@ -12,15 +12,17 @@ PT Task Gateway —— 跨模型统一的异步任务接口（独立模块，零
     1) 请求体构造差异：Seedance 必须把 prompt 塞进 media:[{type:text}] 且图生视频素材强制 asset://；
        其他模型用顶层 prompt + http(s)/asset://。
     2) 返回字段位置差异：status 枚举值、结果 URL 可能在 metadata.url / metadata.content_url / task.url 任一处。
-  此外 PT 当前**没有取消任务的公共端点**（官方文档 / skill 均无记录），故 cancel 本轮返回 {supported:false}。
+  但**取消与音频是各 vendor 特定路径**（并非统一在 /v1/videos 之下）：
+    - 取消：Seedance 真实存在 DELETE /byteplus/api/v3/contents/generations/tasks/{id}（queued→cancelled）；其他模型取消端点待确认，cancel() 诚实返回 {supported:false} 并说明已知端点。
+    - 音频(TTS)：Ali(DashScope)兼容端点 POST /ali/api/v1/services/aigc/multimodal-generation/generation，同步返回 url。
 
 本模块职责（复用 pt_video.py 的 REST 原语，不直接依赖 CLI 子命令）：
   - Catalog：统一媒体能力目录（catalog.json）——每模型的 kind/execution/分辨率/时长/模式/单价，
     agent 用 list_capabilities 读取后**无需再翻文档查能力**；上下架由 ModelRegistry 自动维护。
   - TaskState：把各厂商状态动词归一化为 QUEUED/RUNNING/SUCCEEDED/FAILED/CANCELLED/UNKNOWN。
   - ModelAdapter：按 kind 构造提交体（Seedance 走 media-text + asset://；video 走顶层 prompt），并统一抽取结果 URL。
-  - TaskGateway：media_generate（统一媒体生成入口，按 kind 路由：image 同步 / video·seedance 异步 / audio 诚实 unsupported）
-    + submit / get_status / wait / cancel(占位)。
+  - TaskGateway：media_generate（统一媒体生成入口，按 kind 路由：image 同步 / video·seedance 异步 / audio 同步生成（vendor 端点））
+    + submit / get_status / wait / cancel（Seedance 真实取消，其他诚实 unsupported）。
   - ModelRegistry：拉 /v1/models 做 diff——新上架的异步模型自动 enable 并打 is_new，
     下架的自动 delisted；带 last_synced，超过 1 小时（对齐 PT 缓存）下次调用惰性自动重拉。
 
@@ -227,7 +229,7 @@ class TaskGateway:
         - image     → 同步 POST /v1/images/generations，返回 {execution:"sync", urls:[...]}
         - video     → 异步 POST /v1/videos + 轮询，返回 {execution:"async", task_id}
         - seedance  → 同 video 端点，但走 media-text 请求体 + asset:// 强制校验
-        - audio     → 诚实返回 {supported:false}（PT 音频端点未确认，catalog 标 pending-endpoint）
+        - audio     → 同步生成 POST /ali/.../multimodal-generation/generation，返回 {execution:"sync", url}
         model=auto 时按注册表 → 目录候选的顺序自动选模型。
         """
         # 1) 解析 kind（不需要 Key；显式 kind 优先，否则从 model 反推）
@@ -240,13 +242,6 @@ class TaskGateway:
         if kind not in KNOWN_KINDS:
             raise ApiError(0, f"未知 kind={kind!r}；可用：{'/'.join(KNOWN_KINDS)}"
                               f"（或提供具体模型 ID 由网关反推 kind）")
-
-        # 2) 音频：端点未确认，诚实降级（不需要 Key，离线也能拿到明确答复）
-        ke = self.catalog.kind_entry(kind)
-        if ke and not ke.get("submit"):
-            return {"ok": False, "kind": kind, "supported": False,
-                    "reason": f"kind={kind} 的 PT 提交/轮询端点未确认（catalog 标记 "
-                              f"pending-endpoint）；确认后在此补齐，调用方接口不变"}
 
         self._need_key()
 
@@ -264,7 +259,12 @@ class TaskGateway:
             return {"ok": True, "kind": "image", "execution": "sync",
                     "model": model2, "urls": urls, "raw": resp}
 
-        # 4) video / seedance：异步任务
+        # 4) audio：TTS 同步生成（vendor 端点 /ali/...，不走 /v1/videos）
+        if kind == "audio":
+            model2 = self._resolve_model("audio", model)
+            return self.audio_generate(model2, prompt=prompt)
+
+        # 5) video / seedance：异步任务
         model2 = self._resolve_model(kind, model)
         r = self.submit(model2, prompt=prompt, duration=duration, resolution=resolution,
                         ratio=ratio, first_frame=first_frame, ref_image=ref_image,
@@ -273,6 +273,28 @@ class TaskGateway:
         r["model"] = model2
         r["execution"] = "async"
         return r
+
+    # ---- 音频(TTS)同步生成（vendor 端点，不走 /v1/videos）----
+    def audio_generate(self, model, prompt="", voice=None, params=None):
+        """音频(TTS)同步生成：POST /ali/api/v1/services/aigc/multimodal-generation/generation。
+
+        PT 音频端点为 Ali(DashScope)兼容，一次调用同步返回音频 url（execution=sync）。
+        请求体采用 Ali 标准 TTS 结构（model + input.prompt[+voice]），响应 url 多位置兜底抽取。
+        注：具体请求/响应字段以 PT 文档实测为准；本方法尽力对齐并保留 raw 便于核对。
+        """
+        self._need_key()
+        body = {"model": model, "input": {"prompt": prompt or ""}}
+        if voice:
+            body["input"]["voice"] = voice
+        if params:
+            body["parameters"] = params
+        sys.stderr.write(f"[gateway] POST {AUDIO_ENDPOINT} model={model} kind=audio\n")
+        resp = _api_call("POST", AUDIO_ENDPOINT, self.key, body=body, timeout=120)
+        out = resp.get("output") or {}
+        url = (out.get("audio") or {}).get("url") or out.get("url") \
+            or resp.get("url") or (resp.get("data") or {}).get("url")
+        return {"ok": True, "kind": "audio", "execution": "sync",
+                "model": model, "url": url, "raw": resp}
 
     # ---- 能力查询：agent 用这个代替翻文档 ----
     def list_capabilities(self, kind=None):
@@ -326,17 +348,31 @@ class TaskGateway:
                 "error": str(getattr(e, "message", e)), "raw": {},
             }
 
-    def cancel(self, task_id):
-        """取消任务。
+    def cancel(self, task_id, kind=None, model=None):
+        """取消任务。按 kind（或 model 反推）路由到各 vendor 取消端点。
 
-        本轮返回 {supported:false}：PT 当前未提供取消任务的公共端点
-        （官方文档与 powertokens-integration skill 均无记录；OneAPI 路由下各供应商取消路径不一）。
-        待确认端点后，在此探测 DELETE /v1/videos/{id} 或 POST .../cancel 并实现分发。
+        - seedance：真实存在 DELETE /byteplus/api/v3/contents/generations/tasks/{id}
+                    （queued→cancelled），本方法真实调用并返回 {supported:true, state:CANCELLED}。
+        - 其他 kind（video 等）：vendor 取消端点待确认，诚实返回 {supported:false}
+                    并说明已确认的 Seedance 端点，避免假装成功。
+        kind/model 至少给一个才能识别是否为 Seedance；都不给则按非 seedance 处理。
         """
+        self._need_key()
+        k = kind or (model and kind_of_model(model))
+        if (k or "").lower() == "seedance":
+            try:
+                _api_call("DELETE", SEEDANCE_CANCEL.format(id=task_id), self.key, timeout=30)
+                return {"task_id": task_id, "supported": True, "kind": "seedance",
+                        "state": "CANCELLED"}
+            except ApiError as e:
+                return {"task_id": task_id, "supported": True, "kind": "seedance",
+                        "state": "UNKNOWN", "error": str(e.message), "status": e.status}
         return {
             "task_id": task_id,
             "supported": False,
-            "note": "PT 当前未提供取消任务的公共端点（官方文档/skill 均无记录）；本轮未实现，待确认端点后补齐",
+            "kind": k,
+            "reason": "仅 Seedance 已知真实取消端点 DELETE /byteplus/api/v3/contents/generations/tasks/{id}；"
+                      "其他模型取消端点待确认，确认后在此补分发（调用方接口不变）",
         }
 
 

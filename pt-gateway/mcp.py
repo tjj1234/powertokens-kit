@@ -70,7 +70,7 @@ def media_generate(kind: str = "", model: str = "auto", prompt: str = "",
       resolution 720p/1080p、ratio 画面比例；素材（可选）first_frame/ref_image/ref_video 支持 http(s) 或 asset://
     - seedance：与 video 同端点但网关已归一化请求体；图生视频素材**必须** asset://（用 PT 资产库上传拿 id）；
       需先在 PT 仪表盘签《Asset Library User Agreement》；文生视频纯 prompt 即可
-    - audio：当前返回 {supported:false}（PT 音频端点未确认），不会假装成功
+    - audio：同步生成（POST /ali/.../multimodal-generation/generation，返回 {execution:"sync", url}）
     model 填 "auto"（默认，自动选）或具体模型 ID（先 list_capabilities 看候选）。
     wait=true 时阻塞轮询到终态（仅异步 kind 生效），直接返回 {state, url}。
     """
@@ -89,7 +89,7 @@ def task_status(task_id: str, wait: bool = False, timeout_s: int = 600) -> str:
     返回归一化结构 {task_id, state, progress, url, raw}；state 为
     QUEUED/RUNNING/SUCCEEDED/FAILED/CANCELLED/UNKNOWN 之一。
     wait=true 时轮询到终态再返回（最多 timeout_s 秒），成功时 url 即结果视频地址。
-    注意：PT 当前未提供取消端点，任务提交后无法中途取消。
+    注意：Seedance 支持取消（cancel 端点 DELETE /byteplus/api/v3/contents/generations/tasks/{id}，对应 Seedance 任务）；其他模型取消端点待确认。
     """
     if wait:
         return _wrap(lambda: GW.wait(task_id, timeout=timeout_s))

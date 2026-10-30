@@ -22,7 +22,7 @@
 │   ├─ submit(model,...)  → build_submit_body(kind 适配) → POST /v1/videos → {task_id}      │
 │   ├─ get_status(tid)    → GET /v1/videos/{id} → normalize_status()                       │
 │   ├─ wait(tid,timeout)  → 复用引擎 poll_task 轮询到终态 → 归一化                          │
-│   └─ cancel(tid)        → 本轮 {supported:false}（PT 未暴露取消端点）                     │
+│   └─ cancel(tid)        → Seedance 真实 DELETE /byteplus/...；其他诚实 {supported:false}                     │
 │  ModelRegistry (registry.json)                                                           │
 │   └─ sync(key): GET /v1/models → diff → 新上架 enable(is_new) / 下架 delisted            │
 └───────────────────────────────┬──────────────────────────────────────────────────────────┘
@@ -53,8 +53,9 @@
 {
   "kinds": {
     "video": { "execution": "async", "submit": "/v1/videos", "poll": "/v1/videos/{task_id}" },
-    "audio": { "execution": "async", "submit": null, "status": "pending-endpoint",
-               "capabilities_observed": ["异步语音合成", "异步长文本语音合成（最大100万字符）", "音色设置"] }
+    "audio": { "execution": "sync", "submit": "/ali/api/v1/services/aigc/multimodal-generation/generation",
+               "poll": null, "vendor": "Ali (DashScope compatible)",
+               "capabilities_observed": ["语音合成(TTS, 短/长文本)", "音色设置"] }
   },
   "models": {
     "seedance-1-5-pro-251215": { "kind": "seedance", "price_usd_5s_720p": 0.247,
@@ -82,7 +83,7 @@
 响应按 kind 分流：
 - `image` → `{"ok":true,"kind":"image","execution":"sync","model":"...","urls":["..."]}`（同步直返）
 - `video` / `seedance` → `{"task_id":"...","kind":"...","execution":"async","model":"..."}`（用 /status 查）
-- `audio` → `{"ok":false,"kind":"audio","supported":false,"reason":"...端点未确认..."}`（诚实降级，不会假装成功）
+- `audio` → `{"ok":true,"kind":"audio","execution":"sync","url":"..."}`（同步生成，POST /ali/.../multimodal-generation/generation）
 
 ### POST /submit
 请求体：
@@ -135,7 +136,7 @@
 
 ### POST /cancel
 ```json
-{ "task_id": "abc123", "supported": false, "note": "PT 当前未提供取消任务的公共端点；本轮未实现" }
+{ "task_id": "abc123", "supported": true, "kind": "seedance", "state": "CANCELLED" }
 ```
 
 ---
@@ -229,9 +230,9 @@ print(gw.wait(tid))
 
 ## 7. 已知缺口（本轮）
 
-- **cancel 未实现**：PT 当前未暴露取消任务的公共端点（官方文档与 `powertokens-integration`
-  skill 均无记录）。`/cancel` 诚实返回 `{supported:false}`；确认端点后在此探测
-  `DELETE /v1/videos/{id}` 或 `POST /v1/videos/{id}/cancel` 并实现分发。
+- **cancel 已实现 Seedance 真实取消**：Seedance 走 `DELETE /byteplus/api/v3/contents/generations/tasks/{id}`
+  （queued→cancelled），`/cancel` 真实调用并返回 `{supported:true, state:CANCELLED}`；其他模型（video 等）
+  vendor 取消端点待确认，`/cancel` 诚实返回 `{supported:false}` 并说明已知端点。任务不再"无法中途取消"（限 Seedance）。
 - 轮询仍沿用引擎的 10s 间隔 + 600s 上限（无 429 退避/5xx 熔断，见 `pt_video.py` 注释 A.02/A.03）。
 
 ---
@@ -291,12 +292,41 @@ PT 的 `GET /v1/models` 只返回模型 ID，**不给**分辨率/时长/模式/�
 目录没收录的新上架模型，注册表也会自动 enable（能力字段显示缺失，诚实不编造）。
 
 schema：顶层 `kinds`（每类型的 execution/端点/前置要求/能力观测）+ `models`（每模型档案）。
-音频类（TTS）当前 `pending-endpoint`：观测到「异步语音合成 / 长文本最大 100 万字符 / 音色设置」
-等能力，但提交/轮询端点未确认——`media_generate(kind=audio)` 诚实返回 `unsupported`，
-确认端点后只需补 `kinds.audio.submit/poll` 与各 TTS 模型条目，调用方接口不变。
+音频类（TTS）端点已确认：`POST /ali/api/v1/services/aigc/multimodal-generation/generation`（Ali 兼容，同步返回 url），
+`kinds.audio` 已填真实端点，`media_generate(kind=audio)` 现在同步生成并返回 `{execution:"sync", url}`；
+请求体采用 Ali 标准结构（model + input.prompt[+voice]），响应 url 多位置兜底抽取，具体字段以 PT 文档实测为准。
 
 CLI 快查：
 ```bash
 python pt_gateway.py capabilities            # 打印全部能力目录
 python pt_gateway.py capabilities seedance   # 只看某类
 ```
+
+---
+
+## 公开层爬虫（catalog_crawler.py）
+
+无 Key 爬 PT 官网，产出「公开层全局模型真相」`catalog.public.json`，消除多 key 误判（详见 FIXLIST.md §2.1）。
+
+数据源（已实测）：
+- `https://docs.powertokens.ai/sitemap.xml`（396 个 `<loc>`，含 350 个模型页，无子 sitemap）
+- 模型页 `https://docs.powertokens.ai/{lang}/zmodel{Type}/{vendor}/{rest}`
+- OpenAPI 3.0.1 片段 `https://docs.powertokens.ai/api-reference/{lang}/zmodel{Type}/{vendor}/{rest}.json`
+  （模型页 path 前插 `/api-reference`、后缀加 `.json` 即得；含 title / paths / `model` enum / 参数 schema / 响应 status enum）
+
+产出 `catalog.public.json` 每模型字段：
+`kind` / `type` / `vendor` / `title` / `execution`(同步·异步) / `vendor_endpoint`(真实 vendor 路径)
+/ `submit`(按 kind 派生的统一端点) / `params_observed` / `status_enum` / `first_seen` / `last_seen`。
+其中 kind / execution / 端点 是爬虫可证字段；`price` / `resolution` / `modes` 等 PT 不给的字段由人工档案 `catalog.json` 维护。
+
+用法：
+```bash
+python catalog_crawler.py                 # 完整爬 → 写 catalog.public.json
+python catalog_crawler.py --dry-run       # 爬但不写文件（打印摘要）
+python catalog_crawler.py --limit 30      # 只处理前 30 个模型页（调试）
+python catalog_crawler.py --merge         # 爬 + 合并进 catalog.json（默认关闭，待 FIXLIST §2.2 讨论）
+```
+
+说明：爬虫默认只写 `catalog.public.json`，**绝不碰 `registry.json`**；下架判定（本次爬未出现的模型 → `delisted`）
+从 key 层移到公开层。`--merge` 仅把爬虫可证字段并入 `catalog.json.models`，人工档案字段不被覆盖；
+合并策略与多 key 分文件方案为待讨论项（FIXLIST §2.1 / §2.2）。

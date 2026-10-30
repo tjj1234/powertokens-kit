@@ -6,7 +6,7 @@
     "execution: sync=一次调用直接返回结果; async=提交拿 task_id 后轮询 task_status。",
     "价格字段 price_usd_5s_720p 基于 5s/720p 探测（PT 预扣单价）；n/a 表示 PT 未公开，以仪表盘为准。",
     "模型上下架由 ModelRegistry.sync() 自动维护（/v1/models diff）；本目录只维护能力档案（分辨率/时长/模式等 API 不给的字段）。",
-    "音频类端点未确认：官方文档与 powertokens-integration skill 均无音频/TTS 端点记录，先诚实标 pending-endpoint，确认后补 submit/poll 并把各 TTS 模型补进 models。"
+    "音频类（TTS）端点已确认：Ali 兼容 POST /ali/api/v1/services/aigc/multimodal-generation/generation（同步返回 url），kinds.audio 已填真实端点；请求体/响应字段以 PT 文档实测为准，待公开层爬虫自动对齐。"
   ],
   "kinds": {
     "image": {
@@ -29,16 +29,15 @@
       "note": "与 video 共用传输端点，但请求体构造不同（本网关已归一化）"
     },
     "audio": {
-      "execution": "async",
-      "submit": null,
+      "execution": "sync",
+      "submit": "/ali/api/v1/services/aigc/multimodal-generation/generation",
       "poll": null,
-      "status": "pending-endpoint",
+      "vendor": "Ali (DashScope compatible)",
       "capabilities_observed": [
-        "异步语音合成（短文本）",
-        "异步长文本语音合成（单次最大 100 万字符）",
+        "语音合成（TTS，短/长文本）",
         "音色设置"
       ],
-      "note": "截图观测到的能力，但提交/轮询端点未确认；media_generate(kind=audio) 当前诚实返回 unsupported"
+      "note": "Ali 兼容 TTS 端点，同步返回 audio url；请求体采用 Ali 标准结构（model + input.prompt[+voice]），响应 url 多位置兜底抽取。具体字段以 PT 文档实测为准。"
     }
   },
   "models": {
