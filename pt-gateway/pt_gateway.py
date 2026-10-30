@@ -35,6 +35,7 @@ import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+import time
 
 # ---------- 复用同仓 pt_video.py 的 REST 原语（不依赖 CLI 子命令）----------
 _HERE = Path(__file__).resolve().parent
@@ -63,6 +64,79 @@ ASYNC_KINDS = ("video", "seedance")  # 走 /v1/videos 任务式轮询的类型�
 SYNC_KINDS = ("image",)              # 一次调用直接返回结果的类型
 KNOWN_KINDS = ("image", "video", "seedance", "audio")
 CATALOG_PATH = _HERE / "catalog.json"
+PUBLIC_CATALOG_PATH = _HERE / "catalog.public.json"
+
+
+def _load_public():
+    """加载公开层目录（catalog.public.json）：无 key 爬到的全局上架模型真相。"""
+    if not PUBLIC_CATALOG_PATH.exists():
+        return {}
+    try:
+        return json.loads(PUBLIC_CATALOG_PATH.read_text(encoding="utf-8")).get("models", {})
+    except Exception:
+        return {}
+
+
+def public_models(kind=None):
+    """公开层全局真相中的模型（可按 kind 过滤）。不作为权限判断，仅作「模型是否存在」的真相源。"""
+    models = _load_public()
+    if kind is None:
+        return dict(models)
+    return {m: e for m, e in models.items() if (e.get("kind") or "").lower() == kind.lower()}
+
+
+# ---------- 健壮轮询（§2.5：429 退避 + 5xx 熔断）----------
+def _retry_after(err):
+    """尽力从 ApiError 取 Retry-After；引擎未暴露响应头时返回 None（退化为指数退避）。"""
+    raw = getattr(err, "raw", None) or {}
+    hdrs = raw.get("headers") or {}
+    ra = hdrs.get("Retry-After") or hdrs.get("retry-after")
+    if ra:
+        try:
+            return float(ra)
+        except Exception:
+            return None
+    return None
+
+
+def poll_task(key, task_id, timeout=POLL_TIMEOUT):
+    """轮询任务到终态，带 429 退避 + 5xx 熔断（覆盖引擎原版）。
+
+    - 429：尊重 Retry-After，否则指数退避（1→2→4→…≤60s）
+    - 5xx：连续 5 次熔断抛出（避免无限重试烧钱/卡死）
+    - 其他 4xx：直接透传（权限/参数问题，不退避）
+    - 超时：抛出明确超时错误
+    """
+    deadline = time.monotonic() + timeout
+    backoff = 1.0
+    consecutive_5xx = 0
+    max_5xx = 5
+    while True:
+        if time.monotonic() >= deadline:
+            raise ApiError(0, f"轮询超时：{timeout}s 内任务 {task_id} 未到终态")
+        try:
+            task = _api_call("GET", VIDEO_POLL.format(id=task_id), key, timeout=30)
+            consecutive_5xx = 0
+            st = TaskState.normalize((task.get("status") or ""))
+            if st in (TaskState.SUCCEEDED, TaskState.FAILED, TaskState.CANCELLED):
+                return task
+        except ApiError as e:
+            status = e.status or 0
+            if status == 429:
+                wait_s = _retry_after(e) or backoff
+                backoff = min(backoff * 2, 60)
+                time.sleep(wait_s)
+                continue
+            if 500 <= status < 600:
+                consecutive_5xx += 1
+                if consecutive_5xx >= max_5xx:
+                    raise ApiError(status, f"轮询熔断：连续 {consecutive_5xx} 次 5xx（task={task_id}）：{e.message}")
+                time.sleep(backoff)
+                backoff = min(backoff * 2, 60)
+                continue
+            raise  # 其他错误（含 4xx 非 429）直接透传
+        time.sleep(min(backoff, max(1.0, POLL_INTERVAL)))
+        backoff = min(backoff * 2, 60)
 
 
 # ---------- 统一媒体能力目录 ----------
@@ -94,6 +168,10 @@ class Catalog:
     def models(self, kind=None):
         return {m: e for m, e in self.data["models"].items()
                 if kind is None or e.get("kind") == kind}
+
+    def public_models(self, kind=None):
+        """公开层全局真相（catalog.public.json），按 kind 过滤。"""
+        return public_models(kind)
 
     def entry(self, model):
         return self.data["models"].get(model) or {}
@@ -301,10 +379,13 @@ class TaskGateway:
         """返回能力目录，并叠加注册表的 enabled/delisted 实时状态。"""
         cap = self.catalog.capabilities(kind)
         reg = self.registry.data.get("models", {})
+        pub = public_models(kind)
         for mid, entry in cap["models"].items():
             r = reg.get(mid)
             entry["registry_enabled"] = bool(r.get("enabled")) if r else None
             entry["delisted"] = bool(r.get("delisted")) if r else None
+            entry["key_permitted"] = bool(r.get("key_permitted")) if r else None
+            entry["public_exists"] = mid in pub
         return cap
 
     def submit(self, model, prompt="", duration=5, resolution="720p", ratio="16:9",
@@ -357,9 +438,9 @@ class TaskGateway:
                     并说明已确认的 Seedance 端点，避免假装成功。
         kind/model 至少给一个才能识别是否为 Seedance；都不给则按非 seedance 处理。
         """
-        self._need_key()
         k = kind or (model and kind_of_model(model))
         if (k or "").lower() == "seedance":
+            self._need_key()
             try:
                 _api_call("DELETE", SEEDANCE_CANCEL.format(id=task_id), self.key, timeout=30)
                 return {"task_id": task_id, "supported": True, "kind": "seedance",
@@ -367,12 +448,28 @@ class TaskGateway:
             except ApiError as e:
                 return {"task_id": task_id, "supported": True, "kind": "seedance",
                         "state": "UNKNOWN", "error": str(e.message), "status": e.status}
+        # 其他 kind（video 等）：用公开层 vendor_endpoint 推断 best-effort 取消端点（§2.4）
+        # 仅文档推断，不耗 key；真实生效需一次任务验证。
+        if model:
+            entry = self.catalog.entry(model) or {}
+            pe = public_models().get(model) or {}
+            vend = entry.get("vendor_endpoint") or pe.get("vendor_endpoint") or ""
+            if vend:
+                import re as _re
+                base = _re.sub(r"/tasks?/.*$", "", vend)
+                return {
+                    "task_id": task_id,
+                    "supported": "best-effort",
+                    "kind": k,
+                    "guess_endpoint": f"DELETE {base}/tasks/{{id}}",
+                    "note": "基于公开层 vendor_endpoint 推断，未实测；调用方可按此发 DELETE，失败再回退",
+                }
         return {
             "task_id": task_id,
             "supported": False,
             "kind": k,
             "reason": "仅 Seedance 已知真实取消端点 DELETE /byteplus/api/v3/contents/generations/tasks/{id}；"
-                      "其他模型取消端点待确认，确认后在此补分发（调用方接口不变）",
+                      "其他模型取消端点待确认（可爬公开层 vendor_endpoint 推断 best-effort）",
         }
 
 
@@ -418,14 +515,22 @@ class ModelRegistry:
         return (datetime.now(timezone.utc) - dt).total_seconds() > max_age
 
     def sync(self, key, max_age=3600):
-        """用当前 Key 的 live 模型列表刷新注册表，返回 diff 摘要。"""
+        """用当前 Key 的 live 模型列表刷新『key 层权限视图』（§2.1）。
+
+        语义修正：公开层(catalog.public.json)才是「模型是否还存在」的全局真相；
+        key 层只记录「这个 key 能否调用」。因此：
+          - 本 key 列表里没有的模型 → key_permitted=False，但**不**视为下架(delisted)。
+          - 仅当某模型同时不在公开层（PT 文档已移除）→ 才标记 delisted=True。
+        这样不同 key 返回的模型差异不会导致「误判下架」。
+        """
         now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        pub = public_models()
         present = {}
         for kind in ASYNC_KINDS:
             for mid in list_key_models(key, kind):
                 present[mid] = kind
         models = self.data["models"]
-        added, removed = [], []
+        added, removed, key_unavailable = [], [], []
         for mid, kind in present.items():
             if mid not in models:
                 models[mid] = {"kind": kind, "enabled": True, "delisted": False,
@@ -438,16 +543,22 @@ class ModelRegistry:
                 m["last_seen"] = now
                 m["is_new"] = False
                 m["kind"] = kind
+            models[mid]["key_permitted"] = True
         for mid, m in models.items():
-            if mid not in present and m.get("enabled") and not m.get("delisted"):
-                m["enabled"] = False
-                m["delisted"] = True
-                m["last_seen"] = now
-                removed.append(mid)
+            if mid not in present:
+                m["key_permitted"] = False
+                if mid not in pub:
+                    if not m.get("delisted"):
+                        m["delisted"] = True
+                        m["enabled"] = False
+                        m["last_seen"] = now
+                        removed.append(mid)
+                else:
+                    key_unavailable.append(mid)
         self.data["last_synced"] = now
         self.save()
         return {
-            "added": added, "removed": removed,
+            "added": added, "removed": removed, "key_unavailable": key_unavailable,
             "total_enabled": sum(1 for m in models.values() if m.get("enabled")),
             "last_synced": now,
         }
@@ -456,12 +567,19 @@ class ModelRegistry:
         out = []
         for mid, m in self.data["models"].items():
             if m.get("enabled") and not m.get("delisted"):
+                if m.get("key_permitted") is False:
+                    continue  # 本 key 不可调用（§2.1：权限视图，非下架）
                 if kind is None or m.get("kind") == kind:
                     out.append(mid)
         return out
 
     def auto_select(self, kind):
         cands = self.enabled_async(kind)
+        if not cands:
+            # key 层无候选 → 回退到公开层全局真相（§2.1：公开层优先兜底）
+            pub = public_models(kind)
+            if pub:
+                cands = list(pub.keys())
         if not cands:
             return None
         prio = AUTO_PRIORITY_SEEDANCE if kind == "seedance" else AUTO_PRIORITY_VIDEO
@@ -509,13 +627,70 @@ def _cmd_capabilities(kind=None):
     print(json.dumps(cat.capabilities(kind), ensure_ascii=False, indent=2))
 
 
+
+
+def enrich_with_llm(models):
+    """LLM 能力摘要钩子（§2.2）：默认空实现，预留接口。
+
+    以后要接 LLM 时，在这里对每个 model 的 description 生成 capabilities 摘要，
+    返回 {model_id: {capabilities_observed: [...]}} 即可；默认返回空 dict 不改动。
+    """
+    return {}
+
+
+def enrich_catalog(public_path=None, catalog_path=None, llm_hook=None):
+    """把公开层目录(catalog.public.json)合并进 catalog.json（§2.2）。
+
+    策略：merge —— 只补 catalog.json 中**缺失**的字段，绝不覆盖手写字。
+    合并字段：params_observed / vendor_endpoint / execution / capabilities_observed / submit / poll / kind。
+    llm_hook：可选，签名 enrich_with_llm(models) -> {model_id: {fields}}，用于补充能力摘要。
+    返回变更摘要。
+    """
+    public_path = Path(public_path or PUBLIC_CATALOG_PATH)
+    catalog_path = Path(catalog_path or CATALOG_PATH)
+    pub = json.loads(public_path.read_text(encoding="utf-8")).get("models", {})
+    cat = json.loads(catalog_path.read_text(encoding="utf-8"))
+    models = cat.setdefault("models", {})
+    fields = ("params_observed", "vendor_endpoint", "execution",
+              "capabilities_observed", "submit", "poll", "kind")
+    changed = set()
+    for mid, pe in pub.items():
+        ce = models.setdefault(mid, {})
+        for f in fields:
+            if f in pe and (f not in ce or ce[f] in (None, "", [], {})):
+                ce[f] = pe[f]
+                changed.add(mid)
+    if llm_hook:
+        extra = llm_hook(models) or {}
+        for mid, fieldset in extra.items():
+            if mid in models:
+                for f, v in fieldset.items():
+                    if f not in models[mid] or models[mid][f] in (None, "", [], {}):
+                        models[mid][f] = v
+                        changed.add(mid)
+    catalog_path.write_text(json.dumps(cat, ensure_ascii=False, indent=2), encoding="utf-8")
+    return {"enriched_models": sorted(changed), "count": len(changed)}
+
+
+def _cmd_enrich():
+    """把公开层目录合并进 catalog.json（merge，不覆盖手写字）。"""
+    res = enrich_catalog(llm_hook=enrich_with_llm)
+    print(json.dumps(res, ensure_ascii=False, indent=2))
+
+
+def _cmd_public(kind=None):
+    """打印公开层全局真相（catalog.public.json）。"""
+    print(json.dumps(public_models(kind), ensure_ascii=False, indent=2))
+
+
 if __name__ == "__main__":
     import argparse
     ap = argparse.ArgumentParser(description="PT Gateway 核心模块（自检 / 注册表同步 / 能力目录）")
     ap.add_argument("cmd", nargs="?", default="selfcheck",
-                    choices=["selfcheck", "sync", "capabilities"],
+                    choices=["selfcheck", "sync", "capabilities", "enrich", "public"],
                     help="selfcheck=自检（默认）；sync=手动拉 /v1/models 刷新注册表；"
-                         "capabilities=打印能力目录（可带 kind）")
+                         "capabilities=打印能力目录（可带 kind）；"
+                         "enrich=把公开层目录 merge 进 catalog.json；public=打印公开层真相")
     ap.add_argument("kind_arg", nargs="?", default=None,
                     help="capabilities 子命令的 kind 过滤（image/video/seedance/audio）")
     args = ap.parse_args()
@@ -525,3 +700,7 @@ if __name__ == "__main__":
         _cmd_sync()
     elif args.cmd == "capabilities":
         _cmd_capabilities(args.kind_arg)
+    elif args.cmd == "enrich":
+        _cmd_enrich()
+    elif args.cmd == "public":
+        _cmd_public(args.kind_arg)

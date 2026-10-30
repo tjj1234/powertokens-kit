@@ -41,22 +41,1008 @@
     }
   },
   "models": {
-    "wan3.0-video": { "kind": "video", "price_usd_5s_720p": 0.20, "max_duration_s": 10, "resolutions": ["720p", "1080p"], "modes": ["text", "image"] },
-    "wan3.0-video-prime": { "kind": "video", "price_usd_5s_720p": 0.70, "max_duration_s": 10, "resolutions": ["720p", "1080p"], "modes": ["text", "image"] },
-    "wan2.7-t2v": { "kind": "video", "price_usd_5s_720p": 0.475, "max_duration_s": 10, "resolutions": ["720p", "1080p"], "modes": ["text", "image"] },
-    "kling-v3": { "kind": "video", "price_usd_5s_720p": 0.42, "max_duration_s": 10, "resolutions": ["720p", "1080p"], "modes": ["text", "image", "audio"] },
-    "kling-video-o1": { "kind": "video", "price_usd_5s_720p": 0.42, "max_duration_s": 10, "resolutions": ["720p", "1080p"], "modes": ["text", "image"] },
-    "kling-v2-1-master": { "kind": "video", "price_usd_5s_720p": 1.40, "max_duration_s": 10, "resolutions": ["720p", "1080p"], "modes": ["text", "image", "audio(运镜)"] },
-    "seedance-1-5-pro-251215": { "kind": "seedance", "price_usd_5s_720p": 0.247, "max_duration_s": 10, "resolutions": ["720p", "1080p"], "modes": ["text", "image(first-frame)", "start-end", "video+audio-ref"] },
-    "dreamina-seedance-2-0-fast-260128": { "kind": "seedance", "price_usd_5s_720p": 0.605, "max_duration_s": 10, "resolutions": ["720p", "1080p"], "modes": ["text", "image(first-frame)", "start-end", "video+audio-ref"] },
-    "dreamina-seedance-2-0-260128": { "kind": "seedance", "price_usd_5s_720p": 0.756, "max_duration_s": 10, "resolutions": ["720p", "1080p"], "modes": ["text", "image(first-frame)", "start-end", "video+audio-ref"] },
-    "dreamina-seedance-2-0-mini-260615": { "kind": "seedance", "price_usd_5s_720p": null, "max_duration_s": 10, "resolutions": ["720p", "1080p"], "modes": ["text", "image(first-frame)", "start-end", "video+audio-ref"] },
-    "dreamina-seedance-2-5-260628": { "kind": "seedance", "price_usd_5s_720p": null, "max_duration_s": 10, "resolutions": ["720p", "1080p"], "modes": ["text", "image(first-frame)", "start-end", "video+audio-ref"] },
-    "seedance-1-0-pro-fast-251015": { "kind": "seedance", "price_usd_5s_720p": null, "max_duration_s": 10, "resolutions": ["720p", "1080p"], "modes": ["text", "image(first-frame)", "start-end", "video+audio-ref"] },
-    "seedance-1-0-pro-250528": { "kind": "seedance", "price_usd_5s_720p": null, "max_duration_s": 10, "resolutions": ["720p", "1080p"], "modes": ["text", "image(first-frame)", "start-end", "video+audio-ref"] },
-    "seedream-5-0-260128": { "kind": "image", "price": null, "aspect_ratios": ["1:1", "16:9", "4:3", "3:2", "2:3", "3:4", "9:16", "21:9"], "modes": ["text"], "note": "image 类 auto 默认" },
-    "qwen-image": { "kind": "image", "price": null, "aspect_ratios": ["1:1", "16:9", "4:3", "3:2", "2:3", "3:4", "9:16", "21:9"], "modes": ["text"] },
-    "image-01": { "kind": "image", "price": null, "aspect_ratios": ["1:1", "16:9", "4:3", "3:2", "2:3", "3:4", "9:16", "21:9"], "modes": ["text"] },
-    "kling-image": { "kind": "image", "price": null, "aspect_ratios": ["1:1", "16:9", "4:3", "3:2", "2:3", "3:4", "9:16", "21:9"], "modes": ["text"] }
+    "wan3.0-video": {
+      "kind": "video",
+      "price_usd_5s_720p": 0.2,
+      "max_duration_s": 10,
+      "resolutions": [
+        "720p",
+        "1080p"
+      ],
+      "modes": [
+        "text",
+        "image"
+      ],
+      "params_observed": [],
+      "vendor_endpoint": "/v1/videos",
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}"
+    },
+    "wan3.0-video-prime": {
+      "kind": "video",
+      "price_usd_5s_720p": 0.7,
+      "max_duration_s": 10,
+      "resolutions": [
+        "720p",
+        "1080p"
+      ],
+      "modes": [
+        "text",
+        "image"
+      ],
+      "params_observed": [],
+      "vendor_endpoint": "/v1/videos",
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}"
+    },
+    "wan2.7-t2v": {
+      "kind": "video",
+      "price_usd_5s_720p": 0.475,
+      "max_duration_s": 10,
+      "resolutions": [
+        "720p",
+        "1080p"
+      ],
+      "modes": [
+        "text",
+        "image"
+      ],
+      "params_observed": [
+        "input",
+        "parameters",
+        "prompt",
+        "negative_prompt",
+        "audio_url",
+        "resolution",
+        "ratio",
+        "duration",
+        "prompt_extend",
+        "watermark",
+        "seed"
+      ],
+      "vendor_endpoint": "/ali/api/v1/services/aigc/video-generation/video-synthesis",
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}"
+    },
+    "kling-v3": {
+      "kind": "video",
+      "price_usd_5s_720p": 0.42,
+      "max_duration_s": 10,
+      "resolutions": [
+        "720p",
+        "1080p"
+      ],
+      "modes": [
+        "text",
+        "image",
+        "audio"
+      ]
+    },
+    "kling-video-o1": {
+      "kind": "video",
+      "price_usd_5s_720p": 0.42,
+      "max_duration_s": 10,
+      "resolutions": [
+        "720p",
+        "1080p"
+      ],
+      "modes": [
+        "text",
+        "image"
+      ]
+    },
+    "kling-v2-1-master": {
+      "kind": "video",
+      "price_usd_5s_720p": 1.4,
+      "max_duration_s": 10,
+      "resolutions": [
+        "720p",
+        "1080p"
+      ],
+      "modes": [
+        "text",
+        "image",
+        "audio(运镜)"
+      ]
+    },
+    "seedance-1-5-pro-251215": {
+      "kind": "seedance",
+      "price_usd_5s_720p": 0.247,
+      "max_duration_s": 10,
+      "resolutions": [
+        "720p",
+        "1080p"
+      ],
+      "modes": [
+        "text",
+        "image(first-frame)",
+        "start-end",
+        "video+audio-ref"
+      ],
+      "params_observed": [],
+      "vendor_endpoint": "/v1/videos",
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}"
+    },
+    "dreamina-seedance-2-0-fast-260128": {
+      "kind": "seedance",
+      "price_usd_5s_720p": 0.605,
+      "max_duration_s": 10,
+      "resolutions": [
+        "720p",
+        "1080p"
+      ],
+      "modes": [
+        "text",
+        "image(first-frame)",
+        "start-end",
+        "video+audio-ref"
+      ],
+      "params_observed": [],
+      "vendor_endpoint": "/v1/videos",
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}"
+    },
+    "dreamina-seedance-2-0-260128": {
+      "kind": "seedance",
+      "price_usd_5s_720p": 0.756,
+      "max_duration_s": 10,
+      "resolutions": [
+        "720p",
+        "1080p"
+      ],
+      "modes": [
+        "text",
+        "image(first-frame)",
+        "start-end",
+        "video+audio-ref"
+      ],
+      "params_observed": [],
+      "vendor_endpoint": "/v1/videos",
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}"
+    },
+    "dreamina-seedance-2-0-mini-260615": {
+      "kind": "seedance",
+      "price_usd_5s_720p": null,
+      "max_duration_s": 10,
+      "resolutions": [
+        "720p",
+        "1080p"
+      ],
+      "modes": [
+        "text",
+        "image(first-frame)",
+        "start-end",
+        "video+audio-ref"
+      ],
+      "params_observed": [],
+      "vendor_endpoint": "/v1/videos",
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}"
+    },
+    "dreamina-seedance-2-5-260628": {
+      "kind": "seedance",
+      "price_usd_5s_720p": null,
+      "max_duration_s": 10,
+      "resolutions": [
+        "720p",
+        "1080p"
+      ],
+      "modes": [
+        "text",
+        "image(first-frame)",
+        "start-end",
+        "video+audio-ref"
+      ],
+      "params_observed": [],
+      "vendor_endpoint": "/v1/videos",
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}"
+    },
+    "seedance-1-0-pro-fast-251015": {
+      "kind": "seedance",
+      "price_usd_5s_720p": null,
+      "max_duration_s": 10,
+      "resolutions": [
+        "720p",
+        "1080p"
+      ],
+      "modes": [
+        "text",
+        "image(first-frame)",
+        "start-end",
+        "video+audio-ref"
+      ],
+      "params_observed": [],
+      "vendor_endpoint": "/v1/videos",
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}"
+    },
+    "seedance-1-0-pro-250528": {
+      "kind": "seedance",
+      "price_usd_5s_720p": null,
+      "max_duration_s": 10,
+      "resolutions": [
+        "720p",
+        "1080p"
+      ],
+      "modes": [
+        "text",
+        "image(first-frame)",
+        "start-end",
+        "video+audio-ref"
+      ],
+      "params_observed": [],
+      "vendor_endpoint": "/v1/videos",
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}"
+    },
+    "seedream-5-0-260128": {
+      "kind": "image",
+      "price": null,
+      "aspect_ratios": [
+        "1:1",
+        "16:9",
+        "4:3",
+        "3:2",
+        "2:3",
+        "3:4",
+        "9:16",
+        "21:9"
+      ],
+      "modes": [
+        "text"
+      ],
+      "note": "image 类 auto 默认",
+      "params_observed": [],
+      "vendor_endpoint": "/v1/images/generations",
+      "execution": "sync",
+      "submit": "/v1/images/generations",
+      "poll": null
+    },
+    "qwen-image": {
+      "kind": "image",
+      "price": null,
+      "aspect_ratios": [
+        "1:1",
+        "16:9",
+        "4:3",
+        "3:2",
+        "2:3",
+        "3:4",
+        "9:16",
+        "21:9"
+      ],
+      "modes": [
+        "text"
+      ]
+    },
+    "image-01": {
+      "kind": "image",
+      "price": null,
+      "aspect_ratios": [
+        "1:1",
+        "16:9",
+        "4:3",
+        "3:2",
+        "2:3",
+        "3:4",
+        "9:16",
+        "21:9"
+      ],
+      "modes": [
+        "text"
+      ],
+      "params_observed": [],
+      "vendor_endpoint": "/minimax/v1/image_generation",
+      "execution": "sync",
+      "submit": "/v1/images/generations",
+      "poll": null
+    },
+    "kling-image": {
+      "kind": "image",
+      "price": null,
+      "aspect_ratios": [
+        "1:1",
+        "16:9",
+        "4:3",
+        "3:2",
+        "2:3",
+        "3:4",
+        "9:16",
+        "21:9"
+      ],
+      "modes": [
+        "text"
+      ]
+    },
+    "qwen3-tts-instruct-flash": {
+      "params_observed": [
+        "input",
+        "text",
+        "voice",
+        "language_type",
+        "instructions",
+        "optimize_instructions"
+      ],
+      "vendor_endpoint": "/ali/api/v1/services/aigc/multimodal-generation/generation",
+      "execution": "sync",
+      "submit": "/ali/api/v1/services/aigc/multimodal-generation/generation",
+      "poll": null,
+      "kind": "audio"
+    },
+    "speech-2.8-hd": {
+      "params_observed": [],
+      "vendor_endpoint": "/minimax/v1/t2a_v2",
+      "execution": "sync",
+      "submit": "/ali/api/v1/services/aigc/multimodal-generation/generation",
+      "poll": null,
+      "kind": "audio"
+    },
+    "speech-2.8-turbo": {
+      "params_observed": [],
+      "vendor_endpoint": "/minimax/v1/t2a_v2",
+      "execution": "sync",
+      "submit": "/ali/api/v1/services/aigc/multimodal-generation/generation",
+      "poll": null,
+      "kind": "audio"
+    },
+    "speech-2.6-hd": {
+      "params_observed": [],
+      "vendor_endpoint": "/minimax/v1/t2a_v2",
+      "execution": "sync",
+      "submit": "/ali/api/v1/services/aigc/multimodal-generation/generation",
+      "poll": null,
+      "kind": "audio"
+    },
+    "speech-2.6-turbo": {
+      "params_observed": [],
+      "vendor_endpoint": "/minimax/v1/t2a_v2",
+      "execution": "sync",
+      "submit": "/ali/api/v1/services/aigc/multimodal-generation/generation",
+      "poll": null,
+      "kind": "audio"
+    },
+    "speech-02-hd": {
+      "params_observed": [],
+      "vendor_endpoint": "/minimax/v1/t2a_v2",
+      "execution": "sync",
+      "submit": "/ali/api/v1/services/aigc/multimodal-generation/generation",
+      "poll": null,
+      "kind": "audio"
+    },
+    "speech-02-turbo": {
+      "params_observed": [],
+      "vendor_endpoint": "/minimax/v1/t2a_v2",
+      "execution": "sync",
+      "submit": "/ali/api/v1/services/aigc/multimodal-generation/generation",
+      "poll": null,
+      "kind": "audio"
+    },
+    "audio1.0": {
+      "params_observed": [],
+      "vendor_endpoint": "/vidu/ent/v2/text2audio",
+      "execution": "async",
+      "submit": "/ali/api/v1/services/aigc/multimodal-generation/generation",
+      "poll": "/v1/videos/{task_id}",
+      "kind": "audio"
+    },
+    "deepseek-v4-flash-0731": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": null,
+      "poll": null,
+      "kind": "chat"
+    },
+    "deepseek-v4-pro-0813": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": null,
+      "poll": null,
+      "kind": "chat"
+    },
+    "qwen3-coder-plus": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": null,
+      "poll": null,
+      "kind": "chat"
+    },
+    "qwen3-max": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": null,
+      "poll": null,
+      "kind": "chat"
+    },
+    "qwen3.5-flash": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": null,
+      "poll": null,
+      "kind": "chat"
+    },
+    "qwen3.6-plus": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": null,
+      "poll": null,
+      "kind": "chat"
+    },
+    "qwen3.7-max": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": null,
+      "poll": null,
+      "kind": "chat"
+    },
+    "qwen3.7-plus": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": null,
+      "poll": null,
+      "kind": "chat"
+    },
+    "qwen3.8-flash": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": null,
+      "poll": null,
+      "kind": "chat"
+    },
+    "qwen3.8-max": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": null,
+      "poll": null,
+      "kind": "chat"
+    },
+    "deepseek-v3-2-251201": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": null,
+      "poll": null,
+      "kind": "chat"
+    },
+    "deepseek-v4-1-flash-260910": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": null,
+      "poll": null,
+      "kind": "chat"
+    },
+    "dola-seed-2-1-turbo-260628": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": null,
+      "poll": null,
+      "kind": "chat"
+    },
+    "seed-1-6-250915": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": null,
+      "poll": null,
+      "kind": "chat"
+    },
+    "seed-1-6-flash-250715": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": null,
+      "poll": null,
+      "kind": "chat"
+    },
+    "seed-1-8-251228": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": null,
+      "poll": null,
+      "kind": "chat"
+    },
+    "seed-2-0-lite-260228": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": null,
+      "poll": null,
+      "kind": "chat"
+    },
+    "seed-2-0-mini-260215": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": null,
+      "poll": null,
+      "kind": "chat"
+    },
+    "seed-2-0-pro-260328": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": null,
+      "poll": null,
+      "kind": "chat"
+    },
+    "deepseek-flash": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": null,
+      "poll": null,
+      "kind": "chat"
+    },
+    "deepseek-v4-pro": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": null,
+      "poll": null,
+      "kind": "chat"
+    },
+    "mimo-v2.6-flash": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": null,
+      "poll": null,
+      "kind": "chat"
+    },
+    "mimo-v2.6-pro": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": null,
+      "poll": null,
+      "kind": "chat"
+    },
+    "MiniMax-M2.5": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": null,
+      "poll": null,
+      "kind": "chat"
+    },
+    "MiniMax-M2.5-highspeed": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": null,
+      "poll": null,
+      "kind": "chat"
+    },
+    "MiniMax-M2.7": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": null,
+      "poll": null,
+      "kind": "chat"
+    },
+    "MiniMax-M2.7-highspeed": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": null,
+      "poll": null,
+      "kind": "chat"
+    },
+    "MiniMax-M3": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": null,
+      "poll": null,
+      "kind": "chat"
+    },
+    "MiniMax-M3.1-Flash": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": null,
+      "poll": null,
+      "kind": "chat"
+    },
+    "glm-4.5-air": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": null,
+      "poll": null,
+      "kind": "chat"
+    },
+    "glm-4.7": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": null,
+      "poll": null,
+      "kind": "chat"
+    },
+    "glm-4.7-flash": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": null,
+      "poll": null,
+      "kind": "chat"
+    },
+    "glm-5": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": null,
+      "poll": null,
+      "kind": "chat"
+    },
+    "glm-5-turbo": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": null,
+      "poll": null,
+      "kind": "chat"
+    },
+    "glm-5.1": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": null,
+      "poll": null,
+      "kind": "chat"
+    },
+    "glm-5.2": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": null,
+      "poll": null,
+      "kind": "chat"
+    },
+    "glm-5.3": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": null,
+      "poll": null,
+      "kind": "chat"
+    },
+    "glm-5.3-flash": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": null,
+      "poll": null,
+      "kind": "chat"
+    },
+    "qwen-image-3.0-pro": {
+      "params_observed": [
+        "input",
+        "parameters",
+        "messages",
+        "prompt_extend",
+        "prompt_extend_mode",
+        "n",
+        "size",
+        "negative_prompt",
+        "seed",
+        "watermark"
+      ],
+      "vendor_endpoint": "/ali/api/v1/services/aigc/multimodal-generation/generation",
+      "execution": "sync",
+      "submit": "/v1/images/generations",
+      "poll": null,
+      "kind": "image"
+    },
+    "qwen-image-2.0-pro": {
+      "params_observed": [
+        "input",
+        "parameters",
+        "messages",
+        "negative_prompt",
+        "n",
+        "watermark",
+        "seed",
+        "size",
+        "prompt_extend"
+      ],
+      "vendor_endpoint": "/ali/api/v1/services/aigc/multimodal-generation/generation",
+      "execution": "sync",
+      "submit": "/v1/images/generations",
+      "poll": null,
+      "kind": "image"
+    },
+    "wan2.7-image-pro": {
+      "params_observed": [
+        "input",
+        "parameters",
+        "messages",
+        "bbox_list",
+        "enable_sequential",
+        "size",
+        "n",
+        "thinking_mode",
+        "color_palette",
+        "watermark",
+        "seed"
+      ],
+      "vendor_endpoint": "/ali/api/v1/services/aigc/multimodal-generation/generation",
+      "execution": "sync",
+      "submit": "/v1/images/generations",
+      "poll": null,
+      "kind": "image"
+    },
+    "seedream-4-0-250828": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/images/generations",
+      "execution": "sync",
+      "submit": "/v1/images/generations",
+      "poll": null,
+      "kind": "image"
+    },
+    "seedream-4-5-251128": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/images/generations",
+      "execution": "sync",
+      "submit": "/v1/images/generations",
+      "poll": null,
+      "kind": "image"
+    },
+    "dola-seedream-5-0-pro-260628": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/images/generations",
+      "execution": "sync",
+      "submit": "/v1/images/generations",
+      "poll": null,
+      "kind": "image"
+    },
+    "viduq2": {
+      "params_observed": [],
+      "vendor_endpoint": "/vidu/ent/v2/reference2image",
+      "execution": "sync",
+      "submit": "/v1/images/generations",
+      "poll": null,
+      "kind": "image"
+    },
+    "wan2.2-kf2v-flash": {
+      "params_observed": [
+        "input",
+        "parameters",
+        "prompt",
+        "negative_prompt",
+        "first_frame_url",
+        "last_frame_url",
+        "template",
+        "resolution",
+        "duration",
+        "prompt_extend",
+        "watermark",
+        "seed"
+      ],
+      "vendor_endpoint": "/ali/api/v1/services/aigc/image2video/video-synthesis",
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}",
+      "kind": "video"
+    },
+    "wan2.1-kf2v-plus": {
+      "params_observed": [
+        "input",
+        "parameters",
+        "prompt",
+        "negative_prompt",
+        "first_frame_url",
+        "last_frame_url",
+        "template",
+        "resolution",
+        "duration",
+        "prompt_extend",
+        "watermark",
+        "seed"
+      ],
+      "vendor_endpoint": "/ali/api/v1/services/aigc/image2video/video-synthesis",
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}",
+      "kind": "video"
+    },
+    "wan2.7-i2v": {
+      "params_observed": [
+        "input",
+        "parameters",
+        "prompt",
+        "negative_prompt",
+        "media",
+        "resolution",
+        "duration",
+        "prompt_extend",
+        "watermark",
+        "seed"
+      ],
+      "vendor_endpoint": "/ali/api/v1/services/aigc/video-generation/video-synthesis",
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}",
+      "kind": "video"
+    },
+    "wan2.7-r2v": {
+      "params_observed": [
+        "input",
+        "parameters",
+        "prompt",
+        "negative_prompt",
+        "media",
+        "resolution",
+        "ratio",
+        "duration",
+        "prompt_extend",
+        "watermark",
+        "seed"
+      ],
+      "vendor_endpoint": "/ali/api/v1/services/aigc/video-generation/video-synthesis",
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}",
+      "kind": "video"
+    },
+    "happyhorse-1.1-i2v": {
+      "params_observed": [
+        "input",
+        "parameters",
+        "prompt",
+        "media",
+        "resolution",
+        "duration",
+        "watermark",
+        "seed"
+      ],
+      "vendor_endpoint": "/ali/api/v1/services/aigc/video-generation/video-synthesis",
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}",
+      "kind": "video"
+    },
+    "happyhorse-1.1-r2v": {
+      "params_observed": [
+        "input",
+        "parameters",
+        "prompt",
+        "media",
+        "resolution",
+        "ratio",
+        "duration",
+        "watermark",
+        "seed"
+      ],
+      "vendor_endpoint": "/ali/api/v1/services/aigc/video-generation/video-synthesis",
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}",
+      "kind": "video"
+    },
+    "happyhorse-1.1-t2v": {
+      "params_observed": [
+        "input",
+        "parameters",
+        "prompt",
+        "resolution",
+        "ratio",
+        "duration",
+        "watermark",
+        "seed"
+      ],
+      "vendor_endpoint": "/ali/api/v1/services/aigc/video-generation/video-synthesis",
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}",
+      "kind": "video"
+    },
+    "MiniMax-H3": {
+      "params_observed": [],
+      "vendor_endpoint": "/minimax/v2/video_generation",
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}",
+      "kind": "video"
+    },
+    "MiniMax-H3-Max": {
+      "params_observed": [],
+      "vendor_endpoint": "/minimax/v2/video_generation",
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}",
+      "kind": "video"
+    },
+    "MiniMax-Hailuo-02": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/videos",
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}",
+      "kind": "video"
+    },
+    "MiniMax-Hailuo-2.3-Fast": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/videos",
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}",
+      "kind": "video"
+    },
+    "MiniMax-Hailuo-2.3": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/videos",
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}",
+      "kind": "video"
+    },
+    "viduq3-pro-fast": {
+      "params_observed": [],
+      "vendor_endpoint": "/vidu/ent/v2/img2video",
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}",
+      "kind": "video"
+    },
+    "viduq3-pro": {
+      "params_observed": [],
+      "vendor_endpoint": "/vidu/ent/v2/img2video",
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}",
+      "kind": "video"
+    },
+    "viduq3": {
+      "params_observed": [],
+      "vendor_endpoint": "/vidu/ent/v2/reference2video",
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}",
+      "kind": "video"
+    },
+    "viduq3-turbo": {
+      "params_observed": [],
+      "vendor_endpoint": "/vidu/ent/v2/img2video",
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}",
+      "kind": "video"
+    },
+    "viduq4-preview": {
+      "params_observed": [],
+      "vendor_endpoint": "/vidu/ent/v2/img2video",
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}",
+      "kind": "video"
+    }
   }
 }
