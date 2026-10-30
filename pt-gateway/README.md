@@ -24,7 +24,7 @@
 │   ├─ wait(tid,timeout)  → 复用引擎 poll_task 轮询到终态 → 归一化                          │
 │   └─ cancel(tid)        → Seedance 真实 DELETE /byteplus/...；其他诚实 {supported:false}                     │
 │  ModelRegistry (registry.json)                                                           │
-│   └─ sync(key): GET /v1/models → diff → 新上架 enable(is_new) / 下架 delisted            │
+│   └─ sync(key): GET /v1/models → 本 key 权限视图(key_permitted)；下架判定看公开层        │
 └───────────────────────────────┬──────────────────────────────────────────────────────────┘
                                  │  Bearer <POWERTOKENS_API_KEY>
                                  ▼
@@ -175,14 +175,22 @@ schema：
 }
 ```
 
-同步策略（`ModelRegistry.sync`）：
-- **新上架**：出现在 live `/v1/models` 但不在注册表 → 新增 `enabled=true`，打 `is_new=true`。
-- **下架**：曾在注册表但不再出现在 live → `enabled=false`，`delisted=true`（保留历史，不物理删除）。
+同步策略（`ModelRegistry.sync`）—— 两层分工（§2.1）：
+- **key 层（本 key 权限视图）**：`/v1/models` 是本 key 真实可调用清单。
+  - 出现在 live 列表 → `key_permitted=true`；本 key 列表里没有 → 仅 `key_permitted=false`，
+    **不**视为下架（避免多 key 差异被误判下架）。
+  - **权限门禁（fail-closed）**：调用方**显式**指定模型时，若该模型不在本 key 的 `/v1/models` 列表，
+    网关直接返回 `ApiError(403)`「当前 key 没有模型 X 的调用权限」，**不发起真实生成请求**
+    （省掉一次必 403 的调用与额度）。
+  - `model=auto` 不做门禁校验，但 `auto_select(kind, permitted=...)` 已按 key 权限过滤，
+    只从本 key 有权限的模型里挑，不会选中无权限模型。
+- **公开层（全局真相）**：下架判定改由公开层 `catalog.public.json`（无 key 爬 PT docs）负责——
+  仅当模型**同时**不在 live 列表、也不在公开层目录，才 `delisted=true`、`enabled=false`。
 - **惰性自动重拉**：`auto_sync_if_stale()` 在注册表为空或超过 `max_age`（默认 3600s，
   对齐 PT 的 1 小时缓存）时，于 `/models`、`/submit` 等调用前 best-effort 重拉；失败不抛，回退到
   现有/内置列表。也可显式 `POST /sync` 强制刷新。
 
-> 这样「自动获取最新上架的异步模型 + 禁用下架的」就由注册表 diff 兜底，调用方无感。
+> 权限查询（`/v1/models`）本身失败时门禁**降级放行**，不误杀合法调用，由 PT 服务端最终裁判。
 
 ---
 
