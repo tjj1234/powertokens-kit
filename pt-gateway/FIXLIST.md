@@ -1,119 +1,102 @@
-# PT Gateway —— 待修正 / 待讨论清单（FIXLIST）
+# PT Gateway —— 待修正 / 待决策清单（FIXLIST）
 
-> 本文档记录 pt-gateway 开发讨论中暴露的「说错 / 待修正 / 待架构决策」事项。
-> 标记：`[已纠正]` = 本次已改代码+文档；`[待讨论]` = 等公开层爬虫写完后回来逐条定方案。
-> 关联：task #29（registry 多 key 误判 + catalog 能力自动补）。
-
----
-
-## 1. 已纠正的硬性错误（本次已改）[已纠正]
-
-| # | 原错误结论 | 真相 | 改动位置 |
-|---|---|---|---|
-| 1 | `cancel` 占位 `{supported:false}`，文档称「PT 无取消端点」 | Seedance 真实存在 `DELETE /byteplus/api/v3/contents/generations/tasks/{id}`（queued→cancelled） | `pt_gateway.cancel()` 实现真实取消（其他 kind 诚实 unsupported）；`server.py` / `mcp.py` / `README.md` 注释同步改 |
-| 2 | `catalog.json` 标 `audio.status=pending-endpoint`，`media_generate` 对 audio 返回 unsupported | 音频端点已确认：`POST /ali/api/v1/services/aigc/multimodal-generation/generation`（Ali 兼容，同步返回 url） | `catalog.json` kinds.audio 填真实端点；`pt_gateway.audio_generate()` + `media_generate` 路由；`mcp.py` / `README.md` 注释 |
-| 3 | 文档称「所有视频/Seedance 模型共用同一传输层」，暗示 audio 也共用 | submit/query 才共用 `/v1/videos`；**cancel/audio 是各 vendor 特定路径** | `pt_gateway.py` 模块 docstring、`README.md` §0 前提纠偏、架构图 cancel 行 |
+> 记录 pt-gateway 开发讨论中暴露的「说错 / 待修正 / 架构决策」事项。
+> 最近一轮大改：**2026-10-30（第二轮）** —— `/v1/models` 语义澄清、取消接口删除、爬虫删除、chat 打通。
+> 标记：`[已定]` = 已拍板并实施；`[待办]` = 还需动作；`[已废弃]` = 方案作废（保留以溯源）。
 
 ---
 
-## 2. 待回来讨论 / 架构决策 [待讨论]
+## 1. 平台事实（2026-10-30 与用户 / 官方确认，是其余决策的前提）
 
-### 2.1 registry 单文件多 key 误判 [已定]
-- **现状**：`ModelRegistry` 把 synced 模型写死 `~/.config/pt-gateway/registry.json` 单文件
-  （`pt_gateway.py` 的 `ModelRegistry.__init__` 默认路径）。不同 key 的 `GET /v1/models`
-  列表不同 → 多 key 跑 `sync` 会把「别的 key 有、本 key 无」的模型误判下架
-  （`enabled=False, delisted=True`），污染全局注册表。这是比 catalog 残留更严重的真坑。
-- **已定方向（用户 2026-10-29 拍板）**：
-  - **公开层（无 key）** 每天 2 次爬 PT 官网，掌握「全局模型真相」（含上架/下架）；
-  - **key 层** 只返回「当前 key 能调的模型」权限视图；
-  - **下架判定从 key 层移到公开层**，多 key 误判根因自然消除。原「按 key 分桶」方案作废。
-- **已定（用户 2026-10-30 追加拍板）：fail-closed 权限门禁**
-  1. registry 保留，退化为「本 key 权限视图缓存」（`key_permitted`），不再承载下架判定；
-     下架只看公开层。多 key 交叉污染问题随「下架判定移到公开层」自然消除，无需按 key 分文件。
-  2. 显式模型若不在本 key 的 `/v1/models` 列表 → 直接 `ApiError(403)`「没有当前模型的权限」，
-     **不发起真实生成请求**（省掉一次必 403 的调用与额度）。
-  3. `model=auto` 不做门禁校验，但 `auto_select(kind, permitted=...)` 已 key-aware，
-     只从本 key 权限集合内挑模型，避免 auto 选中无权限模型后被拦。
-  4. 权限查询本身失败 → 降级放行（不误杀合法调用），由 PT 服务端最终裁判。
+| # | 事实 | 影响 |
+|---|---|---|
+| F1 | `GET /v1/models` 返回 PT **全量**模型清单，**所有 key 相同** | 它不是「本 key 权限视图」→ 不能用于权限拦截；下架判定可直接用它（不再出现即下架） |
+| F2 | PT **不提供**异步任务取消接口 | 网关不实现 cancel；HTTP 无 `/cancel`，MCP 不暴露取消工具 |
+| F3 | 提交 / 查询统一：`POST /v1/videos` + `GET /v1/videos/{id}` | 只需归一化请求体构造与结果字段位置，即可跨模型 |
+| F4 | audio 走 `POST /ali/.../generation`（同步）；chat 走 `POST /v1/chat/completions`（同步） | 这两类不进 `/v1/videos` |
 
-### 2.2 catalog 能力自动补全（缺口一）
-- **现状**：`list_capabilities` 只扫 `catalog.json` 人工档案。新上架模型不在 catalog →
-  agent 按能力选会漏（违背「不用查」初衷）。
-- **已定方向**：公开层爬虫每天 2 次爬 PT docs，新模型 ID 去对应文档页爬结构化能力
-  （同步/异步/必要参数），自动补齐 `catalog.models`。enrich 规则 + LLM 维护口子待定
-  （用户原话：「留个口子，当用户填 key 时调一个模型去维护」）。
-- **待讨论**：
-  1. enrich 用纯规则（OpenAPI schema 解析）还是规则 + LLM？
-  2. 自动补的字段如何标注置信度（避免编造未证实参数）？
-
-### 2.3 音频请求体 / 响应字段待实测
-- 端点已确认（Ali 兼容），但**请求体确切字段**（`model + input.prompt[+voice]`？
-  DashScope TTS 标准结构）与**响应 url 位置**（`output.audio.url` / `output.url` / ...）
-  以 PT 文档实测为准。当前 `audio_generate()` 多位置兜底抽 url，并保留 `raw` 便于核对。
-- **待讨论**：拿到一个可用 TTS 模型 ID + 实测一次，固化确切 schema。
-
-### 2.4 其他模型取消端点 [已定]
-- 仅 Seedance 经 ByteDance/BytePlus 提供真实取消端点 `DELETE /byteplus/api/v3/contents/generations/tasks/{id}`。
-- **已确认（用户 2026-10-30）**：PT 无统一的异步任务取消接口，其他模型（wan/kling/vidu/hailuo 等）
-  **不存在**服务端取消能力。故上轮加的 best-effort 推断已回退——`cancel()` 对非 seedance 一律
-  诚实返回 `{supported:false, reason:...}`（不假装成功、不误导调用方发无效 DELETE）。
-- 结论：进行中的非 Seedance 异步任务无法取消，只能等其自行结束。
-
-### 2.5 轮询健壮性（引擎老问题，非阻塞）
-- `poll_task` 无 429 退避 / 5xx 熔断 / 未识别状态熔断（`pt_video.py` 注释 A.02/A.03）。
-  网关沿用该实现。
-- **待讨论**：是否在网关层加三重熔断（与爬虫无关，可单独排期，不阻塞本次）。
+> F1 修正了更早的误判：曾以为「不同 key 的 `/v1/models` 列表不同」——
+> 由此设计的双层架构、公开层爬虫、fail-closed 门禁全部作废（见 §2.1 / §2.2 / §3）。
 
 ---
 
-## 3. 公开层爬虫（本次新增 `catalog_crawler.py`）
+## 2. 决策项
 
-无 key 爬 `docs.powertokens.ai/sitemap.xml`
-→ 过滤 `zmodelVideo` / `zmodelImage` / `zmodelAudio` / `zmodelChat` 模型页
-→ 抓各页配套的 OpenAPI 3.0.1 JSON 片段（无 key 可取）
-→ 解析 model enum / 端点 path / 请求参数 schema / 响应 status enum（判同步/异步）
-→ 合并结构化数据进 `catalog.json`（**公开层全局真相**）。
+### 2.1 模型清单与权限判定 [已定]
 
-这是 §2.1 / §2.2 的根基：公开层提供全局模型真相，消除多 key 误判，并自动补能力。
+- **真相源**：`GET /v1/models`（全量，所有 key 相同）。`ModelRegistry.sync()` 据此 diff：
+  出现 → `in_models=true`、`enabled=true`、新出现打 `is_new`；
+  不再出现 → `delisted=true`、`enabled=false`（即视为下架）。
+- **权限**：**fail-open，不做客户端拦截**（用户拍板）。本 key 对某模型无权限时，
+  **由 PT 服务端报错**，网关原样透传。
+- **已废弃并删除**：双层（公开层 + key 层）架构、`key_permitted` 字段、
+  `_key_permitted_models()` / `_enforce_key_permission()` 门禁、`auto_select(permitted=...)` 权限过滤。
 
+### 2.2 catalog 能力自动补（enrich）[已废弃]
 
-**已交付（2026-10-30）**：`catalog_crawler.py` 已写好并全量跑通 —— 无 key 爬 sitemap(396 loc / 350 模型页)
-→ 去重 181 个唯一模型页 → 抓各页 OpenAPI 3.0.1 片段 → 解析出 **82 个模型**
-（Video 20 / Seedance 7 / Image 9 / Audio 8 / Chat 38；同步 54 / 异步 28），写入 `catalog.public.json`。
-跳过的是任务查询/取消/下载等「帮助页」（无 model enum），404 的是 zh-Hans minimax 镜像页（en 版已抓取，模型不丢）。
-爬虫默认只写公开层真相，绝不碰 registry.json；`--merge` 可把可证字段并入 catalog.json（默认关闭，待 §2.2 讨论）。
+- 原方案依赖公开层爬虫产出的 `catalog.public.json`。爬虫已按用户决定**彻底删除**，enrich 失去数据源。
+- `enrich_catalog()` / `enrich_with_llm()` / CLI `enrich` / `public` 已一并删除。
+- 能力档案仍由人工维护的 `catalog.json` 提供（`/v1/models` 只给模型 ID，不给分辨率 / 时长 / 模式 / 单价）。
+
+### 2.3 音频请求体 / 响应字段待实测 [待办]
+
+- 端点已确认（Ali 兼容），但请求体确切字段（`input.prompt` vs `input.text`）与响应 url 位置未实测。
+- **阻塞**：本机无 `POWERTOKENS_API_KEY`。设好 key 后跑一次 `qwen3-tts` 即可固化。
+
+### 2.4 取消接口 [已定：不做]
+
+- PT 无异步任务取消接口（已与官方确认）。
+- 已删除：`pt_gateway.cancel()`、`SEEDANCE_CANCEL` 常量、`server.py` 的 `/cancel` 路由、
+  MCP 与 README 中的取消说明。
+- 注：Seedance 的 `DELETE /byteplus/...` 是 ByteDance vendor 端点（实测可将任务置为 CANCELLED），
+  但按用户决定**不在网关实现**。
+
+### 2.5 轮询健壮性 [已实施]
+
+- 网关侧 `poll_task` 已覆盖为：429 指数退避 + 5xx 连续 5 次熔断 + 4xx 透传 + 超时明确报错。
+- 引擎 `pt_video.py` 仍是旧实现（10s 间隔 + 600s 上限），勿混谈。
+
+### 2.6 chat（文本）支持 [已实施]
+
+- 用户拍板：目录里的 38 个 chat 模型要能真的用。
+- 实现：`KNOWN_KINDS` 加 `chat`；新增 `chat_generate()`（OpenAI 兼容，同步返回 `text`）；
+  `media_generate` 支持 `messages` / `system` / `temperature` / `max_tokens`；
+  `catalog.json` 补 `kinds.chat` 节点。
+- `_kind_of()`：引擎 `kind_of_model()` 对 chat / TTS 返回 `unknown`，
+  回退查 `catalog.json` 的 `kind` 字段兜底（带目录缓存，避免逐模型重读文件）。
 
 ---
 
-## 4. 状态汇总
+## 3. 已废弃的交付物
 
-- [已纠正] §1 三处硬性错误（cancel 端点 / audio 端点 / 统一端点措辞）—— 代码 + catalog + server/mcp + README 已全部对齐。
-- [已定] §2.1–§2.5 —— 已逐条拍板并实施（仅 §2.3 待提供 key 做一次真实实测）。
-- [已交付] §3 公开层爬虫 —— `catalog_crawler.py` 已写好并全量跑通，产出 `catalog.public.json`（82 模型，含 kind/execution/vendor_endpoint/params；下架判定从 key 层移到公开层）。默认不合并 catalog.json（待 §2.2）。
+| 文件 / 概念 | 结局 |
+|---|---|
+| `catalog_crawler.py` | 已删除（F1 后无需再爬官网取全量清单） |
+| `catalog.public.json` | 已删除 |
+| 公开层 / 双层架构 | 已废弃，改为单层 `/v1/models` |
+| fail-closed 权限门禁 | 已撤销，改 fail-open |
 
 ---
 
-## 5. 实施记录（用户逐条拍板后已落地，2026-10-30）
+## 4. 本轮实施记录（2026-10-30 第二轮）
 
-- [已实施] **§2.1 registry 双层**：公开层(catalog.public.json)为全局真相 + key 层权限视图。
-  `ModelRegistry.sync()` 不再因「本 key 列表无某模型」误判下架，改标 `key_permitted=False`
-  （仅当模型同时不在公开层才 `delisted=True`）；`auto_select()` 无 key 候选时回退公开层；
-  显式模型输入改为 **fail-closed**（用户 2026-10-30 追加拍板）：显式模型若不在本 key 的
-  `/v1/models` 列表，直接 `ApiError(403)` 提示「没有当前模型的权限」，**不发起真实生成请求**。
-  新增 `_key_permitted_models()`（缓存 `list_key_models(key,"all")` = `GET /v1/models`）
-  + `_enforce_key_permission(model)`，在 image / audio / submit 三个入口前置校验；
-  `auto_select(kind, permitted=...)` 增加 key 权限过滤，auto 只选本 key 有权限者；
-  权限查询失败 → 降级放行（不误杀）。
-- [已实施] **§2.2 catalog 能力自动补**：新增 `enrich_catalog()`（merge 策略——只补缺失字段、
-  绝不覆盖手写字）+ CLI `enrich` / `public`；预留 `enrich_with_llm()` 钩子（默认空实现，
-  不接 LLM，以后可接）；公开层 enrich 频率由外部调度（建议一天两次，无需 key）。
-  已实跑一次：merge 进 82 个模型的 vendor_endpoint / execution / params 等字段。
-- [部分] **§2.3 音频实测**：当前环境无 API Key（~/.config/powertokens-video/config.json
-  仅含 seedance_agreement_signed），真实 TTS 调用待用户设置 `POWERTOKENS_API_KEY` 后跑一次，
-  校正 `audio_generate()` 的 input 字段（prompt vs text）与响应 url 抽取位置。
-- [已修正] **§2.4 其他模型取消端点**：用户已**与 PT 官方确认** PT 无异步任务取消接口，故回退上轮的 best-effort 推断——
-  `cancel()` 对非 seedance 一律诚实 `{supported:false}`（理由说明仅 Seedance 有 vendor 特定取消端点）；
-  仅 seedance 保留真实 `DELETE /byteplus/api/v3/contents/generations/tasks/{id}`（需 key）。
-- [已实施] **§2.5 轮询健壮性**：`poll_task` 覆盖为带 429 退避（指数退避 ≤60s，尊重 Retry-After）
-  + 5xx 连续 5 次熔断抛出 + 其他 4xx 直接透传 + 超时明确报错。纯逻辑、已 selfcheck 通过，
-  真实任务链路需 key 验证。
+- [已修] **P0 致命 bug**：`IMAGE_ENDPOINT` / `AUDIO_ENDPOINT` / `SEEDANCE_CANCEL` 在
+  `pt_gateway.py` 中**只有使用、没有定义** —— 带 key 调用 image / audio 会直接 `NameError`。
+  （此前一直被「缺 key → `_need_key()` 先抛 401」掩盖，从未暴露。）现已补齐并集中定义。
+- [已修] **MCP 参数缺失**：`media_generate` 补齐 `no_audio` / `no_prompt_extend` / `seed` /
+  `watermark` / `timeout_s` / `voice` / `params_json` / `messages_json` / `system` /
+  `temperature` / `max_tokens`。此前 MCP 比 HTTP 弱，agent 做不了「无水印」「固定种子」「选音色」。
+- [已修] **MCP docstring 过时**：「audio 诚实 unsupported」「取消端点待确认」均与实际不符，已改。
+- [已修] **目录误导**：`catalog.json.models` 含 38 个 chat，但 `kinds` 无 chat 节点，已补。
+- [已修] **SYNC_KINDS 不一致**：原为 `("image",)`，缺 audio；现为 `("image", "audio", "chat")`。
+- [已验证] 四类端点路由（mock 网络实测）：chat → `/v1/chat/completions`、
+  audio → `/ali/...`、image → `/v1/images/generations`、video → `/v1/videos`；
+  只给 model 不给 kind 时 `_kind_of()` 能正确反推；未知 kind 报错清晰。
+
+---
+
+## 5. 待办
+
+1. **§2.3 音频实测**（需 key）：固化 `audio_generate()` 的请求体字段与响应 url 位置。
+2. **全链路真机验证**（需 key）：chat / audio / image / video 各跑一次，
+   确认响应字段与 `catalog.json` 能力档案一致。

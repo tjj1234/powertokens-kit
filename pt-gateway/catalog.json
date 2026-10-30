@@ -1,12 +1,12 @@
 {
   "schema": 1,
-  "updated": "2026-10-29",
+  "updated": "2026-10-30",
   "note": [
     "PT 统一媒体能力目录：agent 通过 list_capabilities 读取，无需再翻文档查模型能力。",
     "execution: sync=一次调用直接返回结果; async=提交拿 task_id 后轮询 task_status。",
     "价格字段 price_usd_5s_720p 基于 5s/720p 探测（PT 预扣单价）；n/a 表示 PT 未公开，以仪表盘为准。",
-    "模型上下架由 ModelRegistry.sync() 自动维护（/v1/models diff）；本目录只维护能力档案（分辨率/时长/模式等 API 不给的字段）。",
-    "音频类（TTS）端点已确认：Ali 兼容 POST /ali/api/v1/services/aigc/multimodal-generation/generation（同步返回 url），kinds.audio 已填真实端点；请求体/响应字段以 PT 文档实测为准，待公开层爬虫自动对齐。"
+    "模型上下架由 ModelRegistry.sync() 维护：GET /v1/models 返回 PT **全量**模型清单（所有 key 相同），不再出现的模型即视为下架；本目录只维护能力档案（分辨率/时长/模式等 API 不给的字段）。",
+    "音频类（TTS）端点：Ali 兼容 POST /ali/api/v1/services/aigc/multimodal-generation/generation（同步返回 url）；请求体为 Ali 标准结构（model + input.prompt[+voice]），响应 url 多位置兜底抽取。"
   ],
   "kinds": {
     "image": {
@@ -38,6 +38,19 @@
         "音色设置"
       ],
       "note": "Ali 兼容 TTS 端点，同步返回 audio url；请求体采用 Ali 标准结构（model + input.prompt[+voice]），响应 url 多位置兜底抽取。具体字段以 PT 文档实测为准。"
+    },
+    "chat": {
+      "execution": "sync",
+      "submit": "/v1/chat/completions",
+      "poll": null,
+      "vendor": "OpenAI compatible",
+      "capabilities_observed": [
+        "文本对话",
+        "多轮对话（messages）",
+        "system 角色设定",
+        "temperature / max_tokens 采样控制"
+      ],
+      "note": "OpenAI 兼容对话端点，同步返回 choices[0].message.content；messages 可传多轮，或用 prompt 作为单轮 user 消息（system 前置）。"
     }
   },
   "models": {

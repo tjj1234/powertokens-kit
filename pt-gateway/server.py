@@ -14,7 +14,6 @@ PT Gateway HTTP 服务（stdlib http.server，零外部依赖）。
   POST /wait                         -> {task_id, timeout?} 轮询到终态
   POST /sync                         -> 触发 ModelRegistry.sync(key)，返回 {added,removed,total_enabled,last_synced}
   GET  /models?kind=video|seedance   -> 注册表里 enabled 的异步模型列表（自动惰性同步）
-  POST /cancel                       -> {task_id} 真实取消（Seedance 走 DELETE /byteplus/...；其他诚实 {supported:false} 并说明端点）
 
 Key：服务端与 pt_video 一致——环境变量 POWERTOKENS_API_KEY 或 config.json（~/.config/powertokens-video/config.json）。
 端口：环境变量 PT_GATEWAY_PORT（默认 8787）。
@@ -117,7 +116,7 @@ class Handler(BaseHTTPRequestHandler):
         return self._send(404, {"error": "not found", "routes": [
             "GET /health", "GET /capabilities?kind=", "POST /generate",
             "POST /submit", "GET /status?task_id=",
-            "POST /wait", "POST /sync", "GET /models?kind=", "POST /cancel",
+            "POST /wait", "POST /sync", "GET /models?kind=",
         ]})
 
     def do_POST(self):
@@ -142,6 +141,12 @@ class Handler(BaseHTTPRequestHandler):
                     seed=body.get("seed"),
                     wait=bool(body.get("wait", False)),
                     timeout=int(body.get("timeout", 600)),
+                    voice=body.get("voice"),
+                    params=body.get("params"),
+                    messages=body.get("messages"),
+                    system=body.get("system"),
+                    temperature=body.get("temperature"),
+                    max_tokens=body.get("max_tokens"),
                 )
                 return self._send(200, out)
             except ApiError as e:
@@ -188,12 +193,6 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, REGISTRY.sync(key))
             except ApiError as e:
                 return self._send(502, {"error": str(e.message), "status": e.status})
-        if self.path.startswith("/cancel"):
-            body = self._read_json()
-            tid = body.get("task_id")
-            if not tid:
-                return self._send(400, {"error": "missing task_id"})
-            return self._send(200, GW.cancel(tid, kind=body.get("kind"), model=body.get("model")))
         return self._send(404, {"error": "not found"})
 
 

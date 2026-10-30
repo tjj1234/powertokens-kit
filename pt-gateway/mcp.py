@@ -9,9 +9,12 @@ PT Gateway 统一媒体 MCP server（FastMCP 薄壳）。
 设计原则（与用户敲定的方向一致）：
   - 只暴露 **3 个统一工具**，agent 选择面小、不易选错：
       list_capabilities  —— 查能力目录（模型/分辨率/时长/模式/单价/同步或异步），代替翻文档
-      media_generate     —— 统一媒体生成入口（image 同步直返；video/seedance 异步拿 task_id；audio 诚实 unsupported）
+      media_generate     —— 统一媒体生成入口（image/audio/chat 同步直返；video/seedance 异步拿 task_id）
       task_status        —— 查任务状态（wait=true 时轮询到终态）
   - 本壳不实现任何逻辑，全部转发给 pt_gateway.TaskGateway（单一真相源）。
+  - 不提供取消：PT 无异步任务取消接口（2026-10-30 与官方确认），故 MCP 也不暴露取消工具。
+  - 权限：不做客户端拦截。/v1/models 是 PT 全量清单；若本 key 对某模型无权限，
+    由 PT 服务端报错，网关原样透传（fail-open）。
 
 运行：
   python mcp.py                   # stdio（agent 客户端自动拉起）
@@ -57,29 +60,50 @@ def list_capabilities(kind: str = "") -> str:
     return _wrap(lambda: GW.list_capabilities(kind or None))
 
 
+def _j(s):
+    """把 JSON 字符串参数解析为对象；空串返回 None。"""
+    return json.loads(s) if s else None
+
+
 @mcp.tool()
 def media_generate(kind: str = "", model: str = "auto", prompt: str = "",
                    aspect_ratio: str = "", n: int = 0,
                    duration_s: int = 5, resolution: str = "720p", ratio: str = "16:9",
                    first_frame: str = "", ref_image: str = "", ref_video: str = "",
-                   wait: bool = False) -> str:
+                   wait: bool = False, timeout_s: int = 600,
+                   no_audio: bool = False, no_prompt_extend: bool = False,
+                   watermark: bool = False, seed: int = 0,
+                   voice: str = "", params_json: str = "",
+                   messages_json: str = "", system: str = "",
+                   temperature: float = -1, max_tokens: int = 0) -> str:
     """统一媒体生成入口：声明意图（kind + prompt），网关自动路由，agent 无需关心各家差异。
 
-    - image：同步直接返回 {urls:[...]}；可选 aspect_ratio（如 16:9）与 n（张数）
-    - video：异步返回 {task_id, execution:"async"}，用 task_status 查询；duration_s 时长秒、
-      resolution 720p/1080p、ratio 画面比例；素材（可选）first_frame/ref_image/ref_video 支持 http(s) 或 asset://
-    - seedance：与 video 同端点但网关已归一化请求体；图生视频素材**必须** asset://（用 PT 资产库上传拿 id）；
-      需先在 PT 仪表盘签《Asset Library User Agreement》；文生视频纯 prompt 即可
-    - audio：同步生成（POST /ali/.../multimodal-generation/generation，返回 {execution:"sync", url}）
+    五种 kind：
+    - image    同步返回 {urls:[...]}；aspect_ratio（如 16:9）、n（张数）
+    - video    异步返回 {task_id}，再用 task_status 查；duration_s 时长秒、resolution
+               720p/1080p、ratio 画面比例；素材 first_frame/ref_image/ref_video 支持 http(s) 或 asset://
+               可选 no_audio（无声）、no_prompt_extend（不扩展提示词）、watermark（水印）、seed（固定种子）
+    - seedance 与 video 同端点，网关已归一化请求体；图生视频素材**必须** asset://
+               （用 PT 资产库上传拿 id）；需先在 PT 仪表盘签《Asset Library User Agreement》
+    - audio    同步返回 {url}；voice 指定音色，params_json 传额外厂商参数
+    - chat     同步返回 {text}；messages_json 传多轮对话 [{"role":"user","content":"..."}]，
+               或只用 prompt 作单轮；system 角色设定、temperature（<0 表示不传）、max_tokens
     model 填 "auto"（默认，自动选）或具体模型 ID（先 list_capabilities 看候选）。
-    wait=true 时阻塞轮询到终态（仅异步 kind 生效），直接返回 {state, url}。
+    wait=true 时阻塞轮询到终态（仅异步 kind 生效），timeout_s 为上限秒数。
+    权限：不做客户端拦截；本 key 无权限时由 PT 服务端报错并透传。
     """
     return _wrap(lambda: GW.media_generate(
         kind=kind or None, model=model or "auto", prompt=prompt,
         aspect_ratio=aspect_ratio or None, n=n or None,
         duration=duration_s, resolution=resolution, ratio=ratio,
         first_frame=first_frame or None, ref_image=ref_image or None,
-        ref_video=ref_video or None, wait=wait))
+        ref_video=ref_video or None, wait=wait, timeout=timeout_s,
+        no_audio=no_audio, no_prompt_extend=no_prompt_extend,
+        watermark=watermark, seed=seed or None,
+        voice=voice or None, params=_j(params_json),
+        messages=_j(messages_json), system=system or None,
+        temperature=None if temperature < 0 else temperature,
+        max_tokens=max_tokens or None))
 
 
 @mcp.tool()
@@ -89,7 +113,8 @@ def task_status(task_id: str, wait: bool = False, timeout_s: int = 600) -> str:
     返回归一化结构 {task_id, state, progress, url, raw}；state 为
     QUEUED/RUNNING/SUCCEEDED/FAILED/CANCELLED/UNKNOWN 之一。
     wait=true 时轮询到终态再返回（最多 timeout_s 秒），成功时 url 即结果视频地址。
-    注意：Seedance 支持取消（cancel 端点 DELETE /byteplus/api/v3/contents/generations/tasks/{id}，对应 Seedance 任务）；其他模型取消端点待确认。
+    注意：PT 不提供异步任务取消接口（2026-10-30 与官方确认），本 MCP 也不暴露取消工具；
+    任务一旦提交只能等待其自行结束。
     """
     if wait:
         return _wrap(lambda: GW.wait(task_id, timeout=timeout_s))

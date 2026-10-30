@@ -1,9 +1,14 @@
 # PT Gateway —— PT 统一媒体能力层（核心库 + HTTP 服务 + MCP 薄壳）
 
-把 PowerTokens 的**全部媒体生成能力**（image / video / seedance / audio，含每个模型的能力档案）
+把 PowerTokens 的**全部生成能力**（image / video / seedance / audio / chat，含每个模型的能力档案）
 收敛成一套统一接口：agent 调 `list_capabilities` 就能拿到全部模型能力，**不用再翻文档查**；
-调 `media_generate` 一个入口即可生成，网关按 kind 自动路由（image 同步直返、video/seedance
-异步拿 task_id、audio 诚实 unsupported）。
+调 `media_generate` 一个入口即可生成，网关按 kind 自动路由（image / audio / chat 同步直返，
+video / seedance 异步拿 task_id 后轮询）。
+
+> 两个已确认的平台事实（2026-10-30）：
+> 1. `GET /v1/models` 返回 PT **全量**模型清单（所有 key 相同），不是「本 key 权限视图」；
+>    因此网关不做权限拦截，本 key 无权限时由 PT 服务端报错并透传。
+> 2. PT **不提供**异步任务取消接口，故本网关不实现取消（HTTP 无 `/cancel`，MCP 不暴露取消工具）。
 
 > 关键前提纠偏：PT 底层是 OneAPI 透明路由，**所有视频/Seedance 模型本来就共用**
 > `POST /v1/videos` + `GET /v1/videos/{id}`，并不存在「各家独立接口」。本服务归一化的是
@@ -15,16 +20,16 @@
 
 ```
 调用方 (任意 agent / 网页 / 脚本)
-        │  POST /submit │ GET /status │ POST /wait │ POST /sync │ GET /models │ POST /cancel
+        │  POST /generate │ POST /submit │ GET /status │ POST /wait │ POST /sync │ GET /models │ GET /capabilities
         ▼
 ┌──────────────────────── pt-gateway (stdlib http.server, 零依赖) ────────────────────────┐
-│  TaskGateway                                                                             │
-│   ├─ submit(model,...)  → build_submit_body(kind 适配) → POST /v1/videos → {task_id}      │
-│   ├─ get_status(tid)    → GET /v1/videos/{id} → normalize_status()                       │
-│   ├─ wait(tid,timeout)  → 复用引擎 poll_task 轮询到终态 → 归一化                          │
-│   └─ cancel(tid)        → Seedance 真实 DELETE /byteplus/...；其他诚实 {supported:false}                     │
-│  ModelRegistry (registry.json)                                                           │
-│   └─ sync(key): GET /v1/models → 本 key 权限视图(key_permitted)；下架判定看公开层        │
+│  TaskGateway                                                                                    │
+│   ├─ submit(model,...)  → build_submit_body(kind 适配) → POST /v1/videos → {task_id}       │
+│   ├─ get_status(tid)    → GET /v1/videos/{id} → normalize_status()                          │
+│   ├─ wait(tid,timeout)  → 复用引擎 poll_task 轮询到终态 → 归一化                            │
+│   └─ chat/audio        → 同步直返（POST /v1/chat/completions、POST /ali/...）                │
+│  ModelRegistry (registry.json)                                                                  │
+│   └─ sync(key): GET /v1/models（PT 全量清单）→ diff 出上下架；不做权限拦截                   │
 └───────────────────────────────┬──────────────────────────────────────────────────────────┘
                                  │  Bearer <POWERTOKENS_API_KEY>
                                  ▼
@@ -46,7 +51,7 @@
 { "ok": true, "service": "pt-gateway" }
 ```
 
-### GET /capabilities?kind=<image|video|seedance|audio>
+### GET /capabilities?kind=<image|video|seedance|audio|chat>
 能力目录（agent 查这个，代替翻文档）：`kinds`（各类型执行方式/端点/前置）+ `models`
 （每模型：kind、价格、时长上限、分辨率、输入模式），并叠加注册表 `registry_enabled` / `delisted` 实时状态。
 ```json
@@ -84,6 +89,7 @@
 - `image` → `{"ok":true,"kind":"image","execution":"sync","model":"...","urls":["..."]}`（同步直返）
 - `video` / `seedance` → `{"task_id":"...","kind":"...","execution":"async","model":"..."}`（用 /status 查）
 - `audio` → `{"ok":true,"kind":"audio","execution":"sync","url":"..."}`（同步生成，POST /ali/.../multimodal-generation/generation）
+- `chat` → `{"ok":true,"kind":"chat","execution":"sync","text":"..."}`（同步生成，POST /v1/chat/completions）
 
 ### POST /submit
 请求体：
@@ -134,10 +140,10 @@
 { "kind": "seedance", "count": 3, "models": ["..."], "last_synced": "..." }
 ```
 
-### POST /cancel
-```json
-{ "task_id": "abc123", "supported": true, "kind": "seedance", "state": "CANCELLED" }
-```
+### 取消（不提供）
+
+PT 无异步任务取消接口（2026-10-30 与官方确认），本网关因此**不实现取消**：
+HTTP 无 `/cancel` 端点，MCP 也不暴露取消工具。任务提交后只能等待其自行结束。
 
 ---
 
@@ -175,22 +181,17 @@ schema：
 }
 ```
 
-同步策略（`ModelRegistry.sync`）—— 两层分工（§2.1）：
-- **key 层（本 key 权限视图）**：`/v1/models` 是本 key 真实可调用清单。
-  - 出现在 live 列表 → `key_permitted=true`；本 key 列表里没有 → 仅 `key_permitted=false`，
-    **不**视为下架（避免多 key 差异被误判下架）。
-  - **权限门禁（fail-closed）**：调用方**显式**指定模型时，若该模型不在本 key 的 `/v1/models` 列表，
-    网关直接返回 `ApiError(403)`「当前 key 没有模型 X 的调用权限」，**不发起真实生成请求**
-    （省掉一次必 403 的调用与额度）。
-  - `model=auto` 不做门禁校验，但 `auto_select(kind, permitted=...)` 已按 key 权限过滤，
-    只从本 key 有权限的模型里挑，不会选中无权限模型。
-- **公开层（全局真相）**：下架判定改由公开层 `catalog.public.json`（无 key 爬 PT docs）负责——
-  仅当模型**同时**不在 live 列表、也不在公开层目录，才 `delisted=true`、`enabled=false`。
-- **惰性自动重拉**：`auto_sync_if_stale()` 在注册表为空或超过 `max_age`（默认 3600s，
-  对齐 PT 的 1 小时缓存）时，于 `/models`、`/submit` 等调用前 best-effort 重拉；失败不抛，回退到
-  现有/内置列表。也可显式 `POST /sync` 强制刷新。
+同步策略（`ModelRegistry.sync`）：
 
-> 权限查询（`/v1/models`）本身失败时门禁**降级放行**，不误杀合法调用，由 PT 服务端最终裁判。
+- **模型清单真相源**：`GET /v1/models` 返回 PT **全量**模型（所有 key 相同，2026-10-30 确认）。
+  - 出现在列表 → `in_models=true`、`enabled=true`、`delisted=false`；新出现的打 `is_new=true`。
+  - 不再出现 → `delisted=true`、`enabled=false`（即视为下架）。
+- **不做权限拦截（fail-open）**：网关不在客户端判断「本 key 能否调某模型」。
+  若本 key 对某模型无权限，由 **PT 服务端报错**，网关原样透传。
+  （早期版本做过 fails-closed 门禁，前提是把 `/v1/models` 误当权限视图；已撤销。）
+- **惰性自动重拉**：`auto_sync_if_stale()` 在注册表为空或超过 `max_age`（默认 3600s，
+  对齐 PT 的 1 小时缓存）时，于 `/models`、`/generate` 等调用前 best-effort 重拉；失败不抛，
+  回退到现有/内置列表。也可显式 `POST /sync` 强制刷新。
 
 ---
 
@@ -238,10 +239,10 @@ print(gw.wait(tid))
 
 ## 7. 已知缺口（本轮）
 
-- **cancel 已实现 Seedance 真实取消**：Seedance 走 `DELETE /byteplus/api/v3/contents/generations/tasks/{id}`
-  （queued→cancelled），`/cancel` 真实调用并返回 `{supported:true, state:CANCELLED}`；其他模型（video 等）
-  vendor 取消端点待确认，`/cancel` 诚实返回 `{supported:false}` 并说明已知端点。任务不再"无法中途取消"（限 Seedance）。
-- 轮询仍沿用引擎的 10s 间隔 + 600s 上限（无 429 退避/5xx 熔断，见 `pt_video.py` 注释 A.02/A.03）。
+- **不提供取消**：PT 无异步任务取消接口（已与官方确认），故本网关不实现 cancel——HTTP 无 `/cancel`、
+  MCP 不暴露取消工具。异步任务提交后只能等待其自行结束。
+- **轮询健壮性**：网关侧已覆盖 `poll_task`（429 指数退避 + 5xx 连续 5 次熔断 + 4xx 透传 + 超时报错）；
+  引擎 `pt_video.py` 仍是旧实现（10s 间隔 + 600s 上限），勿混谈。
 
 ---
 
@@ -303,6 +304,9 @@ schema：顶层 `kinds`（每类型的 execution/端点/前置要求/能力观�
 音频类（TTS）端点已确认：`POST /ali/api/v1/services/aigc/multimodal-generation/generation`（Ali 兼容，同步返回 url），
 `kinds.audio` 已填真实端点，`media_generate(kind=audio)` 现在同步生成并返回 `{execution:"sync", url}`；
 请求体采用 Ali 标准结构（model + input.prompt[+voice]），响应 url 多位置兜底抽取，具体字段以 PT 文档实测为准。
+文本类（chat）端点：`POST /v1/chat/completions`（OpenAI 兼容，同步返回 `choices[0].message.content`），
+`kinds.chat` 已填真实端点，`media_generate(kind=chat)` 同步返回 `{execution:"sync", text}`；
+可用 `messages` 传多轮对话，或只用 `prompt` 作单轮 user 消息（`system` 前置）。
 
 CLI 快查：
 ```bash
@@ -311,30 +315,3 @@ python pt_gateway.py capabilities seedance   # 只看某类
 ```
 
 ---
-
-## 公开层爬虫（catalog_crawler.py）
-
-无 Key 爬 PT 官网，产出「公开层全局模型真相」`catalog.public.json`，消除多 key 误判（详见 FIXLIST.md §2.1）。
-
-数据源（已实测）：
-- `https://docs.powertokens.ai/sitemap.xml`（396 个 `<loc>`，含 350 个模型页，无子 sitemap）
-- 模型页 `https://docs.powertokens.ai/{lang}/zmodel{Type}/{vendor}/{rest}`
-- OpenAPI 3.0.1 片段 `https://docs.powertokens.ai/api-reference/{lang}/zmodel{Type}/{vendor}/{rest}.json`
-  （模型页 path 前插 `/api-reference`、后缀加 `.json` 即得；含 title / paths / `model` enum / 参数 schema / 响应 status enum）
-
-产出 `catalog.public.json` 每模型字段：
-`kind` / `type` / `vendor` / `title` / `execution`(同步·异步) / `vendor_endpoint`(真实 vendor 路径)
-/ `submit`(按 kind 派生的统一端点) / `params_observed` / `status_enum` / `first_seen` / `last_seen`。
-其中 kind / execution / 端点 是爬虫可证字段；`price` / `resolution` / `modes` 等 PT 不给的字段由人工档案 `catalog.json` 维护。
-
-用法：
-```bash
-python catalog_crawler.py                 # 完整爬 → 写 catalog.public.json
-python catalog_crawler.py --dry-run       # 爬但不写文件（打印摘要）
-python catalog_crawler.py --limit 30      # 只处理前 30 个模型页（调试）
-python catalog_crawler.py --merge         # 爬 + 合并进 catalog.json（默认关闭，待 FIXLIST §2.2 讨论）
-```
-
-说明：爬虫默认只写 `catalog.public.json`，**绝不碰 `registry.json`**；下架判定（本次爬未出现的模型 → `delisted`）
-从 key 层移到公开层。`--merge` 仅把爬虫可证字段并入 `catalog.json.models`，人工档案字段不被覆盖；
-合并策略与多 key 分文件方案为待讨论项（FIXLIST §2.1 / §2.2）。

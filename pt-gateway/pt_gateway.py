@@ -12,19 +12,23 @@ PT Task Gateway —— 跨模型统一的异步任务接口（独立模块，零
     1) 请求体构造差异：Seedance 必须把 prompt 塞进 media:[{type:text}] 且图生视频素材强制 asset://；
        其他模型用顶层 prompt + http(s)/asset://。
     2) 返回字段位置差异：status 枚举值、结果 URL 可能在 metadata.url / metadata.content_url / task.url 任一处。
-  但**取消与音频是各 vendor 特定路径**（并非统一在 /v1/videos 之下）：
-    - 取消：Seedance 真实存在 DELETE /byteplus/api/v3/contents/generations/tasks/{id}（queued→cancelled）；其他模型取消端点待确认，cancel() 诚实返回 {supported:false} 并说明已知端点。
+  另外两类不走 /v1/videos，是各自独立的同步端点：
     - 音频(TTS)：Ali(DashScope)兼容端点 POST /ali/api/v1/services/aigc/multimodal-generation/generation，同步返回 url。
+    - 文本对话(chat)：OpenAI 兼容端点 POST /v1/chat/completions，同步返回 choices[0].message.content。
+  关于取消：PT **不提供**异步任务取消接口（2026-10-30 与官方确认），本模块因此不实现 cancel。
 
 本模块职责（复用 pt_video.py 的 REST 原语，不直接依赖 CLI 子命令）：
   - Catalog：统一媒体能力目录（catalog.json）——每模型的 kind/execution/分辨率/时长/模式/单价，
     agent 用 list_capabilities 读取后**无需再翻文档查能力**；上下架由 ModelRegistry 自动维护。
   - TaskState：把各厂商状态动词归一化为 QUEUED/RUNNING/SUCCEEDED/FAILED/CANCELLED/UNKNOWN。
   - ModelAdapter：按 kind 构造提交体（Seedance 走 media-text + asset://；video 走顶层 prompt），并统一抽取结果 URL。
-  - TaskGateway：media_generate（统一媒体生成入口，按 kind 路由：image 同步 / video·seedance 异步 / audio 同步生成（vendor 端点））
-    + submit / get_status / wait / cancel（Seedance 真实取消，其他诚实 unsupported）。
-  - ModelRegistry：拉 /v1/models 做 diff——新上架的异步模型自动 enable 并打 is_new，
-    下架的自动 delisted；带 last_synced，超过 1 小时（对齐 PT 缓存）下次调用惰性自动重拉。
+  - TaskGateway：media_generate（统一媒体生成入口，按 kind 路由：
+      image / audio / chat 同步直返；video / seedance 异步拿 task_id 后轮询）
+    + submit / get_status / wait。不提供 cancel（PT 无取消接口）。
+    权限不做客户端拦截：/v1/models 是 PT 全量清单，本 key 无权限时由服务端报错并透传。
+  - ModelRegistry：拉 GET /v1/models（PT **全量**模型清单，所有 key 相同）做 diff——
+    新出现的模型自动 enable 并打 is_new；不再出现的自动 delisted；
+    带 last_synced，超过 1 小时（对齐 PT 缓存）下次调用惰性自动重拉。
 
 依赖：Python 3.9+ 标准库；引擎 REST 原语来自同仓的 pt_video.py（import 时把仓库根加入 sys.path）。
 """
@@ -60,29 +64,48 @@ submit_task = pt_video.submit_task
 AUTO_PRIORITY_VIDEO = pt_video.AUTO_PRIORITY_VIDEO
 AUTO_PRIORITY_SEEDANCE = pt_video.AUTO_PRIORITY_SEEDANCE
 
-ASYNC_KINDS = ("video", "seedance")  # 走 /v1/videos 任务式轮询的类型；image 为同步，不进网关
-SYNC_KINDS = ("image",)              # 一次调用直接返回结果的类型
-KNOWN_KINDS = ("image", "video", "seedance", "audio")
+ASYNC_KINDS = ("video", "seedance")  # 走 /v1/videos 任务式轮询的异步类型
+SYNC_KINDS = ("image", "audio", "chat")  # 一次调用直接返回结果的同步类型
+KNOWN_KINDS = ("image", "video", "seedance", "audio", "chat")
 CATALOG_PATH = _HERE / "catalog.json"
-PUBLIC_CATALOG_PATH = _HERE / "catalog.public.json"
+
+# 端点常量（P0 修复：此前 IMAGE_ENDPOINT / AUDIO_ENDPOINT 只有使用、没有定义，
+# 一旦带 key 调用 image/audio 会 NameError。现已补齐并集中在此。）
+IMAGE_ENDPOINT = pt_video.IMAGE_ENDPOINT      # /v1/images/generations（同步）
+AUDIO_ENDPOINT = "/ali/api/v1/services/aigc/multimodal-generation/generation"  # TTS（同步，Ali 兼容）
+CHAT_ENDPOINT = "/v1/chat/completions"        # 文本对话（同步，OpenAI 兼容）
+
+# 模型清单真相源：GET /v1/models（PT 全量模型，所有 key 返回相同；需 key）
+# 注：2026-10-30 用户确认 /v1/models 是全量清单而非 key 权限视图，
+#     故不再做客户端权限拦截（fail-open），权限问题交给 PT 服务端报错。
 
 
-def _load_public():
-    """加载公开层目录（catalog.public.json）：无 key 爬到的全局上架模型真相。"""
-    if not PUBLIC_CATALOG_PATH.exists():
-        return {}
+_CATALOG_CACHE = None  # 目录缓存：sync 时逐模型判定 kind，避免重复读 catalog.json
+
+
+def _kind_of(model):
+    """判定模型 kind：先用引擎规则；返回 unknown 时回退查本地目录 catalog.json。
+
+    引擎 kind_of_model 只认 video/seedance/image 等已知前缀，chat 与部分 TTS 模型
+    会返回 'unknown'；此时用 catalog.json 里已记录的 kind 字段兜底。
+    """
     try:
-        return json.loads(PUBLIC_CATALOG_PATH.read_text(encoding="utf-8")).get("models", {})
+        k = kind_of_model(model)
     except Exception:
-        return {}
-
-
-def public_models(kind=None):
-    """公开层全局真相中的模型（可按 kind 过滤）。不作为权限判断，仅作「模型是否存在」的真相源。"""
-    models = _load_public()
-    if kind is None:
-        return dict(models)
-    return {m: e for m, e in models.items() if (e.get("kind") or "").lower() == kind.lower()}
+        k = None
+    if k and k != "unknown":
+        return k
+    try:
+        global _CATALOG_CACHE
+        if _CATALOG_CACHE is None:
+            _CATALOG_CACHE = Catalog()
+        e = _CATALOG_CACHE.entry(model)
+        k2 = (e or {}).get("kind")
+        if k2 and str(k2).lower() in KNOWN_KINDS:
+            return str(k2).lower()
+    except Exception:
+        pass
+    return k or "unknown"
 
 
 # ---------- 健壮轮询（§2.5：429 退避 + 5xx 熔断）----------
@@ -168,10 +191,6 @@ class Catalog:
     def models(self, kind=None):
         return {m: e for m, e in self.data["models"].items()
                 if kind is None or e.get("kind") == kind}
-
-    def public_models(self, kind=None):
-        """公开层全局真相（catalog.public.json），按 kind 过滤。"""
-        return public_models(kind)
 
     def entry(self, model):
         return self.data["models"].get(model) or {}
@@ -287,83 +306,44 @@ class TaskGateway:
             raise ApiError(401, "缺少 API Key：设置环境变量 POWERTOKENS_API_KEY 或 config.json")
 
     def _resolve_model(self, kind, model):
-        """model=auto 时按 注册表优先 → key 权限视图 → 目录候选 的顺序选模型；返回具体模型 ID。"""
+        """model=auto 时按 注册表 → 目录候选 的顺序选模型；返回具体模型 ID。
+
+        注（2026-10-30）：不做客户端权限过滤。/v1/models 是全量清单，
+        若某模型本 key 实际无权限，交给 PT 服务端报错（fail-open）。
+        """
         if model and model != "auto":
             return model
-        mid = self.registry.auto_select(kind, permitted=self._key_permitted_models())
+        mid = self.registry.auto_select(kind)
         if mid:
             return mid
-        # key 层权限视图（若可获取）：优先挑本 key 真正可调用者，避免 auto 选中无权限模型
-        permitted = self._key_permitted_models()
-        if permitted:
-            pub = public_models(kind)
-            cands = [m for m in permitted if m in pub]
-            if cands:
-                prio = AUTO_PRIORITY_SEEDANCE if kind == "seedance" else AUTO_PRIORITY_VIDEO
-                cands.sort(key=lambda m: (
-                    next((i for i, h in enumerate(prio) if h in m.lower()), len(prio)),
-                    0 if "fast" in m.lower() else 1,
-                ))
-                return cands[0]
         cands = list(self.catalog.models(kind))
         if cands:
             return cands[0]
         raise ApiError(0, f"无法为 kind={kind} 选出模型（注册表为空且目录无候选）")
 
     # ---- 权限门禁（§2.1 fail-closed：显式模型不在本 key 列表→ 403 拦截）----
-    def _key_permitted_models(self):
-        """缓存：本 key 经 /v1/models 真正可调用模型集合（§2.1 权限门禁用）。
-
-        一次性拉取并缓存到实例；失败则降级为 None（调用方放行，避免误杀）。
-        """
-        if self._key_models_cache is not None:
-            return self._key_models_cache
-        try:
-            ids = list_key_models(self.key, "all") or []
-            self._key_models_cache = set(ids)
-        except Exception as e:  # noqa: BLE001
-            sys.stderr.write(f"[gateway] 权限查询 /v1/models 失败，门禁降级放行：{e}\n")
-            self._key_models_cache = None  # 查询失败 → 降级放行，避免误杀合法调用
-        return self._key_models_cache
-
-    def _enforce_key_permission(self, model):
-        """§2.1（用户 2026-10-30 拍板， fail-closed）：显式模型若不在本 key 的 /v1/models 列表，
-        直接抛 403，不发真实生成请求——省一次（必 403 的）调用与可能浪费的额度。
-
-        - model=auto：不校验（由 auto_select 从权限视图选，天然只挑本 key 可调用者）。
-        - 权限查询本身失败：降级放行（不误杀），由 PT 服务端最终裁判。
-        """
-        if not model or model == "auto":
-            return
-        permitted = self._key_permitted_models()
-        if permitted is None:
-            return  # 查询失败，降级放行
-        if model not in permitted:
-            raise ApiError(
-                403,
-                f"当前 key 没有模型 {model} 的调用权限（权限取自你的 /v1/models 列表）。"
-                f"如需调用请更换具备该模型额度的 key，或在 PT 后台为该 key 开通。",
-            )
-
     # ---- 统一媒体生成入口 ----
     def media_generate(self, kind=None, model="auto", prompt="", aspect_ratio=None, n=None,
                        duration=5, resolution="720p", ratio="16:9", first_frame=None,
                        ref_image=None, ref_video=None, no_audio=False, no_prompt_extend=False,
-                       watermark=False, seed=None, wait=False, timeout=POLL_TIMEOUT):
+                       watermark=False, seed=None, wait=False, timeout=POLL_TIMEOUT,
+                       voice=None, params=None, messages=None, system=None,
+                       temperature=None, max_tokens=None):
         """统一媒体生成入口：agent 只声明意图（kind + prompt），网关按 kind 路由。
 
-        - image     → 同步 POST /v1/images/generations，返回 {execution:"sync", urls:[...]}
-        - video     → 异步 POST /v1/videos + 轮询，返回 {execution:"async", task_id}
-        - seedance  → 同 video 端点，但走 media-text 请求体 + asset:// 强制校验
-        - audio     → 同步生成 POST /ali/.../multimodal-generation/generation，返回 {execution:"sync", url}
-        model=auto 时按注册表 → 目录候选的顺序自动选模型。
+        - image     -> 同步 POST /v1/images/generations，返回 {execution:"sync", urls:[...]}
+        - video     -> 异步 POST /v1/videos + 轮询，返回 {execution:"async", task_id}
+        - seedance  -> 同 video 端点，但走 media-text 请求体 + asset:// 强制校验
+        - audio     -> 同步 POST /ali/...，返回 {execution:"sync", url}；voice 指定音色
+        - chat      -> 同步 POST /v1/chat/completions，返回 {execution:"sync", text}
+        model=auto 时按注册表 -> 目录候选的顺序自动选模型。
+
+        权限：不做客户端拦截（2026-10-30 决策）。/v1/models 是 PT 全量模型清单，
+        若本 key 对某模型实际无权限，由 PT 服务端报错，网关原样透传。
         """
         # 1) 解析 kind（不需要 Key；显式 kind 优先，否则从 model 反推）
         if kind is None and model and model != "auto":
-            try:
-                kind = kind_of_model(model)
-            except Exception:
-                kind = None
+            kind = _kind_of(model)
         kind = (kind or "").lower()
         if kind not in KNOWN_KINDS:
             raise ApiError(0, f"未知 kind={kind!r}；可用：{'/'.join(KNOWN_KINDS)}"
@@ -371,10 +351,9 @@ class TaskGateway:
 
         self._need_key()
 
-        # 3) 图片：同步直返
+        # 2) 图片：同步直返
         if kind == "image":
             model2 = self._resolve_model("image", model)
-            self._enforce_key_permission(model2)
             body = {"model": model2, "prompt": prompt or ""}
             if aspect_ratio:
                 body["aspect_ratio"] = aspect_ratio
@@ -386,10 +365,17 @@ class TaskGateway:
             return {"ok": True, "kind": "image", "execution": "sync",
                     "model": model2, "urls": urls, "raw": resp}
 
-        # 4) audio：TTS 同步生成（vendor 端点 /ali/...，不走 /v1/videos）
+        # 3) audio：TTS 同步生成（vendor 端点 /ali/...，不走 /v1/videos）
         if kind == "audio":
             model2 = self._resolve_model("audio", model)
-            return self.audio_generate(model2, prompt=prompt)
+            return self.audio_generate(model2, prompt=prompt, voice=voice, params=params)
+
+        # 4) chat：文本对话同步生成（POST /v1/chat/completions，OpenAI 兼容）
+        if kind == "chat":
+            model2 = self._resolve_model("chat", model)
+            return self.chat_generate(model2, prompt=prompt, messages=messages, system=system,
+                                      temperature=temperature, max_tokens=max_tokens,
+                                      params=params)
 
         # 5) video / seedance：异步任务
         model2 = self._resolve_model(kind, model)
@@ -410,7 +396,6 @@ class TaskGateway:
         注：具体请求/响应字段以 PT 文档实测为准；本方法尽力对齐并保留 raw 便于核对。
         """
         self._need_key()
-        self._enforce_key_permission(model)
         body = {"model": model, "input": {"prompt": prompt or ""}}
         if voice:
             body["input"]["voice"] = voice
@@ -424,18 +409,55 @@ class TaskGateway:
         return {"ok": True, "kind": "audio", "execution": "sync",
                 "model": model, "url": url, "raw": resp}
 
+    # ---- 文本对话(chat)同步生成（OpenAI 兼容 /v1/chat/completions）----
+    def chat_generate(self, model, prompt="", messages=None, system=None,
+                      temperature=None, max_tokens=None, params=None):
+        """文本对话同步生成：POST /v1/chat/completions（OpenAI 兼容，同步返回文本）。
+
+        messages 为完整对话数组 [{role, content}]；给了 messages 则以它为准。
+        否则用 prompt 作为单轮 user 消息（system 可前置为 system 角色）。
+        返回 {execution:"sync", text, raw}；usage 等原样保留在 raw。
+        """
+        self._need_key()
+        msgs = list(messages) if messages else []
+        if not msgs:
+            if system:
+                msgs.append({"role": "system", "content": system})
+            msgs.append({"role": "user", "content": prompt or ""})
+        body = {"model": model, "messages": msgs}
+        if temperature is not None:
+            body["temperature"] = temperature
+        if max_tokens is not None:
+            body["max_tokens"] = max_tokens
+        if params:
+            body.update(params)
+        sys.stderr.write(f"[gateway] POST {CHAT_ENDPOINT} model={model} kind=chat\n")
+        resp = _api_call("POST", CHAT_ENDPOINT, self.key, body=body, timeout=120)
+        text = ""
+        try:
+            ch = (resp.get("choices") or [])
+            if ch:
+                text = ((ch[0] or {}).get("message") or {}).get("content") or ""
+        except Exception:
+            text = ""
+        if not text:
+            out = resp.get("output")
+            if isinstance(out, dict):
+                text = out.get("text") or ""
+        return {"ok": True, "kind": "chat", "execution": "sync",
+                "model": model, "text": text, "raw": resp}
+
     # ---- 能力查询：agent 用这个代替翻文档 ----
     def list_capabilities(self, kind=None):
         """返回能力目录，并叠加注册表的 enabled/delisted 实时状态。"""
         cap = self.catalog.capabilities(kind)
         reg = self.registry.data.get("models", {})
-        pub = public_models(kind)
         for mid, entry in cap["models"].items():
             r = reg.get(mid)
             entry["registry_enabled"] = bool(r.get("enabled")) if r else None
             entry["delisted"] = bool(r.get("delisted")) if r else None
-            entry["key_permitted"] = bool(r.get("key_permitted")) if r else None
-            entry["public_exists"] = mid in pub
+            # in_models：是否出现在最近一次 /v1/models 全量同步里（未同步过则为 None）
+            entry["in_models"] = bool(r.get("in_models")) if r else None
         return cap
 
     def submit(self, model, prompt="", duration=5, resolution="720p", ratio="16:9",
@@ -447,7 +469,6 @@ class TaskGateway:
         kind = kind_of_model(model)
         if kind not in ASYNC_KINDS:
             raise ApiError(0, f"模型 {model} 非异步视频类（kind={kind}）；网关只处理 video / seedance")
-        self._enforce_key_permission(model)
         media = _build_media(first_frame, ref_image, ref_video)
         body = build_submit_body(model, kind, prompt, media, dict(
             duration=duration, resolution=resolution, ratio=ratio,
@@ -479,38 +500,6 @@ class TaskGateway:
                 "progress": None, "url": None,
                 "error": str(getattr(e, "message", e)), "raw": {},
             }
-
-    def cancel(self, task_id, kind=None, model=None):
-        """取消任务。按 kind（或 model 反推）路由到各 vendor 取消端点。
-
-        - seedance：经 ByteDance/BytePlus 提供 DELETE /byteplus/api/v3/contents/generations/tasks/{id}
-                    （queued→cancelled），本方法真实调用并返回 {supported:true, state:CANCELLED}。
-                    这是 vendor 特定端点，非 PT 统一能力。
-        - 其他 kind（video/image/audio/chat 等）：已确认 PT 无异步任务取消接口，诚实返回
-                    {supported:false}，避免假装成功或误导调用方发无效 DELETE。
-        kind/model 至少给一个才能识别是否为 Seedance；都不给则按非 seedance 处理。
-        """
-        k = kind or (model and kind_of_model(model))
-        if (k or "").lower() == "seedance":
-            self._need_key()
-            try:
-                _api_call("DELETE", SEEDANCE_CANCEL.format(id=task_id), self.key, timeout=30)
-                return {"task_id": task_id, "supported": True, "kind": "seedance",
-                        "state": "CANCELLED"}
-            except ApiError as e:
-                return {"task_id": task_id, "supported": True, "kind": "seedance",
-                        "state": "UNKNOWN", "error": str(e.message), "status": e.status}
-        # 其他 kind（video/image/audio/chat 等）：已确认 PT 无统一/厂商异步取消接口（2026-10-30 用户确认）。
-        # 不再做 best-effort 推断（推断的 DELETE /tasks/{id} 实际并不存在），诚实返回不支持。
-        return {
-            "task_id": task_id,
-            "supported": False,
-            "kind": k,
-            "reason": "PT 无异步任务取消接口（已确认）。仅 Seedance 经 ByteDance/BytePlus 提供 "
-                      "DELETE /byteplus/api/v3/contents/generations/tasks/{id}（vendor 特定，非 PT 统一能力）。"
-                      "其余模型无法在服务端取消进行中的任务，只能等待其自行结束。",
-        }
-
 
 # ---------- 模型注册表（自动更新机制）----------
 class ModelRegistry:
@@ -554,76 +543,63 @@ class ModelRegistry:
         return (datetime.now(timezone.utc) - dt).total_seconds() > max_age
 
     def sync(self, key, max_age=3600):
-        """用当前 Key 的 live 模型列表刷新『key 层权限视图』（§2.1）。
+        """用 GET /v1/models（PT **全量**模型清单）刷新注册表。
 
-        语义修正：公开层(catalog.public.json)才是「模型是否还存在」的全局真相；
-        key 层只记录「这个 key 能否调用」。因此：
-          - 本 key 列表里没有的模型 → key_permitted=False，但**不**视为下架(delisted)。
-          - 仅当某模型同时不在公开层（PT 文档已移除）→ 才标记 delisted=True。
-        这样不同 key 返回的模型差异不会导致「误判下架」。
+        2026-10-30 语义修正（用户确认）：/v1/models 返回的是 PT 全量模型，
+        所有 key 拿到的列表相同，它**不是**「本 key 权限视图」。因此：
+          - 出现在列表里的模型 → in_models=True, delisted=False, enabled=True
+          - 不再出现的模型   → delisted=True（视为下架）, enabled=False
+          - 不做权限判定：本 key 能否调用某模型由 PT 服务端报错，网关不拦截（fail-open）。
         """
         now = datetime.now(timezone.utc).isoformat(timespec="seconds")
-        pub = public_models()
         present = {}
-        for kind in ASYNC_KINDS:
-            for mid in list_key_models(key, kind):
-                present[mid] = kind
+        for mid in list_key_models(key, "all"):
+            present[mid] = _kind_of(mid)
         models = self.data["models"]
-        added, removed, key_unavailable = [], [], []
+        added, removed = [], []
         for mid, kind in present.items():
             if mid not in models:
                 models[mid] = {"kind": kind, "enabled": True, "delisted": False,
-                               "first_seen": now, "last_seen": now, "is_new": True}
+                               "in_models": True, "first_seen": now,
+                               "last_seen": now, "is_new": True}
                 added.append(mid)
             else:
                 m = models[mid]
                 m["enabled"] = True
                 m["delisted"] = False
+                m["in_models"] = True
                 m["last_seen"] = now
                 m["is_new"] = False
                 m["kind"] = kind
-            models[mid]["key_permitted"] = True
         for mid, m in models.items():
             if mid not in present:
-                m["key_permitted"] = False
-                if mid not in pub:
-                    if not m.get("delisted"):
-                        m["delisted"] = True
-                        m["enabled"] = False
-                        m["last_seen"] = now
-                        removed.append(mid)
-                else:
-                    key_unavailable.append(mid)
+                m["in_models"] = False
+                if not m.get("delisted"):
+                    m["delisted"] = True
+                    m["enabled"] = False
+                    m["last_seen"] = now
+                    removed.append(mid)
         self.data["last_synced"] = now
         self.save()
         return {
-            "added": added, "removed": removed, "key_unavailable": key_unavailable,
+            "added": added, "removed": removed,
             "total_enabled": sum(1 for m in models.values() if m.get("enabled")),
+            "total_models": len(models),
             "last_synced": now,
         }
 
     def enabled_async(self, kind=None):
+        """注册表里 enabled 且未下架的模型（可按 kind 过滤）。"""
         out = []
         for mid, m in self.data["models"].items():
             if m.get("enabled") and not m.get("delisted"):
-                if m.get("key_permitted") is False:
-                    continue  # 本 key 不可调用（§2.1：权限视图，非下架）
                 if kind is None or m.get("kind") == kind:
                     out.append(mid)
         return out
 
-    def auto_select(self, kind, permitted=None):
-        """选模型；permitted 非空时只在本 key 权限集合内选（§2.1：auto 不挑无权限模型）。"""
+    def auto_select(self, kind):
+        """按优先级挑一个模型（video/seedance 用引擎优先级表；其余按目录顺序）。"""
         cands = self.enabled_async(kind)
-        if permitted is not None:
-            cands = [m for m in cands if m in permitted]
-        if not cands:
-            # key 层无候选 → 回退到公开层全局真相（§2.1：公开层优先兜底）
-            pub = public_models(kind)
-            if permitted is not None:
-                pub = {m: e for m, e in pub.items() if m in permitted}
-            if pub:
-                cands = list(pub.keys())
         if not cands:
             return None
         prio = AUTO_PRIORITY_SEEDANCE if kind == "seedance" else AUTO_PRIORITY_VIDEO
@@ -673,70 +649,15 @@ def _cmd_capabilities(kind=None):
 
 
 
-def enrich_with_llm(models):
-    """LLM 能力摘要钩子（§2.2）：默认空实现，预留接口。
-
-    以后要接 LLM 时，在这里对每个 model 的 description 生成 capabilities 摘要，
-    返回 {model_id: {capabilities_observed: [...]}} 即可；默认返回空 dict 不改动。
-    """
-    return {}
-
-
-def enrich_catalog(public_path=None, catalog_path=None, llm_hook=None):
-    """把公开层目录(catalog.public.json)合并进 catalog.json（§2.2）。
-
-    策略：merge —— 只补 catalog.json 中**缺失**的字段，绝不覆盖手写字。
-    合并字段：params_observed / vendor_endpoint / execution / capabilities_observed / submit / poll / kind。
-    llm_hook：可选，签名 enrich_with_llm(models) -> {model_id: {fields}}，用于补充能力摘要。
-    返回变更摘要。
-    """
-    public_path = Path(public_path or PUBLIC_CATALOG_PATH)
-    catalog_path = Path(catalog_path or CATALOG_PATH)
-    pub = json.loads(public_path.read_text(encoding="utf-8")).get("models", {})
-    cat = json.loads(catalog_path.read_text(encoding="utf-8"))
-    models = cat.setdefault("models", {})
-    fields = ("params_observed", "vendor_endpoint", "execution",
-              "capabilities_observed", "submit", "poll", "kind")
-    changed = set()
-    for mid, pe in pub.items():
-        ce = models.setdefault(mid, {})
-        for f in fields:
-            if f in pe and (f not in ce or ce[f] in (None, "", [], {})):
-                ce[f] = pe[f]
-                changed.add(mid)
-    if llm_hook:
-        extra = llm_hook(models) or {}
-        for mid, fieldset in extra.items():
-            if mid in models:
-                for f, v in fieldset.items():
-                    if f not in models[mid] or models[mid][f] in (None, "", [], {}):
-                        models[mid][f] = v
-                        changed.add(mid)
-    catalog_path.write_text(json.dumps(cat, ensure_ascii=False, indent=2), encoding="utf-8")
-    return {"enriched_models": sorted(changed), "count": len(changed)}
-
-
-def _cmd_enrich():
-    """把公开层目录合并进 catalog.json（merge，不覆盖手写字）。"""
-    res = enrich_catalog(llm_hook=enrich_with_llm)
-    print(json.dumps(res, ensure_ascii=False, indent=2))
-
-
-def _cmd_public(kind=None):
-    """打印公开层全局真相（catalog.public.json）。"""
-    print(json.dumps(public_models(kind), ensure_ascii=False, indent=2))
-
-
 if __name__ == "__main__":
     import argparse
     ap = argparse.ArgumentParser(description="PT Gateway 核心模块（自检 / 注册表同步 / 能力目录）")
     ap.add_argument("cmd", nargs="?", default="selfcheck",
-                    choices=["selfcheck", "sync", "capabilities", "enrich", "public"],
-                    help="selfcheck=自检（默认）；sync=手动拉 /v1/models 刷新注册表；"
-                         "capabilities=打印能力目录（可带 kind）；"
-                         "enrich=把公开层目录 merge 进 catalog.json；public=打印公开层真相")
+                    choices=["selfcheck", "sync", "capabilities"],
+                    help="selfcheck=自检（默认）；sync=拉 /v1/models 全量刷新注册表；"
+                         "capabilities=打印能力目录（可带 kind）")
     ap.add_argument("kind_arg", nargs="?", default=None,
-                    help="capabilities 子命令的 kind 过滤（image/video/seedance/audio）")
+                    help="capabilities 子命令的 kind 过滤（image/video/seedance/audio/chat）")
     args = ap.parse_args()
     if args.cmd == "selfcheck":
         _selfcheck()
@@ -744,7 +665,3 @@ if __name__ == "__main__":
         _cmd_sync()
     elif args.cmd == "capabilities":
         _cmd_capabilities(args.kind_arg)
-    elif args.cmd == "enrich":
-        _cmd_enrich()
-    elif args.cmd == "public":
-        _cmd_public(args.kind_arg)
