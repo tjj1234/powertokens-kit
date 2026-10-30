@@ -18,7 +18,7 @@
 
 ## 2. 待回来讨论 / 架构决策 [待讨论]
 
-### 2.1 registry 单文件多 key 误判（task #29 核心 bug）
+### 2.1 registry 单文件多 key 误判 [已定]
 - **现状**：`ModelRegistry` 把 synced 模型写死 `~/.config/pt-gateway/registry.json` 单文件
   （`pt_gateway.py` 的 `ModelRegistry.__init__` 默认路径）。不同 key 的 `GET /v1/models`
   列表不同 → 多 key 跑 `sync` 会把「别的 key 有、本 key 无」的模型误判下架
@@ -27,10 +27,14 @@
   - **公开层（无 key）** 每天 2 次爬 PT 官网，掌握「全局模型真相」（含上架/下架）；
   - **key 层** 只返回「当前 key 能调的模型」权限视图；
   - **下架判定从 key 层移到公开层**，多 key 误判根因自然消除。原「按 key 分桶」方案作废。
-- **待讨论**：
-  1. 公开层爬虫（见 §3）产出的 catalog 如何与 registry 合并？registry 是否还需保留
-     （退化为「本 key 权限视图缓存」）？
-  2. 多 key 场景 registry 路径是否按 key 哈希分文件，避免交叉污染？
+- **已定（用户 2026-10-30 追加拍板）：fail-closed 权限门禁**
+  1. registry 保留，退化为「本 key 权限视图缓存」（`key_permitted`），不再承载下架判定；
+     下架只看公开层。多 key 交叉污染问题随「下架判定移到公开层」自然消除，无需按 key 分文件。
+  2. 显式模型若不在本 key 的 `/v1/models` 列表 → 直接 `ApiError(403)`「没有当前模型的权限」，
+     **不发起真实生成请求**（省掉一次必 403 的调用与额度）。
+  3. `model=auto` 不做门禁校验，但 `auto_select(kind, permitted=...)` 已 key-aware，
+     只从本 key 权限集合内挑模型，避免 auto 选中无权限模型后被拦。
+  4. 权限查询本身失败 → 降级放行（不误杀合法调用），由 PT 服务端最终裁判。
 
 ### 2.2 catalog 能力自动补全（缺口一）
 - **现状**：`list_capabilities` 只扫 `catalog.json` 人工档案。新上架模型不在 catalog →
@@ -84,7 +88,7 @@
 ## 4. 状态汇总
 
 - [已纠正] §1 三处硬性错误（cancel 端点 / audio 端点 / 统一端点措辞）—— 代码 + catalog + server/mcp + README 已全部对齐。
-- [待讨论] §2.1–§2.5 —— 等 `catalog_crawler.py` 写完后，回来逐条讨论定方案。
+- [已定] §2.1–§2.5 —— 已逐条拍板并实施（仅 §2.3 待提供 key 做一次真实实测）。
 - [已交付] §3 公开层爬虫 —— `catalog_crawler.py` 已写好并全量跑通，产出 `catalog.public.json`（82 模型，含 kind/execution/vendor_endpoint/params；下架判定从 key 层移到公开层）。默认不合并 catalog.json（待 §2.2）。
 
 ---
@@ -94,7 +98,12 @@
 - [已实施] **§2.1 registry 双层**：公开层(catalog.public.json)为全局真相 + key 层权限视图。
   `ModelRegistry.sync()` 不再因「本 key 列表无某模型」误判下架，改标 `key_permitted=False`
   （仅当模型同时不在公开层才 `delisted=True`）；`auto_select()` 无 key 候选时回退公开层；
-  显式模型输入 **fail-open** 放行到 PT 服务端（用户拍板：允许提交、让服务端报错）。
+  显式模型输入改为 **fail-closed**（用户 2026-10-30 追加拍板）：显式模型若不在本 key 的
+  `/v1/models` 列表，直接 `ApiError(403)` 提示「没有当前模型的权限」，**不发起真实生成请求**。
+  新增 `_key_permitted_models()`（缓存 `list_key_models(key,"all")` = `GET /v1/models`）
+  + `_enforce_key_permission(model)`，在 image / audio / submit 三个入口前置校验；
+  `auto_select(kind, permitted=...)` 增加 key 权限过滤，auto 只选本 key 有权限者；
+  权限查询失败 → 降级放行（不误杀）。
 - [已实施] **§2.2 catalog 能力自动补**：新增 `enrich_catalog()`（merge 策略——只补缺失字段、
   绝不覆盖手写字）+ CLI `enrich` / `public`；预留 `enrich_with_llm()` 钩子（默认空实现，
   不接 LLM，以后可接）；公开层 enrich 频率由外部调度（建议一天两次，无需 key）。
@@ -102,7 +111,7 @@
 - [部分] **§2.3 音频实测**：当前环境无 API Key（~/.config/powertokens-video/config.json
   仅含 seedance_agreement_signed），真实 TTS 调用待用户设置 `POWERTOKENS_API_KEY` 后跑一次，
   校正 `audio_generate()` 的 input 字段（prompt vs text）与响应 url 抽取位置。
-- [已修正] **§2.4 其他模型取消端点**：用户确认 PT 无异步任务取消接口，故回退上轮的 best-effort 推断——
+- [已修正] **§2.4 其他模型取消端点**：用户已**与 PT 官方确认** PT 无异步任务取消接口，故回退上轮的 best-effort 推断——
   `cancel()` 对非 seedance 一律诚实 `{supported:false}`（理由说明仅 Seedance 有 vendor 特定取消端点）；
   仅 seedance 保留真实 `DELETE /byteplus/api/v3/contents/generations/tasks/{id}`（需 key）。
 - [已实施] **§2.5 轮询健壮性**：`poll_task` 覆盖为带 429 退避（指数退避 ≤60s，尊重 Retry-After）

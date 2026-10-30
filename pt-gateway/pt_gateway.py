@@ -280,22 +280,70 @@ class TaskGateway:
         self.key = key or resolve_key()
         self.registry = registry or ModelRegistry()
         self.catalog = catalog or Catalog()
+        self._key_models_cache = None  # 本 key 的 /v1/models 权限集合（惰性拉取缓存）
 
     def _need_key(self):
         if not self.key:
             raise ApiError(401, "缺少 API Key：设置环境变量 POWERTOKENS_API_KEY 或 config.json")
 
     def _resolve_model(self, kind, model):
-        """model=auto 时按 注册表优先 → 目录候选 的顺序选模型；返回具体模型 ID。"""
+        """model=auto 时按 注册表优先 → key 权限视图 → 目录候选 的顺序选模型；返回具体模型 ID。"""
         if model and model != "auto":
             return model
-        mid = self.registry.auto_select(kind)
+        mid = self.registry.auto_select(kind, permitted=self._key_permitted_models())
         if mid:
             return mid
+        # key 层权限视图（若可获取）：优先挑本 key 真正可调用者，避免 auto 选中无权限模型
+        permitted = self._key_permitted_models()
+        if permitted:
+            pub = public_models(kind)
+            cands = [m for m in permitted if m in pub]
+            if cands:
+                prio = AUTO_PRIORITY_SEEDANCE if kind == "seedance" else AUTO_PRIORITY_VIDEO
+                cands.sort(key=lambda m: (
+                    next((i for i, h in enumerate(prio) if h in m.lower()), len(prio)),
+                    0 if "fast" in m.lower() else 1,
+                ))
+                return cands[0]
         cands = list(self.catalog.models(kind))
         if cands:
             return cands[0]
         raise ApiError(0, f"无法为 kind={kind} 选出模型（注册表为空且目录无候选）")
+
+    # ---- 权限门禁（§2.1 fail-closed：显式模型不在本 key 列表→ 403 拦截）----
+    def _key_permitted_models(self):
+        """缓存：本 key 经 /v1/models 真正可调用模型集合（§2.1 权限门禁用）。
+
+        一次性拉取并缓存到实例；失败则降级为 None（调用方放行，避免误杀）。
+        """
+        if self._key_models_cache is not None:
+            return self._key_models_cache
+        try:
+            ids = list_key_models(self.key, "all") or []
+            self._key_models_cache = set(ids)
+        except Exception as e:  # noqa: BLE001
+            sys.stderr.write(f"[gateway] 权限查询 /v1/models 失败，门禁降级放行：{e}\n")
+            self._key_models_cache = None  # 查询失败 → 降级放行，避免误杀合法调用
+        return self._key_models_cache
+
+    def _enforce_key_permission(self, model):
+        """§2.1（用户 2026-10-30 拍板， fail-closed）：显式模型若不在本 key 的 /v1/models 列表，
+        直接抛 403，不发真实生成请求——省一次（必 403 的）调用与可能浪费的额度。
+
+        - model=auto：不校验（由 auto_select 从权限视图选，天然只挑本 key 可调用者）。
+        - 权限查询本身失败：降级放行（不误杀），由 PT 服务端最终裁判。
+        """
+        if not model or model == "auto":
+            return
+        permitted = self._key_permitted_models()
+        if permitted is None:
+            return  # 查询失败，降级放行
+        if model not in permitted:
+            raise ApiError(
+                403,
+                f"当前 key 没有模型 {model} 的调用权限（权限取自你的 /v1/models 列表）。"
+                f"如需调用请更换具备该模型额度的 key，或在 PT 后台为该 key 开通。",
+            )
 
     # ---- 统一媒体生成入口 ----
     def media_generate(self, kind=None, model="auto", prompt="", aspect_ratio=None, n=None,
@@ -326,6 +374,7 @@ class TaskGateway:
         # 3) 图片：同步直返
         if kind == "image":
             model2 = self._resolve_model("image", model)
+            self._enforce_key_permission(model2)
             body = {"model": model2, "prompt": prompt or ""}
             if aspect_ratio:
                 body["aspect_ratio"] = aspect_ratio
@@ -361,6 +410,7 @@ class TaskGateway:
         注：具体请求/响应字段以 PT 文档实测为准；本方法尽力对齐并保留 raw 便于核对。
         """
         self._need_key()
+        self._enforce_key_permission(model)
         body = {"model": model, "input": {"prompt": prompt or ""}}
         if voice:
             body["input"]["voice"] = voice
@@ -397,6 +447,7 @@ class TaskGateway:
         kind = kind_of_model(model)
         if kind not in ASYNC_KINDS:
             raise ApiError(0, f"模型 {model} 非异步视频类（kind={kind}）；网关只处理 video / seedance")
+        self._enforce_key_permission(model)
         media = _build_media(first_frame, ref_image, ref_video)
         body = build_submit_body(model, kind, prompt, media, dict(
             duration=duration, resolution=resolution, ratio=ratio,
@@ -561,11 +612,16 @@ class ModelRegistry:
                     out.append(mid)
         return out
 
-    def auto_select(self, kind):
+    def auto_select(self, kind, permitted=None):
+        """选模型；permitted 非空时只在本 key 权限集合内选（§2.1：auto 不挑无权限模型）。"""
         cands = self.enabled_async(kind)
+        if permitted is not None:
+            cands = [m for m in cands if m in permitted]
         if not cands:
             # key 层无候选 → 回退到公开层全局真相（§2.1：公开层优先兜底）
             pub = public_models(kind)
+            if permitted is not None:
+                pub = {m: e for m, e in pub.items() if m in permitted}
             if pub:
                 cands = list(pub.keys())
         if not cands:
