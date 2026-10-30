@@ -8,6 +8,7 @@
 > 接口：视频 `POST /v1/videos` 提交 + 轮询；图片 `POST /v1/images/generations`（同步，不轮询）
 >
 > ⚠️ 本档案是**对照 0.2.0 真实代码与实测结果校正过的版本**。与旧版（powertokens-wan 档案）的差异见文末「校正说明」。
+> **2026-10-30 追加**：新增 pt-gateway 子模块（跨模型统一异步任务网关）踩坑 —— **A.15–A.19**（PT 认知）、**C.24–C.27**（本机工具）、**F.39**（协作流程）；并更正 B 层「轮询熔断未实现」为**已在 pt-gateway 落地**（引擎 `pt_video.py` 仍为旧实现，勿混谈）。
 
 ---
 
@@ -213,6 +214,79 @@ skill 要给不会代码的同事用，「安全」和「零门槛」是两条�
 
 ---
 
+## G. pt-gateway 子模块（2026-10-30 新增）
+
+> pt-gateway = 跨模型统一异步任务网关（`pt-gateway/pt_gateway.py` + `server.py` + `mcp.py` + `catalog_crawler.py`）。
+> 这一轮的核心产出：纠正三处端点硬编码、无 key 爬 PT docs 建「公开层全局真相」、把权限判断做成 fail-closed 门禁。
+
+### A.15【新增】「PT 端点全统一 /v1/videos」只对提交/查询成立，cancel 与 audio 是 vendor 特定路径
+- **现象（两次反向误判）**：① 早期以为「Seedance / Vidu / Wan 各有独立提交/查询接口」→ 实测**是误判**，PT 已统一：提交 `POST /v1/videos`、轮询 `GET /v1/videos/{id}`；② 纠正后又被写成「全部统一在 /v1/videos 之下」→ **也是误判**。
+- **真实形态**：统一是**分层**的——
+  - 提交 / 查询：统一 `POST /v1/videos` + `GET /v1/videos/{id}`；
+  - 取消：仅 Seedance 经 ByteDance/BytePlus 提供 `DELETE /byteplus/api/v3/contents/generations/tasks/{id}`（queued→cancelled，2026-10-30 实测）；
+  - 音频(TTS)：`POST /ali/api/v1/services/aigc/multimodal-generation/generation`（Ali/DashScope 兼容，**同步**返回 url），**不走** `/v1/videos`。
+- **教训**：PT 统一的是「提交/查询」传输层，**没统一**「取消/音频」。写网关要按能力逐个确认端点，别用一句「全统一」概括，也别一句「各有各的」概括。
+
+### A.16【新增 · 致命】PT 无异步任务取消接口（用户已与 PT 官方确认，2026-10-30）
+- **现象**：想给「取消进行中的视频任务」做通用实现，按 OpenAPI 文档推断 wan / kling / vidu 各有 `DELETE /.../tasks/{id}`。
+- **真相**：用户已**与 PT 官方确认——PT 没有异步任务的取消接口**。文档里的 `/tasks/{id}` 只有 **GET 查询**，DELETE 并不存在。唯一例外是 Seedance 的 BytePlus vendor 端点（A.15）。
+- **处置**：`cancel()` 对非 seedance 一律**诚实**返回 `{supported:false}` + 理由说明——不做 best-effort 猜端点、不假装成功。其余模型无法在服务端取消进行中的任务，**只能等其自行结束**。
+- **教训**：① 文档「存在 `/tasks/{id}`」≠「存在 DELETE 取消」；② 拿不准就诚实降级，比 best-effort 发一个不存在的 DELETE 更可靠；③ **发现端点（读公开文档）不耗 key**，**验证取消生效（提交+取消）才耗额度**——既然官方已确认没有，就别花额度去试。
+
+### A.17【新增】`/v1/models` 只是「本 key 权限视图」，不能当全局目录 / 下架依据
+- 承接 **A.06**：不同 key 返回的模型列表不同（白名单 / 额度）。所以「本 key 列表里没有某模型」**不等于**「该模型已下架」。旧 `ModelRegistry` 就这么误判过——把「别的 key 有、本 key 无」写成 `delisted=true`，多 key 场景下会误杀合法调用。
+- **正确分工（两层）**：
+  - **下架判定看公开层**（无 key 爬 PT docs，见 A.18）；
+  - **`/v1/models` 只记 `key_permitted` 权限视图**；仅当模型**同时**不在 live 列表、也不在公开层，才判 `delisted=true`。
+- **权限门禁（用户拍板 fail-closed）**：显式指定的模型若不在本 key 的 `/v1/models` 列表 → 本地直接 `ApiError(403)`「当前 key 没有模型 X 的调用权限」，**不发起真实生成请求**——省掉一次必 403 的调用与额度（比「让服务端报错」的 fail-open 更省）。
+- **两个边界（都要处理，否则出 bug）**：
+  - `model=auto` 不做门禁校验，但**选模型时必须在本 key 权限集合内挑**——否则 auto 会选中无权限模型再被门禁拦（实测曾选中无权限的 `wan2.2-kf2v-flash`，改为 key-aware 后正确选中 `wan3.0-video`）；
+  - 权限查询（`/v1/models`）**本身失败** → **降级放行**，不误杀合法调用，交给服务端最终裁判。
+
+### A.18【新增 · 低成本方案】PT 官网 docs 可无 key 爬取，拿到「全局模型真相」
+- **必要性**：A.17 要求下架判定看公开层，但 PT 没有无 key 的模型目录 API —— 于是爬官网 docs。
+- **实测数据源（2026-10-30 验证可用）**：
+  - `https://docs.powertokens.ai/sitemap.xml` **直出 396 个 `<loc>`**，其中 **350 个模型页**（Video 180 / Image 66 / Audio 24 / Chat 80；无子 sitemap）；en + zh-Hans 双语去重后 **181 个唯一页**；
+  - 模型页 URL 规律：`docs.powertokens.ai/{lang}/zmodel{Type}/{vendor}/{slug}`；
+  - 每页配套 **OpenAPI 3.0.1 片段**，URL = 模型页 path 前插 `/api-reference` + 后缀 `.json`
+    （例：`/api-reference/en/zmodelVideo/ali/wan3.0-video-generation.json`）。⚠️ `/en/...json` 与 `/openapi/...json` 均 **404**，只有 `/api-reference/{lang}/...json` 这一条路。
+  - 模型 ID 在 `components.schemas[*].properties.model.enum`（一页可含多个）；**同步/异步**看有没有 `GET /tasks/{id}` 轮询路径。
+  - ⚠️ **Chat 类页面 JSON 带 UTF-8 BOM** → 必须 `utf-8-sig` 解码，否则 `json.loads` 直接抛错。
+- **产出**：`catalog.public.json` —— 82 个模型（video 20 / seedance 7 / image 9 / audio 8 / chat 38；异步 28 / 同步 54）。10 个 404 全是 zh-Hans 的 minimax 镜像页（其 en 版已抓到，**不丢模型**）；任务查询/取消等「帮助页」无 model enum，应正确跳过。
+- **教训**：没有目录 API 时，**官网 sitemap + 文档页内嵌 OpenAPI** 是最低成本的「全局真相」来源；但要处理 BOM、双语去重、辅助页跳过三类噪声。
+
+### A.19【新增 · 待实测】音频 TTS 请求体字段仍未固化（同步接口别靠「兼容协议猜」）
+- **现状**：端点已确认（Ali 兼容 `POST /ali/.../multimodal-generation/generation`），但从 OpenAPI 抽到的参数是 `input/text`、`voice`、`language_type`，而当前 `audio_generate()` 发的是 `input.prompt`。
+- **未决**：到底是 `text` 还是 `prompt`？响应 url 落在 `output.audio.url` / `output.url` / 顶层 `url` 的哪一处？**必须拿真 key 跑一次才能固化**（当前代码是多位置兜底抽 url + 保留 `raw` 便于核对）。
+- **教训**：同步接口的字段名不能用「它兼容某某协议」来推断 —— 兼容实现常在字段上有出入，一次真实调用就能固化，成本远低于反复猜。
+
+### B 层补充：A.02 / A.03 的轮询熔断**已在 pt-gateway 落地**（2026-10-30 更正）
+- `pt-gateway/pt_gateway.py` 重写了 `poll_task`（覆盖引擎原版）：429 尊重 `Retry-After`、否则指数退避（≤60s）；5xx **连续 5 次熔断**抛出；其他 4xx 直接透传；超时明确报错。即 A.02 / A.03 的「路线图」在此子模块已实现。
+- ⚠️ **别混谈**：这是 **pt-gateway** 的实现；引擎 `pt_video.py`（0.2.0）的 `poll_task` 仍是「仅超时抛错、无熔断」（见 A.02 表格第 12 行）。在文档/对话里必须指明是哪个模块。
+
+### C.24【新增】Bash 工具会**整体失效**，不是 PATH 损坏
+- **现象**：某轮开始所有 Bash 命令都报 `Parameter "command" expected string, but received undefined`——连 `echo hi` 都被拒（区别于 C.16 的 PATH 损坏，那条还能跑绝对路径）。
+- **解法**：**立刻改用 PowerShell 工具**，不要反复重试 Bash。PowerShell 查 git / 跑 Python 均正常（本轮全部 git 操作与脚本执行都靠它完成）。
+
+### C.25【新增】PowerShell `>` 重定向写的是 **UTF-16**，Read 会报 binary
+- **现象**：`python x.py > out.txt 2>&1` 产出的文件，用 Read 读报 `Cannot display content of binary file`。
+- **解法**：二选一 —— ① `cmd | Out-File -FilePath out.txt -Encoding utf8`；② 更稳：让 Python 脚本**自己** `open(..., 'w', encoding='utf-8')` 写结果文件，再 Read。（本轮统一用 ②，脚本顺带把锚点命中数/错误一起写进去。）
+
+### C.26【新增 · 致命】补丁脚本用 `\uXXXX` 转义中文 → 笔误 → **静默不落盘**
+- **现象**：给 `pt_gateway.py` 打补丁，`assert s.count(old)==1` 其实失败了，但 PowerShell 吞掉报错（C.17），表现为「脚本跑了、代码没改」，反复两轮才发现。
+- **根因**：锚点里的中文用 `\uXXXX` 手写极易笔误——把「兜」U+514C 写成了「兆」U+5146，一个字符错导致整段锚点不匹配。
+- **解法**：① 锚点**只用 ASCII**（如 `    def auto_select(self, kind):`），中文一律用**字面量**写在替换串里；② 脚本**无论如何**都把各锚点命中数与异常写到 OUT 文件，跑完 Read 核对 `count=1`；③ 命中数不对就**不落盘**（避免半改状态）。
+- **定位**：这是 C.15（并行 Edit 静默丢写）的进阶版——同样的「报成功但没生效」，诱因从并发改成了锚点笔误。
+
+### C.27【新增】Edit 工具遇到**花括号**会假成功
+- **现象**：`old_string` / `new_string` 含 `{...}`（如 `{supported:false}`、`{id}`、`{kind}`）时，Edit 可能返回 "Successfully edited" 但**内容根本没落盘**；用 Grep/Read 复核才发现。
+- **解法**：含花括号（或长中文易漏改）的改动，一律改用 Python 脚本：`s.count(old)==1` 断言 + `s.replace` 精确写回，写完用 Read 复核。本轮所有含 `{...}` 的改动都走这条。
+
+### F.39【新增】讨论中产生的修正项必须**落到文档**，别留在对话里
+- **用户明确要求（2026-10-30）**：① 把之前**说错**的地方纠正（代码 + catalog + server/mcp + README 一起对齐）；② 把**要修改的地方记录成一个文档**；③ 先写爬虫，**写完再回来逐条讨论**文档里待修正的项。
+- **落地**：建 `pt-gateway/FIXLIST.md`，分三段——「已纠正（含三处硬性错误的证据/结论）」「待讨论（逐项标 `[已定]`/`[待讨论]`）」「实施记录（用户拍板后逐条落地情况）」。
+- **教训**：① 讨论里冒出的修正项散落在对话中会**丢失、无法回溯**，必须落文件；② 「纠正 → 记录 → 实现 → 回来讨论」要**分阶段**，每段有交付物；③ 已定/已实施项要在文档里**标状态**，否则下次会重复讨论同一件事。
+
 ## 校正说明（本版 vs 旧版 powertokens-wan 档案）
 
 | # | 旧版问题 | 本版校正 |
@@ -223,8 +297,9 @@ skill 要给不会代码的同事用，「安全」和「零门槛」是两条�
 | 4 | A.05 把「无效 Key 返 500+token_invalid」当已确认事实；A.06「85 个模型」未注口径 | A.05 降为**待实测**；A.06 改为我们实测 **32 个视频模型**并注明口径 |
 | 5 | 把 `classify_rest` / `rest_poll` 三重熔断 / `fetch_model_ids` / `ensure_model_allowed` / `status` 子命令写成「已落地」 | 0.2.0 实际只有简单轮询 + `precheck_explicit_model`；上述高级能力改为**已知短板 / 路线图**，不谎称已实现 |
 | 6 | 旧版仅覆盖视频（0.2.0） | 0.3.0 扩展为**图文通用**：图片端点 `POST /v1/images/generations` 同步（A.12）、Seedance Asset Library 协议 + BytePlus media 前置（A.13）；真实出片新增图片 1 次（image-01） |
+| 7 | 未覆盖 pt-gateway 子模块；B 层称「轮询熔断未实现」 | 2026-10-30 新增 **A.15–A.19**（端点分层的两次反向误判 / PT 无取消接口 / `/v1/models` 只是权限视图 + fail-closed 门禁 / 无 key 爬 docs 建全局真相 / 音频字段待实测）、**C.24–C.27**、**F.39**；并更正 B 层：熔断**已在 pt-gateway 落地**，引擎 `pt_video.py` 仍为旧实现 |
 
 ---
 
-*踩坑档案 · 校正于 2026-10-26 · 阿伴 🦝*
+*踩坑档案 · 校正于 2026-10-26 · 2026-10-30 追加 pt-gateway 段落 · 阿伴 🦝*
 *诊断工具留存：`pt_video.py`（引擎）· `mcp_server.py`（MCP 壳）· `README.md`（安装）· `docs/publish.md`（发布）*
