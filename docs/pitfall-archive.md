@@ -301,5 +301,27 @@ skill 要给不会代码的同事用，「安全」和「零门槛」是两条�
 
 ---
 
+## H. 真机验收实测（2026-10-30，真 key 实跑）
+
+### H.1 音频端点的第三次误判：真实是 OpenAI 兼容 `/v1/audio/speech`
+现象：`audio_generate` 按「Ali 兼容」假设请求 `/ali/api/v1/services/aigc/multimodal-generation/generation`，
+`speech-2.8-turbo` 返回 500 `pricing rule not found`；换 `qwen3-tts-instruct-flash` 返回 404 `Model not exist`。
+证据：`POST /v1/audio/speech` 带非法 voice 时返回 `400 voice is required`（而非 404 Invalid URL）→ 端点真实存在。
+结论（实测）：
+- 端点 `POST /v1/audio/speech`；请求体 `{model, input, voice}`；**`voice` 必填**。
+- 音色用 OpenAI 标准名 `alloy/echo/fable/onyx/nova/shimmer`，实测 6 个全部 200。
+- 响应 `{data:{audio:<mp3 url>, status:2}}`，url 在 `data.audio`（不是 `output.audio.url`）。
+教训：端点形态要靠**错误码区分**判定——404 `Invalid URL` = 路径不存在；4xx/5xx 业务错 = 路径存在但参数/计价有问题。
+
+### H.2 `/v1/models` 里列出的模型 ≠ 都能用
+实测：8 个 audio 模型中，`qwen3-tts-instruct-flash` 404 不存在，`audio1.0` / `speech-2.6-hd` 报「倍率或价格未配置」。
+结论：模型清单只是「目录」，可用性还取决于平台侧是否配了计价规则。网关不做客户端拦截是对的——
+让服务端报错即可，别在客户端维护一份必然过期的「可用清单」。
+
+### H.3 真机验收的成本量级（供后续回归参考）
+一次全链路（模型清单 + chat + 图像 + TTS + 视频 720p 5s）约 **$0.54**，其中视频占 92%。
+视频生成耗时约 145s；图像约 22s；TTS 约 3s；chat 约 1s。
+回归测试省钱法：视频换成 Seedance Mini 480p（$0.031/s）可把整轮压到约 $0.20。
+
 *踩坑档案 · 校正于 2026-10-26 · 2026-10-30 追加 pt-gateway 段落 · 阿伴 🦝*
 *诊断工具留存：`pt_video.py`（引擎）· `mcp_server.py`（MCP 壳）· `README.md`（安装）· `docs/publish.md`（发布）*

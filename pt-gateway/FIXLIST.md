@@ -13,7 +13,8 @@
 | F1 | `GET /v1/models` 返回 PT **全量**模型清单，**所有 key 相同** | 它不是「本 key 权限视图」→ 不能用于权限拦截；下架判定可直接用它（不再出现即下架） |
 | F2 | PT **不提供**异步任务取消接口 | 网关不实现 cancel；HTTP 无 `/cancel`，MCP 不暴露取消工具 |
 | F3 | 提交 / 查询统一：`POST /v1/videos` + `GET /v1/videos/{id}` | 只需归一化请求体构造与结果字段位置，即可跨模型 |
-| F4 | audio 走 `POST /ali/.../generation`（同步）；chat 走 `POST /v1/chat/completions`（同步） | 这两类不进 `/v1/videos` |
+| F4 | audio 走 `POST /v1/audio/speech`（同步，OpenAI 兼容）；chat 走 `POST /v1/chat/completions`（同步） | 这两类不进 `/v1/videos` |
+| F5 | TTS 的 `voice` **必填**（缺则报 `voice is required`）；OpenAI 标准音色 `alloy/echo/fable/onyx/nova/shimmer` 实测全部可用 | 音色名用 OpenAI 的，不是 MiniMax 原生 voice_id |
 
 > F1 修正了更早的误判：曾以为「不同 key 的 `/v1/models` 列表不同」——
 > 由此设计的双层架构、公开层爬虫、fail-closed 门禁全部作废（见 §2.1 / §2.2 / §3）。
@@ -38,10 +39,15 @@
 - `enrich_catalog()` / `enrich_with_llm()` / CLI `enrich` / `public` 已一并删除。
 - 能力档案仍由人工维护的 `catalog.json` 提供（`/v1/models` 只给模型 ID，不给分辨率 / 时长 / 模式 / 单价）。
 
-### 2.3 音频请求体 / 响应字段待实测 [待办]
+### 2.3 音频请求体 / 响应字段 [已解决：2026-10-30 真机实测]
 
-- 端点已确认（Ali 兼容），但请求体确切字段（`input.prompt` vs `input.text`）与响应 url 位置未实测。
-- **阻塞**：本机无 `POWERTOKENS_API_KEY`。设好 key 后跑一次 `qwen3-tts` 即可固化。
+实测（`speech-2.8-turbo`，真 key 实跑）：
+- **端点是 `POST /v1/audio/speech`（OpenAI 兼容）——此前假设的 `/ali/...` 是错的**（该路径 404 / 500）。
+- 请求体 `{model, input, voice}`（**不是** `{model, input:{prompt}}`）；`voice` 必填。
+- 音色：OpenAI 标准名 `alloy / echo / fable / onyx / nova / shimmer` 实测全部 200；非法值报 `voice id not exist`。
+- 响应：`{data:{audio:<mp3 url>, status:2}}`，url 在 **`data.audio`**；附 `extra_info`。
+- 平台侧异常（非网关问题）：`qwen3-tts-instruct-flash` → 404 `Model not exist`；
+  `audio1.0` / `speech-2.6-hd` → 500「倍率或价格未配置」。
 
 ### 2.4 取消接口 [已定：不做]
 
@@ -90,13 +96,31 @@
 - [已修] **目录误导**：`catalog.json.models` 含 38 个 chat，但 `kinds` 无 chat 节点，已补。
 - [已修] **SYNC_KINDS 不一致**：原为 `("image",)`，缺 audio；现为 `("image", "audio", "chat")`。
 - [已验证] 四类端点路由（mock 网络实测）：chat → `/v1/chat/completions`、
-  audio → `/ali/...`、image → `/v1/images/generations`、video → `/v1/videos`；
+  audio → `/v1/audio/speech`、image → `/v1/images/generations`、video → `/v1/videos`；
   只给 model 不给 kind 时 `_kind_of()` 能正确反推；未知 kind 报错清晰。
 
 ---
 
 ## 5. 待办
 
-1. **§2.3 音频实测**（需 key）：固化 `audio_generate()` 的请求体字段与响应 url 位置。
-2. **全链路真机验证**（需 key）：chat / audio / image / video 各跑一次，
-   确认响应字段与 `catalog.json` 能力档案一致。
+1. ~~§2.3 音频实测~~ [已完成 2026-10-30]：端点 / 请求体 / 响应字段已固化（见 §2.3）。
+2. ~~全链路真机验证~~ [已完成 2026-10-30]：5 项全 PASS，见 §6。
+3. 其余无待办；模型或价格变动时同步 `catalog.json`。
+
+---
+
+## 6. 真机验收（2026-10-30，真 key 实跑）
+
+`GET /v1/models` → 83 个模型（image 9 / video 24 / seedance 7 / audio 8 / chat 35），网关可路由 83/83。
+
+| 步骤 | 模型 | 结果 | 耗时 | 花费 |
+|---|---|---|---|---|
+| 模型清单 | `GET /v1/models` | PASS 83 个 | 0.37s | 免费 |
+| chat | `qwen3.8-flash` | PASS 输出「你好」87 tokens | 1.3s | $0.0001 |
+| image | `seedream-5-0-260128` | PASS 出图 1 张 | 22.7s | $0.034 |
+| audio | `speech-2.8-turbo` | PASS（修正端点后） | 2.8s | $0.010 |
+| video | `wan3.0-video` 720p 5s | PASS `SUCCEEDED` 出片 | 144.9s | $0.500 |
+
+**合计约 $0.544**（人民币约 4 元）。
+
+本轮唯一代码修正：音频端点 `/ali/...` → `/v1/audio/speech`，请求体改 OpenAI 风格 `{model, input, voice}`，响应 url 取 `data.audio`。

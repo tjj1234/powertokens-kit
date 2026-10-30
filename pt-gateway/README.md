@@ -27,7 +27,7 @@ video / seedance 异步拿 task_id 后轮询）。
 │   ├─ submit(model,...)  → build_submit_body(kind 适配) → POST /v1/videos → {task_id}       │
 │   ├─ get_status(tid)    → GET /v1/videos/{id} → normalize_status()                          │
 │   ├─ wait(tid,timeout)  → 复用引擎 poll_task 轮询到终态 → 归一化                            │
-│   └─ chat/audio        → 同步直返（POST /v1/chat/completions、POST /ali/...）                │
+│   └─ chat/audio        → 同步直返（POST /v1/chat/completions、POST /v1/audio/speech）        │
 │  ModelRegistry (registry.json)                                                                  │
 │   └─ sync(key): GET /v1/models（PT 全量清单）→ diff 出上下架；不做权限拦截                   │
 └───────────────────────────────┬──────────────────────────────────────────────────────────┘
@@ -58,9 +58,9 @@ video / seedance 异步拿 task_id 后轮询）。
 {
   "kinds": {
     "video": { "execution": "async", "submit": "/v1/videos", "poll": "/v1/videos/{task_id}" },
-    "audio": { "execution": "sync", "submit": "/ali/api/v1/services/aigc/multimodal-generation/generation",
-               "poll": null, "vendor": "Ali (DashScope compatible)",
-               "capabilities_observed": ["语音合成(TTS, 短/长文本)", "音色设置"] }
+    "audio": { "execution": "sync", "submit": "/v1/audio/speech",
+               "poll": null, "vendor": "OpenAI-compatible (MiniMax TTS)",
+               "capabilities_observed": ["语音合成(TTS)", "音色选择(voice 必填)"] }
   },
   "models": {
     "seedance-1-5-pro-251215": { "kind": "seedance", "price_usd_5s_720p": 0.247,
@@ -88,7 +88,7 @@ video / seedance 异步拿 task_id 后轮询）。
 响应按 kind 分流：
 - `image` → `{"ok":true,"kind":"image","execution":"sync","model":"...","urls":["..."]}`（同步直返）
 - `video` / `seedance` → `{"task_id":"...","kind":"...","execution":"async","model":"..."}`（用 /status 查）
-- `audio` → `{"ok":true,"kind":"audio","execution":"sync","url":"..."}`（同步生成，POST /ali/.../multimodal-generation/generation）
+- `audio` → `{"ok":true,"kind":"audio","execution":"sync","voice":"alloy","url":"..."}`（同步生成，POST `/v1/audio/speech`；**`voice` 必填**）
 - `chat` → `{"ok":true,"kind":"chat","execution":"sync","text":"..."}`（同步生成，POST /v1/chat/completions）
 
 ### POST /submit
@@ -301,9 +301,11 @@ PT 的 `GET /v1/models` 只返回模型 ID，**不给**分辨率/时长/模式/�
 目录没收录的新上架模型，注册表也会自动 enable（能力字段显示缺失，诚实不编造）。
 
 schema：顶层 `kinds`（每类型的 execution/端点/前置要求/能力观测）+ `models`（每模型档案）。
-音频类（TTS）端点已确认：`POST /ali/api/v1/services/aigc/multimodal-generation/generation`（Ali 兼容，同步返回 url），
-`kinds.audio` 已填真实端点，`media_generate(kind=audio)` 现在同步生成并返回 `{execution:"sync", url}`；
-请求体采用 Ali 标准结构（model + input.prompt[+voice]），响应 url 多位置兜底抽取，具体字段以 PT 文档实测为准。
+音频类（TTS）端点：**`POST /v1/audio/speech`（OpenAI 兼容，2026-10-30 真机实测）**——
+此前假设的 `/ali/...` 是错的（实测 404 / 500 `pricing rule not found`）。
+请求体 `{model, input, voice}`；**`voice` 必填**（缺则报 `voice is required`），
+可用 OpenAI 标准音色 `alloy / echo / fable / onyx / nova / shimmer`（实测全部 200）。
+响应 `{data:{audio:<mp3 url>, status:2}}`，url 在 **`data.audio`**；附 `extra_info`（时长/采样率/体积/码率）。
 文本类（chat）端点：`POST /v1/chat/completions`（OpenAI 兼容，同步返回 `choices[0].message.content`），
 `kinds.chat` 已填真实端点，`media_generate(kind=chat)` 同步返回 `{execution:"sync", text}`；
 可用 `messages` 传多轮对话，或只用 `prompt` 作单轮 user 消息（`system` 前置）。

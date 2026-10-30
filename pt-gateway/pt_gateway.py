@@ -72,7 +72,8 @@ CATALOG_PATH = _HERE / "catalog.json"
 # 端点常量（P0 修复：此前 IMAGE_ENDPOINT / AUDIO_ENDPOINT 只有使用、没有定义，
 # 一旦带 key 调用 image/audio 会 NameError。现已补齐并集中在此。）
 IMAGE_ENDPOINT = pt_video.IMAGE_ENDPOINT      # /v1/images/generations（同步）
-AUDIO_ENDPOINT = "/ali/api/v1/services/aigc/multimodal-generation/generation"  # TTS（同步，Ali 兼容）
+AUDIO_ENDPOINT = "/v1/audio/speech"          # TTS（同步，OpenAI 兼容）
+DEFAULT_VOICE = "alloy"                      # TTS 音色必填；OpenAI 标准音色实测可用
 CHAT_ENDPOINT = "/v1/chat/completions"        # 文本对话（同步，OpenAI 兼容）
 
 # 模型清单真相源：GET /v1/models（PT 全量模型，所有 key 返回相同；需 key）
@@ -389,25 +390,26 @@ class TaskGateway:
 
     # ---- 音频(TTS)同步生成（vendor 端点，不走 /v1/videos）----
     def audio_generate(self, model, prompt="", voice=None, params=None):
-        """音频(TTS)同步生成：POST /ali/api/v1/services/aigc/multimodal-generation/generation。
+        """音频(TTS)同步生成：POST /v1/audio/speech（OpenAI 兼容，2026-10-30 真机实测）。
 
-        PT 音频端点为 Ali(DashScope)兼容，一次调用同步返回音频 url（execution=sync）。
-        请求体采用 Ali 标准 TTS 结构（model + input.prompt[+voice]），响应 url 多位置兜底抽取。
-        注：具体请求/响应字段以 PT 文档实测为准；本方法尽力对齐并保留 raw 便于核对。
+        实测结论（key 实跑）：
+        - 端点是 OpenAI 兼容的 /v1/audio/speech，不是此前假设的 /ali/...（该路径 404/500）。
+        - 请求体 {model, input, voice}；**voice 必填**，缺失会报 voice is required。
+        - voice 取 OpenAI 标准音色名（alloy/echo/fable/onyx/nova/shimmer）实测全部可用。
+        - 响应：{data: {audio: <mp3 url>, status: 2}}，url 在 data.audio。
         """
         self._need_key()
-        body = {"model": model, "input": {"prompt": prompt or ""}}
-        if voice:
-            body["input"]["voice"] = voice
+        body = {"model": model, "input": prompt or "", "voice": voice or DEFAULT_VOICE}
         if params:
-            body["parameters"] = params
+            body.update(params)
         sys.stderr.write(f"[gateway] POST {AUDIO_ENDPOINT} model={model} kind=audio\n")
         resp = _api_call("POST", AUDIO_ENDPOINT, self.key, body=body, timeout=120)
-        out = resp.get("output") or {}
-        url = (out.get("audio") or {}).get("url") or out.get("url") \
-            or resp.get("url") or (resp.get("data") or {}).get("url")
+        data = resp.get("data") or {}
+        url = data.get("audio") or data.get("url") \
+            or resp.get("audio") or resp.get("url") \
+            or (resp.get("output") or {}).get("url")
         return {"ok": True, "kind": "audio", "execution": "sync",
-                "model": model, "url": url, "raw": resp}
+                "model": model, "voice": body["voice"], "url": url, "raw": resp}
 
     # ---- 文本对话(chat)同步生成（OpenAI 兼容 /v1/chat/completions）----
     def chat_generate(self, model, prompt="", messages=None, system=None,

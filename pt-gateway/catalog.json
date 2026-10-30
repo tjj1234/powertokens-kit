@@ -30,12 +30,12 @@
     },
     "audio": {
       "execution": "sync",
-      "submit": "/ali/api/v1/services/aigc/multimodal-generation/generation",
+      "submit": "/v1/audio/speech",
       "poll": null,
-      "vendor": "Ali (DashScope compatible)",
+      "vendor": "OpenAI-compatible (MiniMax TTS backend)",
       "capabilities_observed": [
-        "语音合成（TTS，短/长文本）",
-        "音色设置"
+        "语音合成(TTS)",
+        "音色选择(voice 必填: alloy/echo/fable/onyx/nova/shimmer)"
       ],
       "note": "Ali 兼容 TTS 端点，同步返回 audio url；请求体采用 Ali 标准结构（model + input.prompt[+voice]），响应 url 多位置兜底抽取。具体字段以 PT 文档实测为准。"
     },
