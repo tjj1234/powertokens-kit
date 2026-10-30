@@ -48,9 +48,12 @@
   以 PT 文档实测为准。当前 `audio_generate()` 多位置兜底抽 url，并保留 `raw` 便于核对。
 - **待讨论**：拿到一个可用 TTS 模型 ID + 实测一次，固化确切 schema。
 
-### 2.4 其他模型取消端点
-- 仅 Seedance 已知真实取消端点。video（wan/kling/vidu/hailuo 等）取消端点待确认。
-- **待讨论**：各 vendor 取消端点探明后，`cancel()` 按 kind 分发补全（当前非 seedance 诚实 unsupported）。
+### 2.4 其他模型取消端点 [已定]
+- 仅 Seedance 经 ByteDance/BytePlus 提供真实取消端点 `DELETE /byteplus/api/v3/contents/generations/tasks/{id}`。
+- **已确认（用户 2026-10-30）**：PT 无统一的异步任务取消接口，其他模型（wan/kling/vidu/hailuo 等）
+  **不存在**服务端取消能力。故上轮加的 best-effort 推断已回退——`cancel()` 对非 seedance 一律
+  诚实返回 `{supported:false, reason:...}`（不假装成功、不误导调用方发无效 DELETE）。
+- 结论：进行中的非 Seedance 异步任务无法取消，只能等其自行结束。
 
 ### 2.5 轮询健壮性（引擎老问题，非阻塞）
 - `poll_task` 无 429 退避 / 5xx 熔断 / 未识别状态熔断（`pt_video.py` 注释 A.02/A.03）。
@@ -99,9 +102,9 @@
 - [部分] **§2.3 音频实测**：当前环境无 API Key（~/.config/powertokens-video/config.json
   仅含 seedance_agreement_signed），真实 TTS 调用待用户设置 `POWERTOKENS_API_KEY` 后跑一次，
   校正 `audio_generate()` 的 input 字段（prompt vs text）与响应 url 抽取位置。
-- [已实施] **§2.4 其他模型取消端点**：`cancel()` 非 seedance 走 best-effort——
-  基于公开层 vendor_endpoint 推断 `DELETE /tasks/{id}`，标注「未实测」；seedance 仍真实
-  `DELETE /byteplus/api/v3/contents/generations/tasks/{id}`（需 key）。推断不耗 key。
+- [已修正] **§2.4 其他模型取消端点**：用户确认 PT 无异步任务取消接口，故回退上轮的 best-effort 推断——
+  `cancel()` 对非 seedance 一律诚实 `{supported:false}`（理由说明仅 Seedance 有 vendor 特定取消端点）；
+  仅 seedance 保留真实 `DELETE /byteplus/api/v3/contents/generations/tasks/{id}`（需 key）。
 - [已实施] **§2.5 轮询健壮性**：`poll_task` 覆盖为带 429 退避（指数退避 ≤60s，尊重 Retry-After）
   + 5xx 连续 5 次熔断抛出 + 其他 4xx 直接透传 + 超时明确报错。纯逻辑、已 selfcheck 通过，
   真实任务链路需 key 验证。

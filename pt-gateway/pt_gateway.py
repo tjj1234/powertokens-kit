@@ -432,10 +432,11 @@ class TaskGateway:
     def cancel(self, task_id, kind=None, model=None):
         """取消任务。按 kind（或 model 反推）路由到各 vendor 取消端点。
 
-        - seedance：真实存在 DELETE /byteplus/api/v3/contents/generations/tasks/{id}
+        - seedance：经 ByteDance/BytePlus 提供 DELETE /byteplus/api/v3/contents/generations/tasks/{id}
                     （queued→cancelled），本方法真实调用并返回 {supported:true, state:CANCELLED}。
-        - 其他 kind（video 等）：vendor 取消端点待确认，诚实返回 {supported:false}
-                    并说明已确认的 Seedance 端点，避免假装成功。
+                    这是 vendor 特定端点，非 PT 统一能力。
+        - 其他 kind（video/image/audio/chat 等）：已确认 PT 无异步任务取消接口，诚实返回
+                    {supported:false}，避免假装成功或误导调用方发无效 DELETE。
         kind/model 至少给一个才能识别是否为 Seedance；都不给则按非 seedance 处理。
         """
         k = kind or (model and kind_of_model(model))
@@ -448,28 +449,15 @@ class TaskGateway:
             except ApiError as e:
                 return {"task_id": task_id, "supported": True, "kind": "seedance",
                         "state": "UNKNOWN", "error": str(e.message), "status": e.status}
-        # 其他 kind（video 等）：用公开层 vendor_endpoint 推断 best-effort 取消端点（§2.4）
-        # 仅文档推断，不耗 key；真实生效需一次任务验证。
-        if model:
-            entry = self.catalog.entry(model) or {}
-            pe = public_models().get(model) or {}
-            vend = entry.get("vendor_endpoint") or pe.get("vendor_endpoint") or ""
-            if vend:
-                import re as _re
-                base = _re.sub(r"/tasks?/.*$", "", vend)
-                return {
-                    "task_id": task_id,
-                    "supported": "best-effort",
-                    "kind": k,
-                    "guess_endpoint": f"DELETE {base}/tasks/{{id}}",
-                    "note": "基于公开层 vendor_endpoint 推断，未实测；调用方可按此发 DELETE，失败再回退",
-                }
+        # 其他 kind（video/image/audio/chat 等）：已确认 PT 无统一/厂商异步取消接口（2026-10-30 用户确认）。
+        # 不再做 best-effort 推断（推断的 DELETE /tasks/{id} 实际并不存在），诚实返回不支持。
         return {
             "task_id": task_id,
             "supported": False,
             "kind": k,
-            "reason": "仅 Seedance 已知真实取消端点 DELETE /byteplus/api/v3/contents/generations/tasks/{id}；"
-                      "其他模型取消端点待确认（可爬公开层 vendor_endpoint 推断 best-effort）",
+            "reason": "PT 无异步任务取消接口（已确认）。仅 Seedance 经 ByteDance/BytePlus 提供 "
+                      "DELETE /byteplus/api/v3/contents/generations/tasks/{id}（vendor 特定，非 PT 统一能力）。"
+                      "其余模型无法在服务端取消进行中的任务，只能等待其自行结束。",
         }
 
 
