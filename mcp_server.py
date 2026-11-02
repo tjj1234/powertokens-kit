@@ -61,7 +61,7 @@ def _first_json(out, marker='"ok"'):
     return None
 
 
-mcp = FastMCP("powertokens-video")
+mcp = FastMCP("powertokens-kit")
 
 
 @mcp.tool()

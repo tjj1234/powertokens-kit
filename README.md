@@ -1,11 +1,11 @@
-# powertokens-video
+# powertokens-kit
 
 <p align="center">
   <b>用一份零依赖的 Python 引擎，跨 Claude Code / Cursor / Trae / VS Code / Windsurf / Cline / Zed 等 40+ agent 调用 PowerTokens 的图片、视频、Seedance 模型。</b>
 </p>
 
 <p align="center">
-  <a href="https://github.com/tjj1234/powertokens-video">仓库</a> ·
+  <a href="https://github.com/tjj1234/powertokens-kit">仓库</a> ·
   <a href="#3-快速开始cli">快速开始</a> ·
   <a href="#13-接入方式-aagent-skills">Agent Skills 接入</a> ·
   <a href="#14-接入方式-bmcp-server">MCP 接入</a> ·
@@ -51,11 +51,12 @@
 
 ## 1. 这是什么
 
-`powertokens-video` 是一个**跨 agent 的图片 / 视频生成工具**，把 [PowerTokens](https://powertokens.ai/) 的模型能力，封装成「一份引擎 + 两种接入壳」：
+`powertokens-kit` 是一个**跨 agent 的 PowerTokens 工具箱**：把 [PowerTokens](https://powertokens.ai/) 的 **image / video / Seedance / audio / chat** 模型能力，封装成「一份引擎 + 两种接入壳」，并附带一个生产级统一网关：
 
 - **引擎 `pt_video.py`**：纯 Python 标准库，**零外部依赖**、**直连官方 REST API**、**不需要 Node、也不需要 powertokens-cli**。
 - **壳 A · Agent Skills（`SKILL.md`）**：符合开放标准，直接被 40+ 支持该标准的 agent 读取（Claude Code、Cursor、GitHub Copilot、Codex、Trae、Zed、Kiro、Junie、Roo Code …）。
 - **壳 B · MCP server（`mcp_server.py`）**：被任何 MCP 客户端当作「工具」调用（Claude Desktop、Cursor、Trae、VS Code、Windsurf、Cline、Zed …）。
+- **网关 `pt-gateway/`**：HTTP + MCP 统一入口，在引擎之上补齐 **audio（TTS）** 与 **chat**（含多模态 / 联网搜索 / 思考模式能力标注），自带能力目录与三层测试。文档见 [`pt-gateway/README.md`](pt-gateway/README.md)。
 
 > 三种壳共用**同一个引擎**，所有生成逻辑只维护一份（单一真相源）。
 
@@ -82,8 +83,8 @@
 ## 3. 快速开始（CLI）
 
 ```bash
-git clone https://github.com/tjj1234/powertokens-video.git
-cd powertokens-video
+git clone https://github.com/tjj1234/powertokens-kit.git
+cd powertokens-kit
 export POWERTOKENS_API_KEY="sk-pt-xxxx"   # 推荐用环境变量（见 §8）
 
 python pt_video.py check                 # Key 体检
@@ -176,8 +177,8 @@ python pt_video.py seedance enable    # 签好协议后标记，不再弹开通�
 ### 方式一：直接用（推荐，零安装）
 
 ```bash
-git clone https://github.com/tjj1234/powertokens-video.git
-cd powertokens-video
+git clone https://github.com/tjj1234/powertokens-kit.git
+cd powertokens-kit
 python pt_video.py check
 ```
 
@@ -205,7 +206,8 @@ python mcp_server.py         # stdio；agent 客户端会自动拉起
 2. **本地配置文件**（权限 0600，推荐在共享机器上用）
    ```bash
    python pt_video.py config --set-key "sk-pt-xxxx"
-   # 保存在 ~/.config/powertokens-video/config.json（用户级，不在仓库内）
+   # 保存在 ~/.config/powertokens-kit/config.json（用户级，不在仓库内）
+   # 旧路径 ~/.config/powertokens-video/config.json 仍会自动回落读取（更名兼容）
    ```
 3. **仓库级配置**（可选）：`PT_VIDEO_CONFIG` 环境变量可覆盖配置文件路径。
 
@@ -336,22 +338,22 @@ python pt_video.py generate --type seedance -m seedance-1-5-pro-251215 -p "镜�
 
 | Agent | skills 目录 |
 |---|---|
-| Claude Code | `~/.claude/skills/powertokens-video/` |
-| Cursor | `<project>/.cursor/skills/powertokens-video/` 或用户级 skills 目录 |
+| Claude Code | `~/.claude/skills/powertokens-kit/` |
+| Cursor | `<project>/.cursor/skills/powertokens-kit/` 或用户级 skills 目录 |
 | GitHub Copilot | 项目内 `.github/skills/` 或按 Copilot skills 文档 |
-| Codex (OpenAI) | `~/.codex/skills/powertokens-video/` |
+| Codex (OpenAI) | `~/.codex/skills/powertokens-kit/` |
 | Trae / Zed / Kiro / Junie / Roo Code | 对应 skills 目录（参考各工具文档） |
 
 ```bash
 # 例：Claude Code
 mkdir -p ~/.claude/skills
-cp -r . ~/.claude/skills/powertokens-video
+cp -r . ~/.claude/skills/powertokens-kit
 ```
 
 目录结构（本仓库根即 skill 文件夹）：
 
 ```
-powertokens-video/
+powertokens-kit/
 ├── SKILL.md          # Agent Skills 清单（name + description + 指令）
 ├── pt_video.py       # 引擎（直连官方 REST，零依赖）
 ├── mcp_server.py     # MCP server（可选）
@@ -380,9 +382,9 @@ python mcp_server.py           # stdio；agent 客户端自动拉起
 ```json
 {
   "mcpServers": {
-    "powertokens-video": {
+    "powertokens-kit": {
       "command": "python",
-      "args": ["/abs/path/to/powertokens-video/mcp_server.py"],
+      "args": ["/abs/path/to/powertokens-kit/mcp_server.py"],
       "env": { "POWERTOKENS_API_KEY": "sk-pt-xxxx" }
     }
   }
@@ -394,7 +396,7 @@ python mcp_server.py           # stdio；agent 客户端自动拉起
 | 客户端 | 入口 |
 |---|---|
 | Claude Desktop | 设置 → 开发者 → Edit Config（claude_desktop_config.json） |
-| Claude Code | `claude mcp add powertokens-video -- python /abs/path/mcp_server.py` |
+| Claude Code | `claude mcp add powertokens-kit -- python /abs/path/mcp_server.py` |
 | Cursor | Settings → MCP → Add |
 | Trae | 设置 → MCP → 添加 |
 | VS Code (Copilot) | 命令面板 → MCP: Add Server |

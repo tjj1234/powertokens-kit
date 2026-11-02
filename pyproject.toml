@@ -3,23 +3,27 @@ requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "powertokens-video"
-version = "0.4.1"
-description = "Generate videos from PowerTokens models (Seedance/Kling/Wan/MiniMax Hailuo/Vidu/HappyHorse) via a tool-agnostic CLI and MCP server — portable across Claude Code, Cursor, Trae, VS Code, Windsurf, Cline, Zed and more."
+name = "powertokens-kit"
+version = "0.5.0"
+description = "Run PowerTokens image / video / Seedance / audio / chat models from any agent - zero-dependency Python engine + unified HTTP gateway + MCP server, with a machine-readable capability catalog."
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.9"
 dependencies = []
+keywords = ["powertokens", "mcp", "agent-skills", "image-generation",
+            "video-generation", "text-to-speech", "chat-completions"]
 
 [project.optional-dependencies]
 mcp = ["mcp[cli]>=1.2"]
 
 [project.scripts]
+# pt-video 保留为兼容别名：老脚本/README 里写的命令不失效
 pt-video = "pt_video:main"
+pt-kit = "pt_video:main"
 
 [project.urls]
-Homepage = "https://github.com/tjj1234/powertokens-video"
-Repository = "https://github.com/tjj1234/powertokens-video"
+Homepage = "https://github.com/tjj1234/powertokens-kit"
+Repository = "https://github.com/tjj1234/powertokens-kit"
 Documentation = "https://powertokens.ai/"
 
 [tool.setuptools]

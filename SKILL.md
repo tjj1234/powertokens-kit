@@ -1,5 +1,5 @@
 ---
-name: powertokens-video
+name: powertokens-kit
 description: >-
   Generate images AND videos from PowerTokens models via the official REST API.
   Images: POST /v1/images/generations (synchronous, returns data[].url, no polling).
@@ -16,6 +16,9 @@ description: >-
   the dashboard (no API endpoint) before use and uses `--type seedance`. Text-to-video works with a plain
   prompt (the engine wraps it in media:[{type:text,...}]); image-to-video needs assets uploaded to the Asset
   Library first, passed as asset:// URLs (http(s) is rejected for image-to-video).
+  The same repository also ships a unified gateway (`pt-gateway/`) that adds audio (TTS) and chat
+  models (with per-model vision / web_search / thinking annotations); this skill covers the
+  image / video / Seedance engine itself.
 license: MIT
 compatibility: >-
   Requires Python 3.9+ only (standard library, no Node.js / requests / powertokens-cli needed).
@@ -23,12 +26,12 @@ compatibility: >-
   that can run a shell command (Claude Code, Cursor, Trae, VS Code Copilot, Windsurf, Cline,
   Zed, Codex, …) and as an MCP server for any MCP client.
 metadata:
-  author: powertokens-video contributors
-  version: "0.4.1"
-  homepage: https://github.com/your-org/powertokens-video
+  author: powertokens-kit contributors
+  version: "0.5.0"
+  homepage: https://github.com/tjj1234/powertokens-kit
 ---
 
-# PowerTokens 图片 + 视频生成 Skill
+# PowerTokens 图片 / 视频 / Seedance Skill（powertokens-kit 的 Skill 入口）
 
 直连官方 REST API 调用 PowerTokens 的全部图片与视频模型。入口脚本 `pt_video.py`（纯 Python 标准库，
 零外部依赖）：

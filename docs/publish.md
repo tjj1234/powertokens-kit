@@ -21,17 +21,17 @@ ClawHub 是 `agentskills.io` 开放标准的社区注册表，收录可被 40+ a
 
 1. 在 GitHub 上发布一个 **Release**（建议带 tag，如 `v0.1.0`），保证 `SKILL.md` 在仓库根。
 2. 打开 ClawHub 提交页（或在 Agent Skills 兼容客户端里执行发布命令），填入：
-   - Skill 仓库 URL：`https://github.com/tjj1234/powertokens-video`
+   - Skill 仓库 URL：`https://github.com/tjj1234/powertokens-kit`
    - 入口路径：`/`（根目录即 skill 文件夹）
    - 分类：`media / video-generation`
 3. 提交后等待审核/索引；上线后用户可在客户端执行类似：
    ```bash
    # 例：Claude Code 安装社区 skill
-   claude skills install powertokens-video
+   claude skills install powertokens-kit
    ```
    或直接在支持的市场里一键添加。
 
-> 注：`name` 必须为 `powertokens-video` 且与目录同名；若 registry 已存在同名，请在 `metadata` 里用 `author` 区分，或改名（同时改目录名与 frontmatter `name`）。
+> 注：`name` 必须为 `powertokens-kit` 且与目录同名；若 registry 已存在同名，请在 `metadata` 里用 `author` 区分，或改名（同时改目录名与 frontmatter `name`）。
 
 ---
 
@@ -48,14 +48,14 @@ mcp.so 是 MCP server 的社区目录。本项目 `mcp_server.py` 即 server 入
 
 1. 打开 <https://mcp.so> → Add MCP Server。
 2. 填写：
-   - **Name**：`powertokens-video`
+   - **Name**：`powertokens-kit`
    - **Repository / Command**：
      ```json
      {
        "mcpServers": {
-         "powertokens-video": {
+         "powertokens-kit": {
            "command": "python",
-           "args": ["/abs/path/to/powertokens-video/mcp_server.py"],
+           "args": ["/abs/path/to/powertokens-kit/mcp_server.py"],
            "env": { "POWERTOKENS_API_KEY": "sk-pt-xxxx" }
          }
        }

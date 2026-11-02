@@ -44,7 +44,8 @@ video / seedance 异步拿 task_id 后轮询）。
 ## 2. 接口契约
 
 服务地址：`http://<host>:8787`（端口取 `PT_GATEWAY_PORT`，默认 8787）。Key 走
-`POWERTOKENS_API_KEY` 环境变量或 `~/.config/powertokens-video/config.json`（与 CLI 共用）。
+`POWERTOKENS_API_KEY` 环境变量或 `~/.config/powertokens-kit/config.json`（与 CLI 共用；
+旧路径 `~/.config/powertokens-video/config.json` 自动回落兼容）。
 
 ### GET /health
 ```json
@@ -271,8 +272,8 @@ print(gw.wait(tid))
 **每日两次完全无感**。已用 WorkBuddy 自动化建好每日 12:00 / 19:00 的定时任务，本质是定时执行：
 
 ```
-C:/Users/admin/.workbuddy/binaries/python/versions/3.13.12/python.exe ^
-  c:/Users/admin/WorkBuddy/2026-09-28-11-17-14/powertokens-video/pt-gateway/pt_gateway.py sync
+# 在仓库根目录执行（把 python 换成你的解释器即可）
+python pt-gateway/pt_gateway.py sync
 ```
 
 - 若想改成**每小时**一次（同样免费），把自动化 rrule 改成 `FREQ=HOURLY;INTERVAL=1` 即可。

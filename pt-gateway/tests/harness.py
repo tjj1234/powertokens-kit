@@ -22,8 +22,8 @@ import unittest
 from pathlib import Path
 
 TESTS_DIR = Path(__file__).resolve().parent
-GW_DIR = TESTS_DIR.parent          # .../powertokens-video/pt-gateway
-REPO_ROOT = GW_DIR.parent          # .../powertokens-video（pt_video.py 所在）
+GW_DIR = TESTS_DIR.parent          # <repo>/pt-gateway
+REPO_ROOT = GW_DIR.parent          # <repo>（pt_video.py 所在）
 
 for _p in (str(GW_DIR), str(REPO_ROOT)):
     if _p not in sys.path:

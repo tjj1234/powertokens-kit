@@ -25,7 +25,8 @@ PowerTokens 图片 + 视频生成 —— 跨 agent 工具的可移植引擎（�
 
 设计原则（工具无关）：
   - 不依赖任何特定 agent 格式。Key 优先读环境变量 POWERTOKENS_API_KEY；其次 config.json。
-  - config.json 默认在 ~/.config/powertokens-video/（可用 PT_VIDEO_CONFIG 覆盖），不写进 skill 目录。
+  - config.json 默认在 ~/.config/powertokens-kit/（可用 PT_VIDEO_CONFIG 覆盖），不写进 skill 目录；
+    旧路径 ~/.config/powertokens-video/ 仍会自动回落读取（更名兼容，老用户零迁移）。
   - 默认模型 = auto（除非用 config --set-model 固定，或 generate 显式 -m）。generate 按模型类型自动分流视频/图片。
 
 子命令：
@@ -53,11 +54,32 @@ import urllib.request
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-# 配置与任何 agent 解耦：默认放用户级目录，可用环境变量覆盖
-CONFIG_PATH = Path(os.environ.get(
-    "PT_VIDEO_CONFIG",
-    Path.home() / ".config" / "powertokens-video" / "config.json",
-))
+# 配置与任何 agent 解耦：默认放用户级目录，可用环境变量覆盖。
+# 0.5.0 起项目更名为 powertokens-kit；配置目录保持向后兼容：
+#   1) PT_VIDEO_CONFIG 显式指定优先
+#   2) 新目录 ~/.config/powertokens-kit/config.json
+#   3) 回落到旧目录 ~/.config/powertokens-video/config.json（老用户无需迁移）
+def _resolve_config_path(env_path=None, home=None):
+    """解析配置文件路径（参数可注入，便于单测）。
+
+    优先级：PT_VIDEO_CONFIG > ~/.config/powertokens-kit/config.json
+    > ~/.config/powertokens-video/config.json（旧名回落）> 新路径（首次写入）。
+    """
+    if env_path is None:
+        env_path = os.environ.get("PT_VIDEO_CONFIG")
+    if env_path:
+        return Path(env_path)
+    base = Path(home) if home else Path.home()
+    new = base / ".config" / "powertokens-kit" / "config.json"
+    legacy = base / ".config" / "powertokens-video" / "config.json"
+    if new.exists():
+        return new
+    if legacy.exists():
+        return legacy
+    return new
+
+
+CONFIG_PATH = _resolve_config_path()
 ONBOARD_URL = "https://powertokens.ai/zh-Hans/dashboard"
 PT_BASE = "https://api.powertokens.ai"
 

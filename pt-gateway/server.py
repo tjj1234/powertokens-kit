@@ -15,7 +15,8 @@ PT Gateway HTTP 服务（stdlib http.server，零外部依赖）。
   POST /sync                         -> 触发 ModelRegistry.sync(key)，返回 {added,removed,total_enabled,last_synced}
   GET  /models?kind=video|seedance   -> 注册表里 enabled 的异步模型列表（自动惰性同步）
 
-Key：服务端与 pt_video 一致——环境变量 POWERTOKENS_API_KEY 或 config.json（~/.config/powertokens-video/config.json）。
+Key：服务端与 pt_video 一致——环境变量 POWERTOKENS_API_KEY 或 config.json（~/.config/powertokens-kit/config.json；
+旧路径 ~/.config/powertokens-video/config.json 自动回落兼容）。
 端口：环境变量 PT_GATEWAY_PORT（默认 8787）。
 
 启动：
