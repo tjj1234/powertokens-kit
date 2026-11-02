@@ -222,6 +222,10 @@ WorkBuddy 沙箱里 **git 的 loose ref 写入不落盘**是一切怪象总根�
 - **D.30 `ls-tree` 不加 `-r` 列目录回显为空**：加 `-r` 递归列出；交叉验证组合 `ls-tree -r` + `diff --name-only` + `cat-file -t`。
 - **D.31 与其他 agent 共用工作目录**：用「零接触提交」（临时 index + commit-tree + SHA refspec 推送）。
 - **D.32 校验文件一致性直接比字节数 → 误判**：先归一化行尾（CRLF→LF）再比。
+- **D.33【致命 · 丢数据】`git rm` 会连带清空整个父目录**：执行 `git rm docs/pitfall-archive.html` 后，**整个 `docs/` 从工作区消失**——同目录的 `pitfall-archive.md` / `publish.md` 一并被删，`git status` 把它们显示成 ` D`。当时 md 有 28282 字符未暂存编辑，而 HEAD 里只有 22462 字符的旧版，编辑随工作区一起蒸发。
+  - **判据**：删完立刻 `git status --porcelain`。若出现**你没指定的**文件被标 ` D`，就是踩了这个坑，而不是你真的删了它。
+  - **恢复**：别用 `checkout` / `reset`（同样会漏写工作树，见 D.28）。用 `git cat-file -p HEAD:<path>` 取原始字节 → 用脚本写回磁盘（先建父目录），再逐条重放未提交的修改，每条 `assert 锚点 count == 1`。
+  - **预防**：任何动 worktree 的 git 命令（`rm` / `filter-branch` / `checkout` / `reset`）执行前，先把未提交改动 `git add` 进 index **或复制到仓库外**；提交后再校验目标文件仍在。
 
 ---
 
