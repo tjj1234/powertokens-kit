@@ -151,5 +151,54 @@ def generate_seedance(prompt: str, model: str = "auto", duration_s: int = 5,
     return json.dumps({"ok": rc == 0, "returncode": rc, "tail": out.strip()[-800:]}, ensure_ascii=False)
 
 
+@mcp.tool()
+def query_balance() -> str:
+    """查询当前 API Key 维度的可用余额（credits）。返回 PT 原始 JSON（code/data：balance/currency/key_id/is_cached/...）。只读，不扣费。"""
+    rc, out = _run(["balance"])
+    for line in out.splitlines():
+        line = line.strip()
+        if line.startswith("{"):
+            return line
+    return json.dumps({"error": out.strip()[:300]}, ensure_ascii=False)
+
+
+@mcp.tool()
+def query_usage(start_date: str = "", end_date: str = "") -> str:
+    """查询按模型类型汇总的消耗账单（GET /v1/billing/usage）。可选 start_date/end_date（YYYY-MM-DD）。返回 PT 原始 JSON（total_cost/items/period...）。只读。"""
+    args = ["usage"]
+    if start_date:
+        args += ["--start-date", start_date]
+    if end_date:
+        args += ["--end-date", end_date]
+    rc, out = _run(args)
+    for line in out.splitlines():
+        line = line.strip()
+        if line.startswith("{"):
+            return line
+    return json.dumps({"error": out.strip()[:300]}, ensure_ascii=False)
+
+
+@mcp.tool()
+def query_logs() -> str:
+    """查询账号下的消费记录明细（GET /v1/logs/query）。含模型/计费/用量。返回 PT 原始 JSON。只读。"""
+    rc, out = _run(["logs"])
+    for line in out.splitlines():
+        line = line.strip()
+        if line.startswith("{"):
+            return line
+    return json.dumps({"error": out.strip()[:300]}, ensure_ascii=False)
+
+
+@mcp.tool()
+def query_agreement() -> str:
+    """查询资产库协议签署状态与资产库启用状态（GET /v1/asset/agreement/status）。返回 PT 原始 JSON（account_id/agreement_accepted/asset_library_enabled）。只读。"""
+    rc, out = _run(["agreement"])
+    for line in out.splitlines():
+        line = line.strip()
+        if line.startswith("{"):
+            return line
+    return json.dumps({"error": out.strip()[:300]}, ensure_ascii=False)
+
+
 if __name__ == "__main__":
     mcp.run()

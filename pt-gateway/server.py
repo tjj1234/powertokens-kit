@@ -33,7 +33,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 # 复用同目录的网关核心
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from pt_gateway import TaskGateway, ModelRegistry, resolve_key, ApiError, ASYNC_KINDS  # noqa: E402
+from pt_gateway import TaskGateway, ModelRegistry, resolve_key, ApiError, ASYNC_KINDS, account_query  # noqa: E402
 
 PORT = int(os.environ.get("PT_GATEWAY_PORT", "8787"))
 REGISTRY = ModelRegistry().load()
@@ -114,10 +114,36 @@ class Handler(BaseHTTPRequestHandler):
                 "kind": kind, "count": len(models), "models": models,
                 "last_synced": REGISTRY.data.get("last_synced"),
             })
+        # ---- 账户 / 计费只读查询（与生成接口不同域，裸 key 鉴权）----
+        if self.path.startswith("/account/balance"):
+            try:
+                return self._send(200, account_query("balance"))
+            except ApiError as e:
+                return self._send(502, {"error": str(e.message), "status": e.status})
+        if self.path.startswith("/account/usage"):
+            from urllib.parse import urlparse, parse_qs
+            qs = parse_qs(urlparse(self.path).query)
+            sd = (qs.get("start_date") or [None])[0]
+            ed = (qs.get("end_date") or [None])[0]
+            try:
+                return self._send(200, account_query("usage", start_date=sd, end_date=ed))
+            except ApiError as e:
+                return self._send(502, {"error": str(e.message), "status": e.status})
+        if self.path.startswith("/account/logs"):
+            try:
+                return self._send(200, account_query("logs"))
+            except ApiError as e:
+                return self._send(502, {"error": str(e.message), "status": e.status})
+        if self.path.startswith("/account/agreement"):
+            try:
+                return self._send(200, account_query("agreement"))
+            except ApiError as e:
+                return self._send(502, {"error": str(e.message), "status": e.status})
         return self._send(404, {"error": "not found", "routes": [
             "GET /health", "GET /capabilities?kind=", "POST /generate",
             "POST /submit", "GET /status?task_id=",
             "POST /wait", "POST /sync", "GET /models?kind=",
+            "GET /account/balance", "GET /account/usage", "GET /account/logs", "GET /account/agreement",
         ]})
 
     def do_POST(self):

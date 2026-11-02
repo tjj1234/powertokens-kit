@@ -730,6 +730,33 @@ def _cmd_probe_cap(model, persist=False, sweep_all=False):
     print(json.dumps(res, ensure_ascii=False, indent=2))
 
 
+# ---------- 账户 / 计费只读查询（与资产库同域，裸 key 鉴权；复用引擎 _account_call）----------
+def account_query(action, key=None, start_date=None, end_date=None):
+    """账户 / 计费只读查询。action ∈ balance | usage | logs | agreement。
+
+    这些接口在 powertokens.ai/api 域（与生成接口 api.powertokens.ai 不同域），
+    鉴权用裸 key（与资产上传一致），不是 Bearer。返回 PT 原始 JSON（含 code/data）。
+    失败抛 ApiError（401=缺 Key；若返回 401/403 可能该域要网页登录令牌而非 API Key）。
+    """
+    k = key or resolve_key()
+    if not k:
+        raise ApiError(401, "缺少 API Key：设置环境变量 POWERTOKENS_API_KEY 或 config.json")
+    if action == "balance":
+        return pt_video._account_call("GET", pt_video.ACCOUNT_BALANCE, k)
+    if action == "logs":
+        return pt_video._account_call("GET", pt_video.ACCOUNT_LOGS, k)
+    if action == "agreement":
+        return pt_video._account_call("GET", pt_video.ACCOUNT_AGREEMENT, k)
+    if action == "usage":
+        params = {}
+        if start_date:
+            params["start_date"] = start_date
+        if end_date:
+            params["end_date"] = end_date
+        return pt_video._account_call("GET", pt_video.ACCOUNT_USAGE, k, params=params)
+    raise ApiError(0, f"unknown account action: {action}")
+
+
 if __name__ == "__main__":
     import argparse
     ap = argparse.ArgumentParser(description="PT Gateway 核心模块（自检 / 注册表同步 / 能力目录 / 能力探测）")

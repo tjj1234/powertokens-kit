@@ -121,5 +121,17 @@ def task_status(task_id: str, wait: bool = False, timeout_s: int = 600) -> str:
     return _wrap(lambda: GW.get_status(task_id))
 
 
+@mcp.tool()
+def account_query(action: str, start_date: str = "", end_date: str = "") -> str:
+    """账户 / 计费只读查询（与生成接口不同域，用裸 API key 鉴权）。action=balance|usage|logs|agreement。
+
+    usage 可带 start_date/end_date(YYYY-MM-DD) 限定统计周期。返回 PT 原始 JSON（含 code/data）：
+    balance 给当前 Key 余额（credits）；usage 给按模型类型汇总的消耗；logs 给消费记录明细；
+    agreement 给资产库协议签署状态。只读，不扣费。
+    注意：若返回 401/403，可能该域要的是网页登录令牌而非 API Key（与生成接口的 Bearer 不同）。
+    """
+    return _wrap(lambda: account_query(action, start_date=start_date or None, end_date=end_date or None))
+
+
 if __name__ == "__main__":
     mcp.run()

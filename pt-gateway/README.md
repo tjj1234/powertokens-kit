@@ -1,51 +1,66 @@
-# PT Gateway —— PT 统一媒体能力层（核心库 + HTTP 服务 + MCP 薄壳）
+# PT Gateway — Unified PT Media Capability Layer (core library + HTTP service + thin MCP shell)
 
-把 PowerTokens 的**全部生成能力**（image / video / seedance / audio / chat，含每个模型的能力档案）
-收敛成一套统一接口：agent 调 `list_capabilities` 就能拿到全部模型能力，**不用再翻文档查**；
-调 `media_generate` 一个入口即可生成，网关按 kind 自动路由（image / audio / chat 同步直返，
-video / seedance 异步拿 task_id 后轮询）。
+> 📘 This document is in English. [中文文档](README.zh-CN.md)
 
-> 两个已确认的平台事实（2026-10-30）：
-> 1. `GET /v1/models` 返回 PT **全量**模型清单（所有 key 相同），不是「本 key 权限视图」；
->    因此网关不做权限拦截，本 key 无权限时由 PT 服务端报错并透传。
-> 2. PT **不提供**异步任务取消接口，故本网关不实现取消（HTTP 无 `/cancel`，MCP 不暴露取消工具）。
+Consolidates **all** of PowerTokens' generation capabilities (image / video / seedance / audio / chat, including a capability profile for every model) into one unified interface: an agent calls `list_capabilities` to get every model's abilities **without consulting docs**; it calls `media_generate` as a single entry point and the gateway routes by kind automatically (image / audio / chat return synchronously, video / seedance return a task_id and then poll).
 
-> 关键前提纠偏：PT 底层是 OneAPI 透明路由，**所有视频/Seedance 模型本来就共用**
-> `POST /v1/videos` + `GET /v1/videos/{id}`，并不存在「各家独立接口」。本服务归一化的是
-> **请求体构造差异**与**返回字段位置差异**，并补上**能力目录**与**模型自动发现/上下架同步**。
+> Two confirmed platform facts (2026-10-30):
+> 1. `GET /v1/models` returns PT's **full** model list (identical for every key), not a "this-key permission view";
+>    so the gateway does no permission gating — when this key lacks permission, PT's server errors and is passed through transparently.
+> 2. PT **provides no** async task-cancel endpoint, so this gateway implements no cancel (no `/cancel` over HTTP, no cancel tool exposed over MCP).
+
+> Key premise correction: PT's substrate is OneAPI transparent routing — **all** video / Seedance models already share
+> `POST /v1/videos` + `GET /v1/videos/{id}`; there is no "separate interface per vendor". What this service normalizes is
+> the **request-body construction differences** and the **result-field location differences**, plus a **capability catalog** and **automatic model discovery / on/off-board sync**.
 
 ---
 
-## 1. 架构
+## Table of Contents
+
+1. [Architecture](#1-architecture)
+2. [Interface Contract](#2-interface-contract)
+3. [Normalized State Machine](#3-normalized-state-machine)
+4. [Model Registry & Auto-Update](#4-model-registry--auto-update)
+5. [Startup](#5-startup)
+6. [Relationship to the Existing CLI](#6-relationship-to-the-existing-cli)
+7. [Known Gaps](#7-known-gaps)
+8. [Manual Trigger + Scheduled Sync](#8-manual-trigger--scheduled-sync)
+9. [Unified Media Capability Catalog (catalog.json)](#9-unified-media-capability-catalog-catalogjson)
+10. [Testing (three tiers: unit / contract / live)](#10-testing-three-tiers-unit--contract--live)
+11. [Account / Billing Read-Only Query](#11-account--billing-read-only-query)
+
+---
+
+## 1. Architecture
 
 ```
-调用方 (任意 agent / 网页 / 脚本)
+Caller (any agent / web page / script)
         │  POST /generate │ POST /submit │ GET /status │ POST /wait │ POST /sync │ GET /models │ GET /capabilities
         ▼
-┌──────────────────────── pt-gateway (stdlib http.server, 零依赖) ────────────────────────┐
+┌──────────────────────── pt-gateway (stdlib http.server, zero deps) ────────────────────────┐
 │  TaskGateway                                                                                    │
-│   ├─ submit(model,...)  → build_submit_body(kind 适配) → POST /v1/videos → {task_id}       │
+│   ├─ submit(model,...)  → build_submit_body(kind adapt) → POST /v1/videos → {task_id}       │
 │   ├─ get_status(tid)    → GET /v1/videos/{id} → normalize_status()                          │
-│   ├─ wait(tid,timeout)  → 复用引擎 poll_task 轮询到终态 → 归一化                            │
-│   └─ chat/audio        → 同步直返（POST /v1/chat/completions、POST /v1/audio/speech）        │
+│   ├─ wait(tid,timeout)  → reuse engine poll_task to poll to terminal → normalize             │
+│   └─ chat/audio        → sync direct return (POST /v1/chat/completions, POST /v1/audio/speech)│
 │  ModelRegistry (registry.json)                                                                  │
-│   └─ sync(key): GET /v1/models（PT 全量清单）→ diff 出上下架；不做权限拦截                   │
+│   └─ sync(key): GET /v1/models (PT full list) → diff on/off-board; no permission gating     │
 └───────────────────────────────┬──────────────────────────────────────────────────────────┘
                                  │  Bearer <POWERTOKENS_API_KEY>
                                  ▼
                    api.powertokens.ai  (/v1/videos, /v1/models)
 ```
 
-`pt_gateway.py` 复用同仓 `pt_video.py` 的 REST 原语（`_api_call` / 端点常量 / 模型识别），
-**不依赖 CLI 子命令**——它是独立模块，只是借用了已验证的传输层实现。
+`pt_gateway.py` reuses the same-repo `pt_video.py`'s REST primitives (`_api_call` / endpoint constants / model recognition),
+**without depending on CLI subcommands** — it is a standalone module that merely borrows the validated transport layer.
 
 ---
 
-## 2. 接口契约
+## 2. Interface Contract
 
-服务地址：`http://<host>:8787`（端口取 `PT_GATEWAY_PORT`，默认 8787）。Key 走
-`POWERTOKENS_API_KEY` 环境变量或 `~/.config/powertokens-kit/config.json`（与 CLI 共用；
-旧路径 `~/.config/powertokens-video/config.json` 自动回落兼容）。
+Service address: `http://<host>:8787` (port from `PT_GATEWAY_PORT`, default 8787). The Key comes from the
+`POWERTOKENS_API_KEY` environment variable or `~/.config/powertokens-kit/config.json` (shared with the CLI;
+the old path `~/.config/powertokens-video/config.json` is auto-fallback-compatible).
 
 ### GET /health
 ```json
@@ -53,15 +68,15 @@ video / seedance 异步拿 task_id 后轮询）。
 ```
 
 ### GET /capabilities?kind=<image|video|seedance|audio|chat>
-能力目录（agent 查这个，代替翻文档）：`kinds`（各类型执行方式/端点/前置）+ `models`
-（每模型：kind、价格、时长上限、分辨率、输入模式），并叠加注册表 `registry_enabled` / `delisted` 实时状态。
+Capability catalog (agents query this instead of reading docs): `kinds` (per-type execution method / endpoint / prerequisites) + `models`
+(per model: kind, price, max duration, resolution, input modes), overlaid with the registry's live `registry_enabled` / `delisted` status.
 ```json
 {
   "kinds": {
     "video": { "execution": "async", "submit": "/v1/videos", "poll": "/v1/videos/{task_id}" },
     "audio": { "execution": "sync", "submit": "/v1/audio/speech",
                "poll": null, "vendor": "OpenAI-compatible (MiniMax TTS)",
-               "capabilities_observed": ["语音合成(TTS)", "音色选择(voice 必填)"] }
+               "capabilities_observed": ["TTS (voice synthesis)", "voice selection (voice required)"] }
   },
   "models": {
     "seedance-1-5-pro-251215": { "kind": "seedance", "price_usd_5s_720p": 0.247,
@@ -72,104 +87,117 @@ video / seedance 异步拿 task_id 后轮询）。
 }
 ```
 
-### POST /generate（统一媒体生成入口）
-请求体：
+### POST /generate (unified media generation entry point)
+Request body:
 ```json
 {
-  "kind": "video",          // 可选；model 具体给 ID 时可省略（自动反推）
-  "model": "auto",          // auto=按 注册表优先→目录候选 自动选；或具体模型 ID
-  "prompt": "一只猫在草地上走",
-  "aspect_ratio": "16:9",   // 仅 image
-  "n": 1,                   // 仅 image
-  "duration": 5, "resolution": "720p", "ratio": "16:9",   // 仅 video/seedance
-  "first_frame": "asset://<id>", "ref_image": "", "ref_video": "",  // 可选
+  "kind": "video",          // optional; can be omitted when a specific model ID is given (auto-inferred)
+  "model": "auto",          // auto = auto-select by registry priority → catalog candidate; or a specific model ID
+  "prompt": "a cat walking on the grass",
+  "aspect_ratio": "16:9",   // image only
+  "n": 1,                   // image only
+  "duration": 5, "resolution": "720p", "ratio": "16:9",   // video/seedance only
+  "first_frame": "asset://<id>", "ref_image": "", "ref_video": "",  // optional
   "wait": false, "timeout": 600
 }
 ```
-响应按 kind 分流：
-- `image` → `{"ok":true,"kind":"image","execution":"sync","model":"...","urls":["..."]}`（同步直返）
-- `video` / `seedance` → `{"task_id":"...","kind":"...","execution":"async","model":"..."}`（用 /status 查）
-- `audio` → `{"ok":true,"kind":"audio","execution":"sync","voice":"alloy","url":"..."}`（同步生成，POST `/v1/audio/speech`；**`voice` 必填**）
-- `chat` → `{"ok":true,"kind":"chat","execution":"sync","text":"..."}`（同步生成，POST /v1/chat/completions）
+Response branches by kind:
+- `image` → `{"ok":true,"kind":"image","execution":"sync","model":"...","urls":["..."]}` (sync direct return)
+- `video` / `seedance` → `{"task_id":"...","kind":"...","execution":"async","model":"..."}` (query via /status)
+- `audio` → `{"ok":true,"kind":"audio","execution":"sync","voice":"alloy","url":"..."}` (sync generation, POST `/v1/audio/speech`; **`voice` required**)
+- `chat` → `{"ok":true,"kind":"chat","execution":"sync","text":"..."}` (sync generation, POST /v1/chat/completions)
 
 ### POST /submit
-请求体：
+Request body:
 ```json
 {
-  "model": "seedance-1-5-pro-251215",   // 必填；video/seedance 任一模型 ID
-  "prompt": "一只猫在草地上走",           // 文生视频必填；图生视频也可留空
-  "duration": 5,                          // 秒，2-30
+  "model": "seedance-1-5-pro-251215",   // required; any video/seedance model ID
+  "prompt": "a cat walking on the grass", // required for text-to-video; can be left empty for image-to-video
+  "duration": 5,                          // seconds, 2-30
   "resolution": "720p",                   // 480P/720P/1080P
   "ratio": "16:9",
-  "first_frame": "asset://<id>",          // 可选，图生视频（Seedance 必须 asset://）
-  "ref_image": "https://...",             // 可选
-  "ref_video": "https://...",             // 可选
+  "first_frame": "asset://<id>",          // optional, image-to-video (Seedance requires asset://)
+  "ref_image": "https://...",             // optional
+  "ref_video": "https://...",             // optional
   "no_audio": false,
   "no_prompt_extend": false,
   "watermark": false,
-  "seed": 42,                             // 可选
-  "wait": false,                          // true 则轮询到终态再返回
-  "timeout": 600                          // wait=true 时的轮询上限（秒）
+  "seed": 42,                             // optional
+  "wait": false,                          // true → poll to terminal then return
+  "timeout": 600                          // poll cap (seconds) when wait=true
 }
 ```
-响应（`wait=false`）：
+Response (`wait=false`):
 ```json
 { "task_id": "abc123", "kind": "seedance" }
 ```
-响应（`wait=true`）：归一化状态（见 §3）。
+Response (`wait=true`): normalized status (see §3).
 
 ### GET /status?task_id=<id>
 ```json
-{ "task_id": "abc123", "state": "RUNNING", "progress": 30, "url": null, "raw": { ...厂商原文... } }
+{ "task_id": "abc123", "state": "RUNNING", "progress": 30, "url": null, "raw": { ...vendor original... } }
 ```
 
 ### POST /wait
 ```json
 { "task_id": "abc123", "timeout": 600 }
 ```
-→ 归一化终态（成功带 `url`，失败带 `error`）。
+→ normalized terminal state (success carries `url`, failure carries `error`).
 
 ### POST /sync
-用当前 Key 拉 `GET /v1/models` 刷新注册表。
+Refresh the registry by pulling `GET /v1/models` with the current Key.
 ```json
 { "added": ["new-model-id"], "removed": ["delisted-model-id"], "total_enabled": 9, "last_synced": "2026-10-29T..." }
 ```
 
 ### GET /models?kind=video|seedance
-返回注册表里 enabled 的异步模型列表（调用时惰性自动同步）。
+Returns the enabled async models in the registry (lazy auto-sync on call).
 ```json
 { "kind": "seedance", "count": 3, "models": ["..."], "last_synced": "..." }
 ```
 
-### 取消（不提供）
+### Cancel (not provided)
 
-PT 无异步任务取消接口（2026-10-30 与官方确认），本网关因此**不实现取消**：
-HTTP 无 `/cancel` 端点，MCP 也不暴露取消工具。任务提交后只能等待其自行结束。
+PT has no async task-cancel endpoint (confirmed with the official team on 2026-10-30), so this gateway therefore **implements no cancel**:
+there is no `/cancel` endpoint over HTTP, and MCP exposes no cancel tool. Once a task is submitted it can only be left to finish on its own.
+
+### Account / billing read-only query (different host & auth — see §11)
+
+Four read-only endpoints are also exposed over HTTP:
+
+| Route | Method + path | Notes |
+|---|---|---|
+| Account balance (by Key) | `GET /account/balance` | returns balance / currency `credits` / key_id; wraps `account_query("balance")` |
+| Billing summary by model | `GET /account/usage` | reads optional `start_date` / `end_date` query params (YYYY-MM-DD); wraps `account_query("usage", ...)` |
+| Consumption records | `GET /account/logs` | wraps `account_query("logs")` |
+| Asset-library agreement status | `GET /account/agreement` | wraps `account_query("agreement")` |
+
+On `ApiError` these routes return **502** with `{"error":...,"status":...}`. These endpoints hit the **separate** `https://powertokens.ai/api` host (the dashboard / asset backend), **not** `api.powertokens.ai`, and use **bare-key auth** (`Authorization: <key>`, no `Bearer`) — the same domain and auth style as asset upload. They are **read-only**: they never generate and never deduct credits. See §11 for the full API reference and the verification caveat.
 
 ---
 
-## 3. 归一化状态机
+## 3. Normalized State Machine
 
-`normalize_status()` 把各厂商动词映射为统一枚举：
+`normalize_status()` maps each vendor's verb into a unified enum:
 
-| 厂商原始 status | 归一化 |
+| Vendor raw status | Normalized |
 |---|---|
 | `succeeded` / `completed` | `SUCCEEDED` |
 | `pending` / `queued` / `submitted` | `QUEUED` |
 | `running` / `processing` / `in_progress` / `generating` | `RUNNING` |
 | `failed` | `FAILED` |
 | `cancelled` / `canceled` | `CANCELLED` |
-| 其他 | `UNKNOWN` |
+| other | `UNKNOWN` |
 
-结果 URL 兼容 `metadata.url` / `metadata.content_url` / `task.url` 多处位置，统一放到 `url` 字段。
+The result URL is reconciled across `metadata.url` / `metadata.content_url` / `task.url`, unified into the `url` field.
 
 ---
 
-## 4. 模型注册表与自动更新机制
+## 4. Model Registry & Auto-Update
 
-文件：`~/.config/pt-gateway/registry.json`（可用 `PT_GATEWAY_REGISTRY` 覆盖；已 gitignore）。
+File: `~/.config/pt-gateway/registry.json` (override with `PT_GATEWAY_REGISTRY`; already gitignored).
 
-schema：
+schema:
 ```json
 {
   "last_synced": "2026-10-29T15:00:00+00:00",
@@ -182,242 +210,302 @@ schema：
 }
 ```
 
-同步策略（`ModelRegistry.sync`）：
+Sync strategy (`ModelRegistry.sync`):
 
-- **模型清单真相源**：`GET /v1/models` 返回 PT **全量**模型（所有 key 相同，2026-10-30 确认）。
-  - 出现在列表 → `in_models=true`、`enabled=true`、`delisted=false`；新出现的打 `is_new=true`。
-  - 不再出现 → `delisted=true`、`enabled=false`（即视为下架）。
-- **不做权限拦截（fail-open）**：网关不在客户端判断「本 key 能否调某模型」。
-  若本 key 对某模型无权限，由 **PT 服务端报错**，网关原样透传。
-  （早期版本做过 fails-closed 门禁，前提是把 `/v1/models` 误当权限视图；已撤销。）
-- **惰性自动重拉**：`auto_sync_if_stale()` 在注册表为空或超过 `max_age`（默认 3600s，
-  对齐 PT 的 1 小时缓存）时，于 `/models`、`/generate` 等调用前 best-effort 重拉；失败不抛，
-  回退到现有/内置列表。也可显式 `POST /sync` 强制刷新。
+- **Model-list source of truth**: `GET /v1/models` returns PT's **full** model list (identical for every key, confirmed 2026-10-30).
+  - Present in the list → `in_models=true`, `enabled=true`, `delisted=false`; newly appearing ones get `is_new=true`.
+  - No longer present → `delisted=true`, `enabled=false` (treated as off-board).
+- **No permission gating (fail-open)**: the gateway does not decide "can this key call model X" on the client side.
+  If this key lacks permission for a model, **PT's server errors** and the gateway passes it through verbatim.
+  (An earlier version did fail-closed gating based on the mistaken premise that `/v1/models` is a permission view; that was rolled back.)
+- **Lazy auto-repull**: `auto_sync_if_stale()` best-effort re-pulls before `/models`, `/generate`, etc. calls when the registry is empty or older than `max_age` (default 3600s, aligned with PT's 1-hour cache); on failure it does not raise, falling back to the existing / built-in list. You can also explicitly `POST /sync` to force a refresh.
 
 ---
 
-## 5. 启动
+## 5. Startup
 
 ```bash
 cd pt-gateway
-python server.py                 # HTTP 服务，默认 8787
-python mcp.py                    # MCP 薄壳（stdio；需 pip install "mcp[cli]>=1.2"）
+python server.py                 # HTTP service, default 8787
+python mcp.py                    # thin MCP shell (stdio; requires pip install "mcp[cli]>=1.2")
 PT_GATEWAY_PORT=9000 python server.py
 ```
 
-MCP 客户端配置示例（把统一工具挂进 Claude/CodeBuddy/Trae）：
+MCP client config example (mount the unified tools into Claude/CodeBuddy/Trae):
 ```json
-{ "pt-gateway": { "command": "python", "args": ["<仓库路径>/pt-gateway/mcp.py"] } }
+{ "pt-gateway": { "command": "python", "args": ["<repo path>/pt-gateway/mcp.py"] } }
 ```
-3 个统一工具：`list_capabilities`（查能力，代替翻文档）/ `media_generate`（统一生成入口）/
-`task_status`（查状态，wait=true 可等到终态）。MCP 与 HTTP 共用同一份 registry.json /
-catalog.json，看到的模型目录永远一致。
+Three unified tools: `list_capabilities` (query capabilities instead of reading docs) / `media_generate` (unified generation entry point) /
+`task_status` (query status, wait=true waits to terminal). MCP and HTTP share the same registry.json /
+catalog.json, so the model catalog they see is always consistent.
 
-调用示例（curl）：
+Call examples (curl):
 ```bash
 curl http://localhost:8787/health
 curl -X POST http://localhost:8787/submit -H 'Content-Type: application/json' \
-  -d '{"model":"seedance-1-5-pro-251215","prompt":"一只猫在草地上走","wait":false}'
+  -d '{"model":"seedance-1-5-pro-251215","prompt":"a cat walking on the grass","wait":false}'
 curl "http://localhost:8787/status?task_id=abc123"
 curl -X POST http://localhost:8787/sync
 ```
 
-作为 Python 库直接调用：
+Use as a Python library directly:
 ```python
 from pt_gateway import TaskGateway, ModelRegistry
-gw = TaskGateway()                      # Key 自动从环境变量/config 取
+gw = TaskGateway()                      # Key auto-read from env/config
 tid = gw.submit("wan3.0-video", prompt="a cat", wait=False)["task_id"]
 print(gw.wait(tid))
 ```
 
----
+**MCP tools exposed:**
 
-## 6. 与现有 CLI 的关系
+| Tool | Description |
+|---|---|
+| `list_capabilities(kind)` | query the capability catalog (instead of reading docs) |
+| `media_generate(...)` | unified media generation entry point (image/audio/chat sync; video/seedance async) |
+| `task_status(task_id, wait, timeout_s)` | query async task status (wait=true polls to terminal) |
+| `account_query(action, start_date, end_date)` | **read-only** account / billing query — `action=balance\|usage\|logs\|agreement`; `usage` accepts optional `start_date`/`end_date` (YYYY-MM-DD). Wraps `pt_gateway.account_query`. Read-only, never generates or deducts credits. |
 
-`pt_video.py`（CLI + MCP）继续负责**直接生成**（含图片同步生成、Seedance 协议引导、下载等）。
-`pt-gateway` 是**独立部署的任务中枢**：把「提交/查状态/轮询/模型目录」抽成服务，适合给多个 agent
-或前端统一调用，避免每个接入方重复实现轮询与字段归一化。
-
-## 7. 已知缺口（本轮）
-
-- **不提供取消**：PT 无异步任务取消接口（已与官方确认），故本网关不实现 cancel——HTTP 无 `/cancel`、
-  MCP 不暴露取消工具。异步任务提交后只能等待其自行结束。
-- **轮询健壮性**：网关侧已覆盖 `poll_task`（429 优先按服务端 `Retry-After` 退避、缺失时指数退避、`Retry-After` 超过剩余超时则快速失败 + 5xx 连续 5 次熔断 + 4xx 透传 + 超时报错）；
-  引擎 `pt_video.py` 的 `ApiError` 已透出响应头供上层解析，但其自身 `poll_task` 仍是旧实现（10s 间隔 + 600s 上限），勿混谈。
+> Note: `account_query` is exposed as a fourth MCP tool. It hits the `powertokens.ai/api` host with bare-key auth (see §11). The three generation-related tools (`list_capabilities` / `media_generate` / `task_status`) are unchanged.
 
 ---
 
-## 8. 手动触发开关 + 定时同步（自动更新不产生额外负担）
+## 6. Relationship to the Existing CLI
 
-注册表的「自动发现新上架 / 自动下线已下架」由 §4 的 diff 兜底。**但它只在有人调用时才惰性重拉**；
-若服务长期空闲，注册表不会自己变新鲜。因此提供两种显式触发方式：
+`pt_video.py` (CLI + MCP) continues to handle **direct generation** (including image sync generation, Seedance agreement guidance, downloads, etc.).
+`pt-gateway` is an **independently deployable task hub**: it extracts "submit / query status / poll / model catalog" into a service, suitable for multiple agents
+or a front-end to call uniformly, avoiding every integrator re-implementing polling and field normalization.
 
-### 8.1 手动触发开关（两种方式，任选）
+## 7. Known Gaps (this round)
 
-1. **终端直跑（不用起服务）** —— `pt_gateway.py` 自带 `sync` 子命令：
+- **No cancel**: PT has no async task-cancel endpoint (confirmed with the official team), so this gateway implements no cancel — no `/cancel` over HTTP,
+  no cancel tool exposed over MCP. Once an async task is submitted it can only be left to finish on its own.
+- **Poll robustness**: the gateway side already covers `poll_task` (429 → prefer server `Retry-After`, fall back to exponential backoff when missing, fast-fail when `Retry-After` exceeds remaining timeout + 5 consecutive 5xx circuit-break + 4xx pass-through + timeout error);
+  the engine `pt_video.py`'s `ApiError` now surfaces response headers for upper-layer parsing, but its own `poll_task` is still the old implementation (10s interval + 600s cap) — do not conflate the two.
+
+---
+
+## 8. Manual Trigger Switch + Scheduled Sync (auto-update at no extra cost)
+
+The registry's "auto-discover newly on-boarded / auto-off-board delisted" is backstopped by the §4 diff. **But it only lazy-repulls when someone calls**;
+if the service sits idle for a long time, the registry will not freshen on its own. Hence two explicit triggers are provided:
+
+### 8.1 Manual trigger switch (two ways, pick one)
+
+1. **Run straight from the terminal (no service needed)** — `pt_gateway.py` ships a `sync` subcommand:
    ```bash
-   python pt_gateway.py sync        # 拉 /v1/models 刷新 registry.json，打印 {added,removed,total_enabled,last_synced}
-   python pt_gateway.py selfcheck   # 状态归一化自检（默认，无需 Key）
+   python pt_gateway.py sync        # pull /v1/models to refresh registry.json, print {added,removed,total_enabled,last_synced}
+   python pt_gateway.py selfcheck   # state-normalization self-check (default, no Key needed)
    ```
-   这条命令和 HTTP 服务**写入同一个** `~/.config/pt-gateway/registry.json`，所以手动刷新后服务立即可见。
+   This command writes the **same** `~/.config/pt-gateway/registry.json` as the HTTP service, so a manual refresh is immediately visible to the service.
 
-2. **服务内热刷新** —— 对运行中的网关发：
+2. **In-service hot refresh** — send to the running gateway:
    ```bash
    curl -X POST http://localhost:8787/sync
    ```
 
-### 8.2 定时同步（推荐 12:00 + 19:00，零资源负担）
+### 8.2 Scheduled sync (recommended 12:00 + 19:00, zero-resource cost)
 
-同步动作本身只是一次 `GET /v1/models`（返回几 KB JSON），服务空闲时 CPU≈0，
-**每日两次完全无感**。已用 WorkBuddy 自动化建好每日 12:00 / 19:00 的定时任务，本质是定时执行：
+The sync action itself is just one `GET /v1/models` (returns a few KB of JSON); CPU is ≈0 when the service is idle,
+**twice daily is completely unnoticed**. A WorkBuddy automation is already set up for the daily 12:00 / 19:00 jobs, essentially running on schedule:
 
 ```
-# 在仓库根目录执行（把 python 换成你的解释器即可）
+# run at the repo root (swap python for your interpreter)
 python pt-gateway/pt_gateway.py sync
 ```
 
-- 若想改成**每小时**一次（同样免费），把自动化 rrule 改成 `FREQ=HOURLY;INTERVAL=1` 即可。
-- 前提：定时任务执行时需 `POWERTOKENS_API_KEY` 在环境变量中可用（与网关取 Key 方式一致）。
-  若自动化环境未带该变量，定时刷新会跳过——此时用 8.1 的手动开关在带 Key 的终端里跑即可。
+- If you want **hourly** instead (also free), change the automation rrule to `FREQ=HOURLY;INTERVAL=1`.
+- Prerequisite: the scheduled task needs `POWERTOKENS_API_KEY` available in the environment when it runs (same Key-source as the gateway).
+  If the automation environment lacks that variable, the scheduled refresh is skipped — in that case use the 8.1 manual switch in a terminal that has the Key.
 
-> 设计取舍：PT 不提供 webhook，故采用「pull 模式」——惰性重拉（调用时 ≤1h 过期即刷）+
-> 每日两次主动定时 + 手动开关三者互补，覆盖「调用中实时新鲜」与「空闲时也不陈旧」。
+> Design trade-off: PT provides no webhook, so a "pull model" is used — lazy repull (≤1h expiry on call → refresh) +
+> twice-daily active scheduling + manual switch complement each other, covering both "fresh during calls" and "not stale when idle".
 
 ---
 
-## 9. 统一媒体能力目录（catalog.json）——agent「不用查」的关键
+## 9. Unified Media Capability Catalog (catalog.json) — the key to "agents don't look things up"
 
-`catalog.json`（随仓库分发，可用 `PT_GATEWAY_CATALOG` 覆盖路径）是**人工观测固化的能力档案**：
-PT 的 `GET /v1/models` 只返回模型 ID，**不给**分辨率/时长/模式/单价这些字段——本目录把它们
-结构化存下来，`list_capabilities` 一次给全，agent 从此不再翻文档。
+`catalog.json` (shipped with the repo, path overridable with `PT_GATEWAY_CATALOG`) is a **human-observed, fixed capability profile**:
+PT's `GET /v1/models` returns only model IDs, **not** resolution/duration/mode/price fields — this catalog structures them,
+and `list_capabilities` returns everything at once, so agents no longer read docs.
 
-**分工（和 ModelRegistry 的关系）**：
+**Division of labor (relationship to ModelRegistry)**:
 
-| | 谁维护 | 管什么 |
+| | Maintained by | Manages what |
 |---|---|---|
-| ModelRegistry（registry.json） | **自动**：sync() 拉 /v1/models 做 diff | 上下架（enabled/delisted）、is_new |
-| Catalog（catalog.json） | **人工**：实测/截图观测后补一条 | 能力字段（execution/分辨率/时长/模式/单价/前置） |
+| ModelRegistry (registry.json) | **automatic**: sync() pulls /v1/models and diffs | on/off-board (enabled/delisted), is_new |
+| Catalog (catalog.json) | **human**: add an entry after measurement/screenshot observation | capability fields (execution/resolution/duration/mode/price/prerequisites) |
 
-两者在 `list_capabilities` 里**合并输出**：目录给「能干什么」，注册表给「现在还上不上架」。
-目录没收录的新上架模型，注册表也会自动 enable（能力字段显示缺失，诚实不编造）。
+The two are **merged** in `list_capabilities`: the catalog says "what it can do", the registry says "whether it's still on-board now".
+New on-boarded models not yet in the catalog are still auto-enabled by the registry (capability fields show as missing — honest, not fabricated).
 
-schema：顶层 `kinds`（每类型的 execution/端点/前置要求/能力观测）+ `models`（每模型档案）。
-音频类（TTS）端点：**`POST /v1/audio/speech`（OpenAI 兼容，2026-10-30 真机实测）**——
-此前假设的 `/ali/...` 是错的（实测 404 / 500 `pricing rule not found`）。
-请求体 `{model, input, voice}`；**`voice` 必填**（缺则报 `voice is required`），
-可用 OpenAI 标准音色 `alloy / echo / fable / onyx / nova / shimmer`（实测全部 200）。
-响应 `{data:{audio:<mp3 url>, status:2}}`，url 在 **`data.audio`**；附 `extra_info`（时长/采样率/体积/码率）。
-文本类（chat）端点：`POST /v1/chat/completions`（OpenAI 兼容，同步返回 `choices[0].message.content`），
-`kinds.chat` 已填真实端点，`media_generate(kind=chat)` 同步返回 `{execution:"sync", text}`；
-可用 `messages` 传多轮对话，或只用 `prompt` 作单轮 user 消息（`system` 前置）。
+schema: top-level `kinds` (per-type execution/endpoint/prerequisites/capability observations) + `models` (per-model profile).
+Audio (TTS) endpoint: **`POST /v1/audio/speech` (OpenAI-compatible, real-hardware tested 2026-10-30)** —
+the previously assumed `/ali/...` was wrong (tested 404 / 500 `pricing rule not found`).
+Request body `{model, input, voice}`; **`voice` required** (missing → `voice is required`),
+usable OpenAI standard voices `alloy / echo / fable / onyx / nova / shimmer` (all 200 in testing).
+Response `{data:{audio:<mp3 url>, status:2}}`, url at **`data.audio`**; with `extra_info` (duration/sample-rate/size/bitrate).
+Text (chat) endpoint: `POST /v1/chat/completions` (OpenAI-compatible, sync returns `choices[0].message.content`),
+`kinds.chat` is filled with the real endpoint, `media_generate(kind=chat)` sync returns `{execution:"sync", text}`;
+you can pass multi-turn dialog with `messages`, or use only `prompt` as a single-turn user message (`system` prepended).
 
-### 9.1 chat 模型能力标注（多模态 / 联网搜索 / 思考模式）
+### 9.1 chat model capability labeling (multimodal / web search / thinking mode)
 
-**需求背景**：agent 选 chat 模型时要先知道它「能不能看图片 / 能不能联网搜索 / 是不是思考模型」，
-否则只能瞎试、浪费 token。现在每个 `kind=chat` 的条目都带结构化 `capabilities`：
+**Background**: when an agent picks a chat model it first needs to know "can it see images / can it web-search / is it a thinking model",
+otherwise it can only guess blindly and waste tokens. Now every `kind=chat` entry carries structured `capabilities`:
 
 ```json
 "capabilities": {
-  "multimodal": {"vision": true, "audio_in": false, "video_in": false}, // 视觉/音频/视频输入：官方 §4 逐模型清单(official)
-  "channel": "deepseek",            // 该模型经 PT 哪个渠道适配器出（ali/byteplus/zhipu/deepseek/minimax/mimo）
-  "web_search": false,              // 联网搜索：官方渠道表(official)
-  "web_search_param": null,         // 要开启时实际传的参（null=不支持）
-  "thinking": true,                 // 思考/推理模式：官方渠道表(official)
-  "thinking_param": "thinking:{\"type\":\"enabled\"|\"disabled\"}", // 开启时实际传的参
-  "tools": true,                    // 是否支持 function calling
-  "streaming": true,                // 是否支持 SSE 流式输出
-  "_source": "official+verified"    // official=官方文档 / verified=真机探测 / 两者合并
+  "multimodal": {"vision": true, "audio_in": false, "video_in": false}, // vision/audio/video input: official §4 per-model list (official)
+  "channel": "deepseek",            // which channel adapter this model goes through PT (ali/byteplus/zhipu/deepseek/minimax/mimo)
+  "web_search": false,              // web search: official channel table (official)
+  "web_search_param": null,         // the actual param to pass when enabling (null=unsupported)
+  "thinking": true,                 // thinking/reasoning mode: official channel table (official)
+  "thinking_param": "thinking:{\"type\":\"enabled\"|\"disabled\"}", // actual param when enabling
+  "tools": true,                    // whether function calling is supported
+  "streaming": true,                // whether SSE streaming is supported
+  "_source": "official+verified"    // official=official docs / verified=real-hardware probe / both merged
 }
 ```
 
-**来源分层（关键）**：PT 的 `GET /v1/models` **不返回任何能力字段**，所以这些不会从 API 自动来。
-- `web_search` / `thinking`：**官方权威数据**，来自 PT《模型能力汇总-websearch与思考模式》
-  （依据网关渠道适配器代码 + 各渠道 OpenAPI 文档，截至 2026-11-02）。取值含义：
-  - `true`：渠道有明确参数入口（如 DeepSeek `thinking`、MiniMax `reasoning_split`）
-  - `false`：网关与上游均无该能力（如 DeepSeek / MiniMax / mimo 的 web_search）
-  - `"conditional"`：**网关不注入，需客户端显式传参，且实际可用模型由上游白名单决定**
-    （如 ali 的 `enable_search`、BytePlus / 智谱的 `tools:[{type:web_search}]`、智谱 / mimo 的 `thinking`）
-  - `null`：未匹配到渠道 / 未知
-- `multimodal`（含 `vision` / `audio_in` / `video_in`）：**官方权威数据**，来自 PT《模型能力汇总》(2026-11-02)
-  的 **§4 逐模型多模态清单**（依据网关渠道适配器代码 + 各渠道 OpenAPI 文档）。
-  ⚠️ 校验经验：早期用 `probe_chat_capabilities` 真机探测 `vision` 时，因只发 `data:image/png;base64`
-  单图请求，对 **ali-qwen3 / BytePlus-seed / zhipu-glm-5.3-flash / deepseek-flash-v3-2** 等渠道
-  产生过**假阴性**（这些渠道不接受该图片格式，返回非视觉报错）。故最终以官方 §4 清单为准，
-  探针仅作"与文档一致时双重确认"之用（`official+verified`），不可单独作为结论。
-  另：官方明确 `seed-*` / `dola-seed-*` 支持**图/视频**输入，故这些模型的 `video_in=true`。
+**Source layering (key)**: PT's `GET /v1/models` **returns no capability fields**, so these never come from the API automatically.
+- `web_search` / `thinking`: **authoritative official data**, from PT's "Model Capability Summary — websearch & thinking"
+  (based on the gateway channel-adapter code + each channel's OpenAPI docs, as of 2026-11-02). Value meanings:
+  - `true`: the channel has an explicit param entry (e.g. DeepSeek `thinking`, MiniMax `reasoning_split`)
+  - `false`: neither the gateway nor the upstream has this capability (e.g. DeepSeek / MiniMax / mimo's web_search)
+  - `"conditional"`: **the gateway does not inject it; the client must pass the param explicitly, and actual availability depends on the upstream whitelist**
+    (e.g. ali's `enable_search`, BytePlus / Zhipu's `tools:[{type:web_search}]`, Zhipu / mimo's `thinking`)
+  - `null`: no channel matched / unknown
+- `multimodal` (incl. `vision` / `audio_in` / `video_in`): **authoritative official data**, from PT's "Model Capability Summary" (2026-11-02)
+  **§4 per-model multimodal list** (based on the gateway channel-adapter code + each channel's OpenAPI docs).
+  ⚠️ Probe experience: early `probe_chat_capabilities` real-hardware probing of `vision` sent only a `data:image/png;base64`
+  single-image request, producing **false negatives** for channels like **ali-qwen3 / BytePlus-seed / zhipu-glm-5.3-flash / deepseek-flash-v3-2**
+  (these channels don't accept that image format and return non-vision errors). So the official §4 list is authoritative,
+  and the probe is only used as "double-confirmation when consistent with docs" (`official+verified`), not as a standalone conclusion.
+  Also: the official docs explicitly state `seed-*` / `dola-seed-*` support **image/video** input, so these models get `video_in=true`.
 
-**官方渠道能力矩阵（直接决定 web_search / thinking 取值）**：
+**Official channel capability matrix (directly decides web_search / thinking values)**:
 
-| 渠道 | Web Search | 思考模式 |
+| Channel | Web Search | Thinking mode |
 |---|---|---|
-| 阿里百炼（ali） | 🟡 `enable_search:true`（仅部分 qwen 模型） | 🟡 `enable_thinking:true`（qwen3 系列 / qwq） |
-| BytePlus | 🟡 网关不注入，需手动 `tools:[{type:web_search}]` | 🟢 `thinking` + `reasoning_effort` |
-| 智谱（zhipu_4v） | 🟡 手动 `tools:[{type:web_search}]`（glm-4.7/5 系列） | 🟡 `thinking`（原样透传，部分模型文档支持） |
-| DeepSeek | 🔴 不支持 | 🟢 `thinking:{enabled\|disabled}` |
-| MiniMax | 🔴 不支持 | 🟢 `reasoning_split`(OpenAI) / `thinking`(Claude) |
-| mimo | 🔴 不支持 | 🟡 透传 `thinking`（待上游实测） |
+| Alibaba BaiLian (ali) | 🟡 `enable_search:true` (only some qwen models) | 🟡 `enable_thinking:true` (qwen3 series / qwq) |
+| BytePlus | 🟡 gateway does not inject; manually `tools:[{type:web_search}]` | 🟢 `thinking` + `reasoning_effort` |
+| Zhipu (zhipu_4v) | 🟡 manual `tools:[{type:web_search}]` (glm-4.7/5 series) | 🟡 `thinking` (passed through verbatim, some models documented) |
+| DeepSeek | 🔴 unsupported | 🟢 `thinking:{enabled\|disabled}` |
+| MiniMax | 🔴 unsupported | 🟢 `reasoning_split`(OpenAI) / `thinking`(Claude) |
+| mimo | 🔴 unsupported | 🟡 pass-through `thinking` (await upstream test) |
 
-（🟢=渠道有明确入口 / 🟡=需手动传参且依赖上游白名单 / 🔴=均无）
+(🟢=channel has explicit entry / 🟡=needs manual param and depends on upstream whitelist / 🔴=neither)
 
-**官方逐模型多模态清单（§4，决定 vision / video_in 取值；覆盖 38 个 chat 中的 37 个）**：
+**Official per-model multimodal list (§4, decides vision / video_in values; covers 37 of 38 chat models)**:
 
-| 渠道 | 多模态结论 |
+| Channel | Multimodal conclusion |
 |---|---|
-| 阿里百炼（ali） | `qwen3-max` / `qwen3.5~3.8` 系列 / `deepseek-v3.2` / `deepseek-v4-pro-0813` ✅ 图 |
-| BytePlus | `seed-*` / `dola-seed-*` ✅ 图/视频（`video_in=true`）；`deepseek-v3-2-251201` / `deepseek-v4-1-flash-260910` / `gpt-oss-120b` ✅ 图 |
-| 智谱（zhipu_4v） | `glm-5-turbo/5/5.1/5.2/5.3` / `glm-4.7/4.7-flash/4.5-air` ❌ 仅文本；仅 `glm-5.3-flash` ✅ 图 |
-| DeepSeek | `deepseek-v4-pro` / `deepseek-v4-flash` / `deepseek-flash` ✅ 图 |
-| MiniMax | `M2.5/M2.7/M3/M3.1-Flash` 全系 ✅ 图 |
-| mimo | `mimo-v2.6-pro` / `mimo-v2.6-flash` ✅ 图（`mimo-v2.5` 系列未列入清单，不推断） |
+| Alibaba BaiLian (ali) | `qwen3-max` / `qwen3.5~3.8` series / `deepseek-v3.2` / `deepseek-v4-pro-0813` ✅ image |
+| BytePlus | `seed-*` / `dola-seed-*` ✅ image/video (`video_in=true`); `deepseek-v3-2-251201` / `deepseek-v4-1-flash-260910` / `gpt-oss-120b` ✅ image |
+| Zhipu (zhipu_4v) | `glm-5-turbo/5/5.1/5.2/5.3` / `glm-4.7/4.7-flash/4.5-air` ❌ text only; only `glm-5.3-flash` ✅ image |
+| DeepSeek | `deepseek-v4-pro` / `deepseek-v4-flash` / `deepseek-flash` ✅ image |
+| MiniMax | `M2.5/M2.7/M3/M3.1-Flash` full series ✅ image |
+| mimo | `mimo-v2.6-pro` / `mimo-v2.6-flash` ✅ image (`mimo-v2.5` series not in the list, not inferred) |
 
-> 说明：`qwen3-coder-plus` 未列入官方逐模型清单，按"不推断"原则 `vision` 保持 `null`（待上游实测）。
-> 网关对多模态**原样透传、不做白名单**，实际可用性以上游为准。
+> Note: `qwen3-coder-plus` is not in the official per-model list, so by the "don't infer" principle `vision` stays `null` (await upstream test).
+> The gateway passes multimodal **through verbatim, no whitelist**; actual availability depends on the upstream.
 
-复现 / 交叉校验 `vision`（探测只发一条极短请求，失败即快退，成本几美分；注意它可能产生前述假阴性）：
+Reproduce / cross-check `vision` (the probe sends only one very short request, fast-fails on error, costs a few cents; note it may produce the false negatives above):
 ```bash
-python pt_gateway.py probe-cap <model>            # 单模型探测 vision（辅助校验，非权威）
-python pt_gateway.py probe-cap --all --persist    # 全量探测（结果以官方 §4 为准，冲突时以文档覆盖）
+python pt_gateway.py probe-cap <model>            # single-model vision probe (auxiliary check, not authoritative)
+python pt_gateway.py probe-cap --all --persist    # full probe (results deferred to official §4; docs override on conflict)
 ```
 
-CLI 快查：
+CLI quick lookup:
 ```bash
-python pt_gateway.py capabilities            # 打印全部能力目录
-python pt_gateway.py capabilities seedance   # 只看某类
-python pt_gateway.py capabilities chat       # 看全部 chat 模型及其 capabilities（含 web_search/thinking/param）
+python pt_gateway.py capabilities            # print the full capability catalog
+python pt_gateway.py capabilities seedance   # view only one type
+python pt_gateway.py capabilities chat       # view all chat models and their capabilities (incl. web_search/thinking/param)
 ```
 
 ---
 
-## 10. 测试（三层：unit / contract / live）
+## 10. Testing (three tiers: unit / contract / live)
 
-测试入口只有一个，`tests/run_tests.py`（零外部依赖，Python 3.9+ 标准库；也兼容 pytest）：
+One test entry point only, `tests/run_tests.py` (zero external deps, Python 3.9+ stdlib; also pytest-compatible):
 
 ```bash
-python tests/run_tests.py                    # 离线层：unit + contract，0 花费、秒级
-python tests/run_tests.py --only polling     # 只跑 id 含关键字的用例
-python tests/run_tests.py --live             # 授权跑真机层（花钱，受预算守卫保护）
+python tests/run_tests.py                    # offline tier: unit + contract, 0 cost, seconds
+python tests/run_tests.py --only polling     # run only cases whose id contains the keyword
+python tests/run_tests.py --live             # authorized run of the live tier (costs money, budget-guard protected)
 python tests/run_tests.py --live --tier standard --max-usd 1.0
 ```
 
-| 层 | 文件 | 联网 | 花费 | 跑多久 | 覆盖什么 |
+| Tier | File | Network | Cost | Duration | Covers |
 |---|---|---|---|---|---|
-| unit | `test_unit_*.py` | 禁止（离线守卫会直接判失败） | 0 | <1s | 状态归一化、请求体构造、轮询退避/熔断、注册表 diff、目录数据完整性、kind 路由 |
-| contract | `test_contract_*.py` | 仅 127.0.0.1 回环 | 0 | <1s | HTTP 路由/状态码映射/CORS、MCP 工具面与参数接线 |
-| live | `test_live.py` | 真实 PT API | 按档位 | 分钟级 | 五种 kind 全链路 + 错误路径 + 防泄漏自检 |
+| unit | `test_unit_*.py` | forbidden (offline guard fails immediately) | 0 | <1s | state normalization, request-body construction, poll backoff/circuit-break, registry diff, catalog data integrity, kind routing |
+| contract | `test_contract_*.py` | 127.0.0.1 loopback only | 0 | <1s | HTTP routing/status-code mapping/CORS, MCP tool surface & param wiring |
+| live | `test_live.py` | real PT API | per tier | minutes | all five kinds end-to-end + error paths + leak self-check |
 
-**三条硬规则**（由 `tests/harness.py` 统一强制，不靠自觉）：
+**Three hard rules** (uniformly enforced by `tests/harness.py`, not by conscience):
 
-1. **离线层不许碰网**：`_api_call` / `submit_task` 被打成守卫，漏打桩会立刻红而不是静默打真 API。
-   时间也被 `FakeClock` 接管，轮询类用例（429 退避、5xx 熔断、超时）不真 sleep 且完全确定。
-2. **live 必须显式授权**：`PT_LIVE=1` **且**拿得到 key，缺一整层 skip；付费步执行前还要过
-   `Budget` 预算守卫，累计超 `--max-usd` 立即 SKIP（宁可不跑也不超支）。
-3. **报告不许带密钥**：写盘前扫描完整 key 与 `sk-xxxx` 正则，命中即报错不落盘；
-   `test_live.py` 里还有一条用例专门校验日志脱敏有效。
+1. **Offline tier must not touch the network**: `_api_call` / `submit_task` are stubbed guards; a missed stub fails red immediately instead of silently hitting the real API.
+   Time is also taken over by `FakeClock`, so polling cases (429 backoff, 5xx circuit-break, timeout) don't really sleep and are fully deterministic.
+2. **live must be explicitly authorized**: `PT_LIVE=1` **and** a key is obtainable, otherwise the whole tier is skipped; before paid steps run, the
+   `Budget` budget guard must also pass — cumulative over `--max-usd` immediately SKIPs (rather not run than overspend).
+3. **Reports must not carry secrets**: before writing to disk it scans for full keys and the `sk-xxxx` regex; a hit errors and refuses to write;
+   `test_live.py` also has a case specifically validating that log masking works.
 
-报告产物：`tests/reports/latest.md`（+ 时间戳版本与 `.json`），含按模块统计、失败明细、真机花费。
-退出码 0/1，可直接接 CI。
+Report artifacts: `tests/reports/latest.md` (+ timestamped version and `.json`), with per-module stats, failure detail, and live cost.
+Exit code 0/1, directly CI-friendly.
 
-> 注：`e2e_report.md` 是早期一次性冒烟脚本留下的历史记录，已被本套测试取代；
-> 新报告一律看 `tests/reports/`。
+> Note: `e2e_report.md` is a historical record left by an early one-off smoke script, now superseded by this test suite;
+> new reports should always look at `tests/reports/`.
 
 ---
+
+## 11. Account / Billing Read-Only Query
+
+The gateway already implements **read-only account / billing / asset-library query** capabilities, exposed three ways: a Python function, HTTP routes, and an MCP tool. All of them hit a **separate host** `https://powertokens.ai/api` (the dashboard / asset backend) — **not** `api.powertokens.ai` — and use **bare-key auth** (`Authorization: <key>`, no `Bearer`). This is the **same domain and auth style as asset upload** (`ASSET_UPLOAD` in the engine). They are strictly **READ-ONLY**: they never generate and never deduct credits.
+
+### 11.1 Python function
+
+`account_query(action, key=None, start_date=None, end_date=None)` in `pt_gateway.py`:
+
+- `action` ∈ `balance` | `usage` | `logs` | `agreement`.
+- The key resolves from the `key` argument or the `POWERTOKENS_API_KEY` environment variable; if no key is available it raises `ApiError 401`.
+- Returns PT's raw JSON (with `code` / `data`).
+
+### 11.2 HTTP routes (all GET, in `server.py`)
+
+| Route | Backing call | Notes |
+|---|---|---|
+| `GET /account/balance` | `account_query("balance")` | returns balance / currency `credits` / key_id |
+| `GET /account/usage` | `account_query("usage", start_date, end_date)` | reads `start_date` / `end_date` query params (YYYY-MM-DD) |
+| `GET /account/logs` | `account_query("logs")` | consumption records |
+| `GET /account/agreement` | `account_query("agreement")` | asset-library agreement status |
+
+On `ApiError` they return **502** with `{"error":...,"status":...}`.
+
+### 11.3 MCP tool
+
+`account_query(action: str, start_date: str = "", end_date: str = "")` in `mcp.py`, wrapping the core function above. `usage` accepts optional `start_date` / `end_date`.
+
+### 11.4 API reference (endpoints on host `powertokens.ai/api`)
+
+### 11.5 PT HTTP status-code contract (401 / 402 / 403)
+
+All PT endpoints (generation and the `powertokens.ai/api` account / billing host) use these codes with a fixed meaning. The gateway propagates `ApiError(status, message)` unchanged; HTTP routes return `502` only when an `ApiError` is raised locally.
+
+| Status | Meaning | Typical trigger |
+|--------|---------|-----------------|
+| `401 Unauthorized` | API Key invalid / expired / missing | Bad or absent key |
+| `402 Payment Required` | Insufficient balance / quota | Generation when credits are exhausted |
+| `403 Forbidden` | No permission / model delisted | Key lacks access, or the model was removed |
+
+- The `/account/*` routes are read-only and will not return `402`.
+- A `401` / `403` from `powertokens.ai/api` may indicate the host wants a web-login token, not the API Key.
+
+| Purpose | Method + path (host `powertokens.ai/api`) | Key points |
+|---|---|---|
+| Account balance (by Key) | `GET /v1/billing/balance` | returns balance / currency `credits` / cached flag / key_id |
+| Billing summary by model | `GET /v1/billing/usage` | optional `start_date` / `end_date` (YYYY-MM-DD); per-model `total_cost` + grand total |
+| Consumption records | `GET /v1/logs/query` | consume_id / request_id / task_id / endpoint / model / status / quota / usage / billing |
+| Asset-library agreement status | `GET /v1/asset/agreement/status` | account_id / agreement_accepted / asset_library_enabled |
+
+> ⚠️ **Not verified on real hardware in the sandbox (no usable Key).** If these endpoints return 401/403, the `powertokens.ai/api` host may require a **web-login token** rather than the API Key — verify with a real Key.

@@ -39,6 +39,10 @@ PowerTokens 图片 + 视频生成 —— 跨 agent 工具的可移植引擎（�
   generate -m <id|auto> -p ... [--type image|video|seedance]  提交并取回链接
   seedance [enable|disable|status]  Seedance 协议标记管理（本地，全系 1.0/1.5/2.0/2.5 通用）
   estimate -m <id> ...          仅估算消耗（美元；图片单价待补充）
+  balance                       查询当前 Key 维度余额（只读，credits）
+  usage [--start-date --end-date] 查询按模型类型汇总的账单（只读）
+  logs                          查询消费记录明细（只读）
+  agreement                     查询资产库协议签署状态（只读）
 
 退出码：0=成功 2=缺 Key 3=显式模型未过预校验 1=其他失败
 """
@@ -50,6 +54,7 @@ import os
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -93,6 +98,44 @@ IMAGE_ENDPOINT = "/v1/images/generations"   # 实测确认：OpenAI 风格，带
 ASSET_BASE = "https://powertokens.ai/api"
 ASSET_UPLOAD = ASSET_BASE + "/v1/asset/upload"                 # POST multipart，需鉴权
 ASSET_GET_ID = ASSET_BASE + "/v1/asset/jobs/get-asset-id?task_id={}"   # GET，无需鉴权
+
+# ---------- 账户 / 计费（只读查询；与资产库同域 powertokens.ai/api，鉴权用裸 key，与资产上传一致）----------
+# 注意：这些接口的 host 是 powertokens.ai/api（仪表盘 / 资产后端域），与生成类接口的 api.powertokens.ai 不是同一套。
+# 鉴权沿用资产上传（ASSET_UPLOAD）的「裸 key」写法（Authorization: <key>，不带 Bearer），不要与生成类接口的 Bearer 混淆。
+# ⚠️ 未真机验证：沙箱无可用 Key。若返回 401/403，可能该域要的是网页登录令牌而非 API Key，请用真实 Key 实测确认。
+ACCOUNT_BASE = ASSET_BASE                                       # https://powertokens.ai/api
+ACCOUNT_AGREEMENT = "/v1/asset/agreement/status"                # GET 资产库协议签署状态
+ACCOUNT_LOGS = "/v1/logs/query"                                 # GET 消费记录
+ACCOUNT_BALANCE = "/v1/billing/balance"                         # GET 余额（按 Key 粒度）
+ACCOUNT_USAGE = "/v1/billing/usage"                             # GET 账单（按模型类型汇总）
+
+
+def _account_call(method, path, key, params=None, timeout=30):
+    """账户 / 计费类只读 GET（与资产上传同域同鉴权：裸 key）。返回 PT 原始 dict（含 code/data）。"""
+    url = ACCOUNT_BASE + path
+    if params:
+        url += ("&" if "?" in path else "?") + urllib.parse.urlencode(params)
+    req = urllib.request.Request(url, headers={
+        "Authorization": key,                                    # 裸 key（与 ASSET_UPLOAD 一致），非 Bearer
+        "Accept": "application/json",
+        "User-Agent": "pt-media-skill",
+    }, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read().decode("utf-8")
+            return json.loads(raw) if raw else {}
+    except urllib.error.HTTPError as e:
+        detail = ""
+        try:
+            detail = json.loads(e.read().decode("utf-8"))
+            if isinstance(detail, dict):
+                detail = detail.get("error") or detail.get("message") or json.dumps(detail, ensure_ascii=False)
+        except Exception:
+            pass
+        raise ApiError(e.code, str(detail) or e.reason, headers=getattr(e, "headers", None))
+    except urllib.error.URLError as e:
+        raise ApiError(0, f"网络错误：{e.reason}", headers=None)
+
 
 # ---------- 提交 / 轮询时序（按用户要求）----------
 SUBMIT_TIMEOUT = 120      # POST /v1/videos 的 HTTP 客户端超时（秒）
@@ -1084,7 +1127,7 @@ def _finish_image(model, urls, outputs, args):
 
 
 def cmd_seedance(argv):
-    """Seedance 协议标记管理（全系通用）：enable / disable / status（本地标记，无 API）。"""
+    """Seedance 协议标记管理（全系通用）：enable / disable / status。status 会 best-effort 真查服务端签署状态。"""
     parser = argparse.ArgumentParser(prog="pt_video.py seedance")
     parser.add_argument("action", nargs="?", default="status", choices=["enable", "disable", "status"])
     args = parser.parse_args(argv)
@@ -1100,12 +1143,96 @@ def cmd_seedance(argv):
         print("[ok] 已清除 Seedance 已签标记；下次使用会重新弹开通引导。")
     else:
         signed = bool(cfg.get("seedance_agreement_signed", False))
-        print(json.dumps({"seedance_agreement_signed": signed,
-                          "agreement_url": SEEDANCE_AGREEMENT_URL,
-                          "note": "协议只能仪表盘手动签，无 API；签后素材以 asset:// 传入 media"},
-                         ensure_ascii=False))
+        out = {"seedance_agreement_signed": signed,
+               "agreement_url": SEEDANCE_AGREEMENT_URL,
+               "note": "协议只能仪表盘手动签，无 API；签后素材以 asset:// 传入 media"}
+        key = os.environ.get("POWERTOKENS_API_KEY")
+        if key:
+            try:
+                sv = _account_call("GET", ACCOUNT_AGREEMENT, key)
+                d = sv.get("data", {}) if isinstance(sv, dict) else {}
+                out["agreement_accepted_server"] = bool(d.get("agreement_accepted"))
+                out["asset_library_enabled_server"] = bool(d.get("asset_library_enabled"))
+            except ApiError as e:
+                out["server_check_error"] = str(e)
+        else:
+            out["server_check_skipped"] = "未设置 POWERTOKENS_API_KEY，跳过服务端签署校验"
+        print(json.dumps(out, ensure_ascii=False))
     return 0
 
+
+
+
+def _account_get(key, action, params=None):
+    """统一封装账户 / 计费只读查询；缺 key 直接抛 ApiError(401)。"""
+    if not key:
+        key = os.environ.get("POWERTOKENS_API_KEY")
+    if not key:
+        raise ApiError(401, "缺少 API Key：请用 -k/--key 传入，或设置环境变量 POWERTOKENS_API_KEY")
+    return _account_call("GET", action, key, params=params)
+
+
+def cmd_balance(argv):
+    """余额查询（按 Key 粒度）：GET /v1/billing/balance。只读，不产生消耗。"""
+    parser = argparse.ArgumentParser(prog="pt_video.py balance")
+    parser.add_argument("-k", "--key", default=None, help="API Key（缺省读 POWERTOKENS_API_KEY）")
+    args = parser.parse_args(argv)
+    try:
+        data = _account_get(args.key, ACCOUNT_BALANCE)
+        print(json.dumps({"ok": True, "endpoint": "balance", "raw": data}, ensure_ascii=False))
+    except ApiError as e:
+        sys.stderr.write("[balance] 失败：" + str(e) + "\n")
+        return 2 if e.status == 401 else 1
+    return 0
+
+
+def cmd_usage(argv):
+    """账单查询（按模型类型汇总）：GET /v1/billing/usage。支持 --start-date / --end-date。只读。"""
+    parser = argparse.ArgumentParser(prog="pt_video.py usage")
+    parser.add_argument("-k", "--key", default=None, help="API Key（缺省读 POWERTOKENS_API_KEY）")
+    parser.add_argument("--start-date", default=None, help="起始日期 YYYY-MM-DD（可选）")
+    parser.add_argument("--end-date", default=None, help="结束日期 YYYY-MM-DD（可选）")
+    args = parser.parse_args(argv)
+    params = {}
+    if args.start_date:
+        params["start_date"] = args.start_date
+    if args.end_date:
+        params["end_date"] = args.end_date
+    try:
+        data = _account_get(args.key, ACCOUNT_USAGE, params=params or None)
+        print(json.dumps({"ok": True, "endpoint": "usage", "raw": data}, ensure_ascii=False))
+    except ApiError as e:
+        sys.stderr.write("[usage] 失败：" + str(e) + "\n")
+        return 2 if e.status == 401 else 1
+    return 0
+
+
+def cmd_logs(argv):
+    """消费记录查询：GET /v1/logs/query。只读。"""
+    parser = argparse.ArgumentParser(prog="pt_video.py logs")
+    parser.add_argument("-k", "--key", default=None, help="API Key（缺省读 POWERTOKENS_API_KEY）")
+    args = parser.parse_args(argv)
+    try:
+        data = _account_get(args.key, ACCOUNT_LOGS)
+        print(json.dumps({"ok": True, "endpoint": "logs", "raw": data}, ensure_ascii=False))
+    except ApiError as e:
+        sys.stderr.write("[logs] 失败：" + str(e) + "\n")
+        return 2 if e.status == 401 else 1
+    return 0
+
+
+def cmd_agreement(argv):
+    """资产库协议签署状态查询：GET /v1/asset/agreement/status。只读。"""
+    parser = argparse.ArgumentParser(prog="pt_video.py agreement")
+    parser.add_argument("-k", "--key", default=None, help="API Key（缺省读 POWERTOKENS_API_KEY）")
+    args = parser.parse_args(argv)
+    try:
+        data = _account_get(args.key, ACCOUNT_AGREEMENT)
+        print(json.dumps({"ok": True, "endpoint": "agreement", "raw": data}, ensure_ascii=False))
+    except ApiError as e:
+        sys.stderr.write("[agreement] 失败：" + str(e) + "\n")
+        return 2 if e.status == 401 else 1
+    return 0
 
 def main():
     if len(sys.argv) > 1:
@@ -1122,12 +1249,20 @@ def main():
             return cmd_estimate(sys.argv[2:])
         if sub == "seedance":
             return cmd_seedance(sys.argv[2:])
+        if sub == "balance":
+            return cmd_balance(sys.argv[2:])
+        if sub == "usage":
+            return cmd_usage(sys.argv[2:])
+        if sub == "logs":
+            return cmd_logs(sys.argv[2:])
+        if sub == "agreement":
+            return cmd_agreement(sys.argv[2:])
         if sub == "upload":
             return cmd_upload(sys.argv[2:])
         if sub == "generate":
             return cmd_generate(sys.argv[2:])
     # 无子命令：给用法
-    sys.stderr.write("用法：pt_video.py <check|config|auto-model|models|estimate|seedance|generate> [参数]\n")
+    sys.stderr.write("用法：pt_video.py <check|config|auto-model|models|estimate|seedance|upload|balance|usage|logs|agreement|generate> [参数]\n")
     sys.stderr.write("例：pt_video.py generate -m wan3.0-video -p \"一只猫在跳舞\" -d 5 -r 720p\n")
     sys.stderr.write("例：pt_video.py generate -m seedream-5-0-260128 -p \"赛博城市\" --type image --aspect-ratio 16:9\n")
     sys.stderr.write("例：pt_video.py generate --type seedance -m auto -p \"\" --first-frame asset://xxxx\n")

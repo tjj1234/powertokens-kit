@@ -1,180 +1,187 @@
 # powertokens-kit
 
 <p align="center">
-  <b>用一份零依赖的 Python 引擎，跨 Claude Code / Cursor / Trae / VS Code / Windsurf / Cline / Zed 等 40+ agent 调用 PowerTokens 的图片、视频、Seedance 模型。</b>
+  <b>One zero-dependency Python engine to drive PowerTokens image / video / Seedance models across 40+ agents (Claude Code, Cursor, Trae, VS Code, Windsurf, Cline, Zed, …).</b>
 </p>
 
 <p align="center">
-  <a href="https://github.com/tjj1234/powertokens-kit">仓库</a> ·
-  <a href="#3-快速开始cli">快速开始</a> ·
-  <a href="#13-接入方式-aagent-skills">Agent Skills 接入</a> ·
-  <a href="#14-接入方式-bmcp-server">MCP 接入</a> ·
-  <a href="#10-seedance-专题独立类型">Seedance 专题</a>
+  <a href="https://github.com/tjj1234/powertokens-kit">Repository</a> ·
+  <a href="#3-quick-start-cli">Quick Start</a> ·
+  <a href="#13-integration-a-agent-skills">Agent Skills</a> ·
+  <a href="#14-integration-b-mcp-server">MCP</a> ·
+  <a href="#10-seedance-deep-dive-standalone-type">Seedance</a> ·
+  <a href="README.zh-CN.md">中文文档</a>
 </p>
 
-> **English:** A tool-agnostic CLI + MCP server that drives [PowerTokens](https://powertokens.ai/) image / video / Seedance models through the official REST API (no Node, no `powertokens-cli`). One engine, two shells (Agent Skills `SKILL.md` + MCP `mcp_server.py`). Works across any agent that supports the Agent Skills open standard or MCP.
-
-> **📦 本仓库包含两部分能力**
+> 📘 This document is in English. [中文文档](README.zh-CN.md)
 >
-> - **本页（`pt_video.py` + `mcp_server.py`）**：image / video / seedance 生成引擎与 MCP 接入。
-> - **`pt-gateway/`（生产级统一网关）**：在引擎之上增加 **audio（TTS）** 与 **chat（多模态 / 联网搜索 / 思考模式能力标注）**，HTTP + MCP 双接口、能力目录、三层测试。
+> **📦 This repository contains two capabilities**
 >
-> 👉 **chat / 音频 / 网关相关文档不在本页**，见 [`pt-gateway/README.md`](pt-gateway/README.md)（chat 模型能力标注在 **§9.1**，38 个模型逐一标注 vision / audio_in / video_in / web_search / thinking）。
+> - **This page (`pt_video.py` + `mcp_server.py`)**: the image / video / Seedance generation engine and MCP integration.
+> - **`pt-gateway/` (production-grade unified gateway)**: builds on the engine to add **audio (TTS)** and **chat** (multimodal / web-search / thinking-mode capability labeling), with both HTTP and MCP interfaces, a capability catalog, and a three-tier test suite.
+>
+> 👉 **chat / audio / gateway docs are NOT on this page** — see [`pt-gateway/README.md`](pt-gateway/README.md) (chat model capability labeling in **§9.1**, 38 models labeled one-by-one for vision / audio_in / video_in / web_search / thinking).
 
 ---
 
-## 目录
+## Table of Contents
 
-1. [这是什么](#1-这是什么)
-2. [为什么做这个](#2-为什么做这个)
-3. [快速开始（CLI）](#3-快速开始cli)
-4. [能力总览：image / video / seedance 三类型](#4-能力总览image--video--seedance-三类型)
-5. [支持的模型与定价](#5-支持的模型与定价)
-6. [前置要求](#6-前置要求)
-7. [安装](#7-安装)
-8. [配置 API Key](#8-配置-api-key)
-9. [命令参考（全参数）](#9-命令参考全参数)
-10. [Seedance 专题（独立类型）](#10-seedance-专题独立类型)
-11. [跨账户资产共享与安全注意](#11-跨账户资产共享与安全注意)
-12. [输出与下载](#12-输出与下载)
-13. [接入方式 A：Agent Skills](#13-接入方式-aagent-skills)
-14. [接入方式 B：MCP server](#14-接入方式-bmcp-server)
-15. [定价与消耗估算](#15-定价与消耗估算)
-16. [API 直连参考](#16-api-直连参考)
-17. [常见问题 / 排错](#17-常见问题--排错)
-18. [已知限制与路线图](#18-已知限制与路线图)
-19. [贡献](#19-贡献)
+1. [What is this](#1-what-is-this)
+2. [Why build this](#2-why-build-this)
+3. [Quick Start (CLI)](#3-quick-start-cli)
+4. [Capability Overview: image / video / seedance](#4-capability-overview-image--video--seedance)
+5. [Supported Models & Pricing](#5-supported-models--pricing)
+6. [Prerequisites](#6-prerequisites)
+7. [Installation](#7-installation)
+8. [Configure API Key](#8-configure-api-key)
+9. [Command Reference (full parameters)](#9-command-reference-full-parameters)
+10. [Seedance Deep Dive (standalone type)](#10-seedance-deep-dive-standalone-type)
+11. [Cross-account asset sharing & security notes](#11-cross-account-asset-sharing--security-notes)
+12. [Output & Download](#12-output--download)
+13. [Integration A: Agent Skills](#13-integration-a-agent-skills)
+14. [Integration B: MCP server](#14-integration-b-mcp-server)
+15. [Pricing & cost estimation](#15-pricing--cost-estimation)
+16. [Direct API reference](#16-direct-api-reference)
+17. [FAQ / Troubleshooting](#17-faq--troubleshooting)
+18. [Known limitations & roadmap](#18-known-limitations--roadmap)
+19. [Contributing](#19-contributing)
 20. [License](#20-license)
 21. [Changelog](#21-changelog)
 
 ---
 
-## 1. 这是什么
+## 1. What is this
 
-`powertokens-kit` 是一个**跨 agent 的 PowerTokens 工具箱**：把 [PowerTokens](https://powertokens.ai/) 的 **image / video / Seedance / audio / chat** 模型能力，封装成「一份引擎 + 两种接入壳」，并附带一个生产级统一网关：
+`powertokens-kit` is a **cross-agent PowerTokens toolkit**: it wraps [PowerTokens](https://powertokens.ai/)'s **image / video / Seedance / audio / chat** model capabilities into "one engine + two integration shells", plus a production-grade unified gateway:
 
-- **引擎 `pt_video.py`**：纯 Python 标准库，**零外部依赖**、**直连官方 REST API**、**不需要 Node、也不需要 powertokens-cli**。
-- **壳 A · Agent Skills（`SKILL.md`）**：符合开放标准，直接被 40+ 支持该标准的 agent 读取（Claude Code、Cursor、GitHub Copilot、Codex、Trae、Zed、Kiro、Junie、Roo Code …）。
-- **壳 B · MCP server（`mcp_server.py`）**：被任何 MCP 客户端当作「工具」调用（Claude Desktop、Cursor、Trae、VS Code、Windsurf、Cline、Zed …）。
-- **网关 `pt-gateway/`**：HTTP + MCP 统一入口，在引擎之上补齐 **audio（TTS）** 与 **chat**（含多模态 / 联网搜索 / 思考模式能力标注），自带能力目录与三层测试。文档见 [`pt-gateway/README.md`](pt-gateway/README.md)。
+- **Engine `pt_video.py`**: pure Python standard library, **zero external dependencies**, **talks directly to the official REST API**, **no Node, no `powertokens-cli`**.
+- **Shell A · Agent Skills (`SKILL.md`)**: conforms to the open standard and is read directly by 40+ supporting agents (Claude Code, Cursor, GitHub Copilot, Codex, Trae, Zed, Kiro, Junie, Roo Code …).
+- **Shell B · MCP server (`mcp_server.py`)**: called as a "tool" by any MCP client (Claude Desktop, Cursor, Trae, VS Code, Windsurf, Cline, Zed …).
+- **Gateway `pt-gateway/`**: a unified HTTP + MCP entry point that adds **audio (TTS)** and **chat** (with multimodal / web-search / thinking-mode capability labeling) on top of the engine, plus a capability catalog and three-tier tests. Docs: [`pt-gateway/README.md`](pt-gateway/README.md).
 
-> 三种壳共用**同一个引擎**，所有生成逻辑只维护一份（单一真相源）。
+> All three shells share **the same engine**; all generation logic is maintained in one place (single source of truth).
 
-**官方 REST 直连，没有中间层：**
+**Official REST, no middle layer:**
 
-| 类型 | 提交端点 | 机制 |
+| Type | Submit endpoint | Mechanism |
 |---|---|---|
-| 视频（`video` / `seedance`） | `POST /v1/videos` | 异步：提交后每 10 秒轮询 `GET /v1/videos/{task_id}`，直到 `succeeded/completed` 拿到链接 |
-| 图片（`image`） | `POST /v1/images/generations` | 同步：提交后直接返回 `data[].url`，**不轮询**，可一次返回多张 |
+| Video (`video` / `seedance`) | `POST /v1/videos` | Async: poll `GET /v1/videos/{task_id}` every 10s until `succeeded/completed` to get the URL |
+| Image (`image`) | `POST /v1/images/generations` | Sync: returns `data[].url` directly, **no polling**, can return multiple images at once |
 
-默认模型为 `auto`（按你账号真实可用的模型自动挑选，视频/图片/seedance 分开），也可显式指定任意模型，并可查询每个模型的定价与支持的参数。
-
----
-
-## 2. 为什么做这个
-
-- **跨 agent 通用**：不想每次换 agent（Claude / Cursor / Trae …）都重写一遍调用代码。本仓库同时输出 **Agent Skills 标准** 与 **MCP 标准** 两份接入，覆盖市面上绝大多数 agent 客户端。
-- **开源、零依赖**：只依赖 Python 标准库，任何人 `git clone` 后 `python pt_video.py` 即可跑，无需装 Node、无需装 powertokens 的 CLI。
-- **官方 API 直连**：不依赖任何第三方中转/网关，调用行为可预测、可审计，出问题直接对照官方端点排查。
-- **踩坑已沉淀**：Seedance 协议签署、asset:// 素材格式、文生视频的 media-text 提交方式、跨账户资产共享等坑，都已实测并写入 `docs/pitfall-archive.md` 与本文档。
+The default model is `auto` (auto-picks from the models actually available on your account, separate pools for video/image/seedance); you can also specify any model explicitly and query each model's pricing and supported parameters.
 
 ---
 
-## 3. 快速开始（CLI）
+## 2. Why build this
+
+- **Cross-agent, universal**: avoid re-writing the calling code every time you switch agents (Claude / Cursor / Trae …). This repo ships **both** the Agent Skills standard and the MCP standard, covering the vast majority of agent clients on the market.
+- **Open source, zero dependencies**: only the Python standard library. Anyone can `git clone` and run `python pt_video.py` — no Node, no powertokens CLI to install.
+- **Official API direct**: no third-party relay/gateway; behavior is predictable and auditable, and problems can be debugged directly against the official endpoints.
+- **Pitfalls documented**: Seedance agreement signing, the `asset://` asset format, the media-text submission style for text-to-video, cross-account asset sharing, etc. — all tested in practice and written into `docs/pitfall-archive.md` and this document.
+
+---
+
+## 3. Quick Start (CLI)
 
 ```bash
 git clone https://github.com/tjj1234/powertokens-kit.git
 cd powertokens-kit
-export POWERTOKENS_API_KEY="sk-pt-xxxx"   # 推荐用环境变量（见 §8）
+export POWERTOKENS_API_KEY="sk-pt-xxxx"   # recommended via env var (see §8)
 
-python pt_video.py check                 # Key 体检
-python pt_video.py models -t all --json  # 列出模型 + 定价 + 参数
+python pt_video.py check                 # Key health check
+python pt_video.py models -t all --json  # list models + pricing + params
 
-# 视频（默认 auto，按账号可用模型自动选）
-python pt_video.py generate -p "一只猫在蒙古草原跳舞" -d 5 -r 720p
-python pt_video.py generate -m kling-v2-1-master -p "一只猫跳舞" -d 5 -r 1080p
+# Video (default auto, picks from account-available models)
+python pt_video.py generate -p "a cat dancing on the Mongolian grassland" -d 5 -r 720p
+python pt_video.py generate -m kling-v2-1-master -p "a cat dancing" -d 5 -r 1080p
 
-# 图片（加 --type image）
-python pt_video.py generate -p "赛博城市夜景" --type image --aspect-ratio 16:9
-python pt_video.py generate -m seedream-5-0-260128 -p "赛博城市" --type image --aspect-ratio 16:9
-python pt_video.py estimate -m seedance-1-5-pro-251215 -d 5 -r 720p   # 仅估算消耗（不扣费）
+# Image (add --type image)
+python pt_video.py generate -p "cyberpunk city night" --type image --aspect-ratio 16:9
+python pt_video.py generate -m seedream-5-0-260128 -p "cyberpunk city" --type image --aspect-ratio 16:9
+python pt_video.py estimate -m seedance-1-5-pro-251215 -d 5 -r 720p   # estimate cost only (no charge)
 
-# Seedance 全系（1.0/1.5/2.0/2.5 均可，独立类型：--type seedance，需先签协议，见 §10）
+# Seedance family (1.0/1.5/2.0/2.5 all work; standalone type: --type seedance; sign agreement first, see §10)
 python pt_video.py models -t seedance --json
-python pt_video.py generate --type seedance -m seedance-1-5-pro-251215 -p "一只猫在草地上走" -d 5 -r 720p --no-download   # 文生视频：纯 -p 即可
-python pt_video.py upload -f ./first_frame.png                          # 上传素材拿 asset://<id>（免费）
-python pt_video.py generate --type seedance -m seedance-1-5-pro-251215 -p "镜头推进" --first-frame asset://<id> --no-download   # 图生视频
-python pt_video.py seedance enable    # 签好协议后标记，不再弹开通引导
+python pt_video.py generate --type seedance -m seedance-1-5-pro-251215 -p "a cat walking on grass" -d 5 -r 720p --no-download   # text-to-video: just -p
+python pt_video.py upload -f ./first_frame.png                          # upload asset, get asset://<id> (free)
+python pt_video.py generate --type seedance -m seedance-1-5-pro-251215 -p "camera push-in" --first-frame asset://<id> --no-download   # image-to-video
+python pt_video.py seedance enable    # after signing, mark it so the onboarding prompt stops
+
+# Read-only account / billing queries (no generation, no credit deduction)
+python pt_video.py balance            # account balance (by Key)
+python pt_video.py usage --start-date 2026-01-01 --end-date 2026-01-31   # billing summary by model type
+python pt_video.py logs               # consumption records
+python pt_video.py agreement          # asset-library agreement status
 ```
 
-**工作原理：**
-- 视频 `generate` 提交后进入**异步轮询**——每 10 秒查一次状态，直到成功拿到视频链接（默认自动下载到 `out/<task_id>.mp4` 并打印链接）。真实出片通常 1–3 分钟。
-- 图片 `generate --type image` 提交后**同步**返回 `data[].url`（通常几秒），默认下载到 `out/<model>_<n>.png`。
+**How it works:**
+- Video `generate` enters **async polling** after submission — checks status every 10s until success, then downloads to `out/<task_id>.mp4` by default and prints the link. Real render time is usually 1–3 minutes.
+- Image `generate --type image` returns `data[].url` **synchronously** (usually a few seconds) and downloads to `out/<model>_<n>.png` by default.
 
 ---
 
-## 4. 能力总览：image / video / seedance 三类型
+## 4. Capability Overview: image / video / seedance
 
-本项目把生成能力分成**三种并列类型**（这是经过实测后刻意的设计，见 §10）：
+This project splits generation into **three parallel types** (a deliberate design, tested in practice — see §10):
 
-| 类型 | 子命令 `--type` | 说明 | 协议前置 | 素材格式 | 生成机制 |
+| Type | `--type` subcommand | Description | Agreement prerequisite | Asset format | Generation mechanism |
 |---|---|---|---|---|---|
-| `image` | `--type image` | 文生图 | 无 | — | 同步（`/v1/images/generations`） |
-| `video` | `--type video`（默认） | 普通视频模型（Kling / Wan / Hailuo / Vidu / HappyHorse） | 无 | `http(s)` 或 `asset://` | 异步轮询（`/v1/videos`） |
-| `seedance` | `--type seedance` | Seedance 全系（ByteDance：1.0/1.5/2.0/2.5，含 Mini/Fast） | **需签《Asset Library User Agreement》** | **仅 `asset://`**（图生）；文生无需素材 | 异步轮询（`/v1/videos`） |
+| `image` | `--type image` | text-to-image | none | — | sync (`/v1/images/generations`) |
+| `video` | `--type video` (default) | ordinary video models (Kling / Wan / Hailuo / Vidu / HappyHorse) | none | `http(s)` or `asset://` | async polling (`/v1/videos`) |
+| `seedance` | `--type seedance` | Seedance family (ByteDance: 1.0/1.5/2.0/2.5, incl. Mini/Fast) | **must sign the "Asset Library User Agreement"** | **`asset://` only** (image-to-video); text-to-video needs no asset | async polling (`/v1/videos`) |
 
-> **关键设计点**：Seedance 被拆成独立类型，而**不是**塞进普通 `video`。原因：它有三大独有前置（签协议 / 素材走资产库 `asset://` / 文生靠 `media-text` 而非顶层 `prompt`），与普通视频模型系统性不同。普通 `video` 的 `auto` 候选已剔除 Seedance，`--type seedance` 才显式走它。
+> **Key design point**: Seedance is split into a standalone type rather than crammed into ordinary `video`. Reason: it has three unique prerequisites (sign agreement / assets go through the asset library `asset://` / text-to-video uses `media-text` instead of the top-level `prompt`), which are systematically different from ordinary video models. The `auto` candidate for ordinary `video` already excludes Seedance; `--type seedance` explicitly routes to it.
 
 ---
 
-## 5. 支持的模型与定价
+## 5. Supported Models & Pricing
 
-> 价格为 **PT 预扣单价（美元，$）**，基于 `5s / 720p` 探测；时长与分辨率按系数换算（见 §15）。图片单价 PT 未公开 API，表中标 `n/a`，以仪表盘为准。
-> 实际可用模型以 `python pt_video.py models -t all --json` 在你账号下查到的为准（不同账号额度/白名单不同）。
+> Prices are **PT pre-deduction unit prices (USD, $)**, probed at `5s / 720p`; duration and resolution are converted by coefficients (see §15). Image unit prices are not public via PT API, marked `n/a` in the table — refer to the dashboard.
+> Actually available models depend on `python pt_video.py models -t all --json` queried under your account (different accounts have different quotas/whitelists).
 
-### 视频模型（`--type video`，auto 候选）
+### Video models (`--type video`, auto candidates)
 
-| 模型 ID | 5s/720p 单价 | 时长上限 | 分辨率 | 主要输入 |
+| Model ID | 5s/720p price | Max duration | Resolution | Main inputs |
 |---|---|---|---|---|
 | `wan3.0-video` | $0.20 | 10s | 720p/1080p | text, image |
 | `wan3.0-video-prime` | $0.70 | 10s | 720p/1080p | text, image |
 | `wan2.7-t2v` | $0.475 | 10s | 720p/1080p | text, image |
 | `kling-v3` | $0.42 | 10s | 720p/1080p | text, image, audio |
 | `kling-video-o1` | $0.42 | 10s | 720p/1080p | text, image |
-| `kling-v2-1-master` | $1.40 | 10s | 720p/1080p | text, image, audio（运镜） |
+| `kling-v2-1-master` | $1.40 | 10s | 720p/1080p | text, image, audio (camera motion) |
 
-### Seedance 模型（`--type seedance`，实测 7 个全部 available）
+### Seedance models (`--type seedance`, 7 tested, all available)
 
-| 模型 ID | 5s/720p 单价 | 时长上限 | 分辨率 | 主要输入 |
+| Model ID | 5s/720p price | Max duration | Resolution | Main inputs |
 |---|---|---|---|---|
 | `seedance-1-5-pro-251215` | $0.247 | 10s | 720p/1080p | text, image(first-frame), start-end, video+audio ref |
-| `dreamina-seedance-2-0-fast-260128` | $0.605 | 10s | 720p/1080p | 同上 |
-| `dreamina-seedance-2-0-260128` | $0.756 | 10s | 720p/1080p | 同上 |
-| `dreamina-seedance-2-0-mini-260615` | n/a | 10s | 720p/1080p | 同上 |
-| `dreamina-seedance-2-5-260628` | n/a | 10s | 720p/1080p | 同上 |
-| `seedance-1-0-pro-fast-251015` | n/a | 10s | 720p/1080p | 同上 |
-| `seedance-1-0-pro-250528` | n/a | 10s | 720p/1080p | 同上 |
+| `dreamina-seedance-2-0-fast-260128` | $0.605 | 10s | 720p/1080p | same as above |
+| `dreamina-seedance-2-0-260128` | $0.756 | 10s | 720p/1080p | same as above |
+| `dreamina-seedance-2-0-mini-260615` | n/a | 10s | 720p/1080p | same as above |
+| `dreamina-seedance-2-5-260628` | n/a | 10s | 720p/1080p | same as above |
+| `seedance-1-0-pro-fast-251015` | n/a | 10s | 720p/1080p | same as above |
+| `seedance-1-0-pro-250528` | n/a | 10s | 720p/1080p | same as above |
 
-### 图片模型（`--type image`，auto 候选）
+### Image models (`--type image`, auto candidates)
 
-| 模型 ID | 单价 | 宽高比 | 输入 |
+| Model ID | Price | Aspect ratio | Input |
 |---|---|---|---|
-| `seedream-5-0-260128`（auto 默认） | n/a | 1:1/16:9/4:3/3:2/2:3/3:4/9:16/21:9 | text |
-| `qwen-image` / `image-01` / `kling-image` / `wan` 等 | n/a | 同上 | text |
+| `seedream-5-0-260128` (auto default) | n/a | 1:1/16:9/4:3/3:2/2:3/3:4/9:16/21:9 | text |
+| `qwen-image` / `image-01` / `kling-image` / `wan` etc. | n/a | same as above | text |
 
 ---
 
-## 6. 前置要求
+## 6. Prerequisites
 
-- **Python 3.9+**（仅标准库；只有 MCP server 需要可选的 `mcp` 包）。
-- **PowerTokens API Key**：打开 <https://powertokens.ai/zh-Hans/dashboard> → 注册/登录 → 充值 → 创建 Key（形如 `sk-pt-xxxx`）。
-- **（仅 Seedance）**：使用 `--type seedance` 前，需在仪表盘手动签署《Asset Library User Agreement》（<https://powertokens.ai/assets-library?tab=1>）。**该协议无 API 端点可程序化签署**，只能网页手签。
+- **Python 3.9+** (standard library only; only the MCP server needs the optional `mcp` package).
+- **PowerTokens API Key**: open <https://powertokens.ai/zh-Hans/dashboard> → register/log in → top up → create Key (looks like `sk-pt-xxxx`).
+- **(Seedance only)**: before using `--type seedance`, you must manually sign the "Asset Library User Agreement" on the dashboard (<https://powertokens.ai/assets-library?tab=1>). **There is no API endpoint to sign it programmatically** — it must be done in the web UI.
 
 ---
 
-## 7. 安装
+## 7. Installation
 
-### 方式一：直接用（推荐，零安装）
+### Method 1: Use directly (recommended, zero install)
 
 ```bash
 git clone https://github.com/tjj1234/powertokens-kit.git
@@ -182,202 +189,221 @@ cd powertokens-kit
 python pt_video.py check
 ```
 
-引擎只用标准库，`python pt_video.py <子命令>` 即可，无需 `pip install`。
+The engine uses only the standard library; `python pt_video.py <subcommand>` works with no `pip install`.
 
-### 方式二：作为 MCP server 安装（可选）
+### Method 2: Install as an MCP server (optional)
 
-仅当你要用「接入方式 B（MCP）」时才需要装 `mcp` 依赖：
+Only needed if you want "Integration B (MCP)" — install the `mcp` dependency:
 
 ```bash
-pip install -e ".[mcp]"      # 或 pip install "mcp[cli]>=1.2"
-python mcp_server.py         # stdio；agent 客户端会自动拉起
+pip install -e ".[mcp]"      # or pip install "mcp[cli]>=1.2"
+python mcp_server.py         # stdio; the agent client launches it automatically
 ```
 
 ---
 
-## 8. 配置 API Key
+## 8. Configure API Key
 
-三种配置方式，**优先级从高到低**：
+Three configuration methods, **highest to lowest priority**:
 
-1. **环境变量 `POWERTOKENS_API_KEY`**（推荐，任何 agent 通用）
+1. **Environment variable `POWERTOKENS_API_KEY`** (recommended, works across any agent)
    ```bash
    export POWERTOKENS_API_KEY="sk-pt-xxxx"
    ```
-2. **本地配置文件**（权限 0600，推荐在共享机器上用）
+2. **Local config file** (permissions 0600, recommended on shared machines)
    ```bash
    python pt_video.py config --set-key "sk-pt-xxxx"
-   # 保存在 ~/.config/powertokens-kit/config.json（用户级，不在仓库内）
-   # 旧路径 ~/.config/powertokens-video/config.json 仍会自动回落读取（更名兼容）
+   # saved to ~/.config/powertokens-kit/config.json (user-level, not in the repo)
+   # old path ~/.config/powertokens-video/config.json is still auto-fallback-read (rename compatibility)
    ```
-3. **仓库级配置**（可选）：`PT_VIDEO_CONFIG` 环境变量可覆盖配置文件路径。
+3. **Repo-level config** (optional): the `PT_VIDEO_CONFIG` env var can override the config file path.
 
-> ⚠️ Key 属于敏感凭据：**不要**写进任何会被提交的文件。`.gitignore` 已忽略 `config.json` 与 `.env`。
+> ⚠️ Keys are sensitive credentials: **do not** write them into any file that will be committed. `.gitignore` already ignores `config.json` and `.env`.
 
 ---
 
-## 9. 命令参考（全参数）
+## 9. Command Reference (full parameters)
 
-所有命令形式：`python pt_video.py <子命令> [参数]`。
+All commands: `python pt_video.py <subcommand> [args]`.
 
-| 子命令 | 作用 | 备注 |
+| Subcommand | Purpose | Notes |
 |---|---|---|
-| `check` | Key 体检 | exit 0=就绪，2=缺 Key |
-| `config --set-key <k>` | 保存 Key 到 config.json | — |
-| `config --set-model <id\|auto>` | 保存默认模型 | 默认 `auto` |
-| `config --show` | 查看配置（Key 脱敏） | — |
-| `auto-model [--type image\|video\|seedance]` | 打印 auto 首选模型（不生成） | — |
-| `models [-t video\|image\|seedance\|all] [--json]` | 列出模型 + 定价 + 支持参数 | 无 Key 也能看公开目录 |
-| `estimate -m <id> -d <s> -r <p>` | 仅估算消耗（美元） | 不扣费 |
-| `generate -m <id\|auto> -p ... [--type ...]` | 生成（视频轮询 / 图片同步） | 核心命令 |
-| `upload -f <图片路径> [--group-name <组名>]` | 上传素材到资产库，拿 `asset://<id>` | **免费** |
-| `seedance enable\|disable\|status` | 管理 Seedance 协议本地标记 | 见 §10 |
+| `check` | Key health check | exit 0=ready, 2=missing Key |
+| `config --set-key <k>` | Save Key to config.json | — |
+| `config --set-model <id\|auto>` | Save default model | default `auto` |
+| `config --show` | View config (Key masked) | — |
+| `auto-model [--type image\|video\|seedance]` | Print the auto-preferred model (no generation) | — |
+| `models [-t video\|image\|seedance\|all] [--json]` | List models + pricing + supported params | public catalog visible without Key |
+| `estimate -m <id> -d <s> -r <p>` | Estimate cost only (USD) | no charge |
+| `generate -m <id\|auto> -p ... [--type ...]` | Generate (video polling / image sync) | core command |
+| `upload -f <image path> [--group-name <group>]` | Upload asset to library, get `asset://<id>` | **free** |
+| `seedance enable\|disable\|status` | Manage Seedance agreement local flag | see §10 |
+| `balance [-k <key>]` | **Query account balance (by Key)** | `GET /v1/billing/balance`; read-only |
+| `usage [--start-date YYYY-MM-DD] [--end-date YYYY-MM-DD] [-k <key>]` | **Query billing summary by model type** | `GET /v1/billing/usage`; read-only |
+| `logs [-k <key>]` | **Query consumption records** | `GET /v1/logs/query`; read-only |
+| `agreement [-k <key>]` | **Query asset-library agreement status** | `GET /v1/asset/agreement/status`; read-only |
 
-### `generate` 完整参数
+> All four `balance` / `usage` / `logs` / `agreement` commands are **read-only** — they never generate or deduct credits. Auth uses the bare Key (`Authorization: <key>`, no `Bearer`) against the `powertokens.ai/api` host (the dashboard/asset backend), the same domain and auth style as asset upload. See §16.
 
-通用：
-- `-p/--prompt`（必填，文生/图生提示词）
-- `-m/--model`（默认 `auto`；也可写具体模型 ID）
-- `--type`（默认按模型 ID 推断；显式 `video` / `image` / `seedance`）
-- `-o/--output`（输出路径；不传则落到 `out/`）
-- `--no-download`（只拿链接，不下载文件）
-- `--timeout`（轮询总上限秒，默认 600）
+### `generate` full parameters
 
-视频（`video` / `seedance`）：
-- `-d/--duration`（2–30s，默认 5）
-- `-r/--resolution`（`480P` / `720P` / `1080P`，默认 720P）
-- `--ratio`（如 `16:9` / `9:16` / `adaptive`）
-- `--seed`（整数，可复现）
-- `--first-frame` / `--last-frame`（首帧/尾帧，`asset://` 或 `http(s)`）
-- `--ref-image` / `--ref-video` / `--ref-audio`（参考素材，可多次）
-- `--no-audio`（关闭生成音频）
-- `--no-prompt-extend`（关闭提示词扩展）
-- `--watermark`（开启水印）
+General:
+- `-p/--prompt` (required, text-to/image-to prompt)
+- `-m/--model` (default `auto`; or a specific model ID)
+- `--type` (inferred from model ID by default; explicit `video` / `image` / `seedance`)
+- `-o/--output` (output path; defaults to `out/`)
+- `--no-download` (return link only, don't download)
+- `--timeout` (total polling timeout in seconds, default 600)
 
-图片（`image`）：
-- `--aspect-ratio`（`1:1` / `16:9` / `4:3` / `3:2` / `2:3` / `3:4` / `9:16` / `21:9`，默认 `1:1`）
-- `--n`（1–9 张，默认 1）
-- `--response-format`（`url` / `base64`，默认 `url`）
+Video (`video` / `seedance`):
+- `-d/--duration` (2–30s, default 5)
+- `-r/--resolution` (`480P` / `720P` / `1080P`, default 720P)
+- `--ratio` (e.g. `16:9` / `9:16` / `adaptive`)
+- `--seed` (integer, reproducible)
+- `--first-frame` / `--last-frame` (first/last frame, `asset://` or `http(s)`)
+- `--ref-image` / `--ref-video` / `--ref-audio` (reference assets, repeatable)
+- `--no-audio` (disable generated audio)
+- `--no-prompt-extend` (disable prompt extension)
+- `--watermark` (enable watermark)
 
-### `upload` 参数
+Image (`image`):
+- `--aspect-ratio` (`1:1` / `16:9` / `4:3` / `3:2` / `2:3` / `3:4` / `9:16` / `21:9`, default `1:1`)
+- `--n` (1–9 images, default 1)
+- `--response-format` (`url` / `base64`, default `url`)
 
-- `-f/--file`（图片路径，必填；资产库要求宽 300–6000px）
-- `--group-name`（资产分组名，可选；不可与已存在组名重复）
+### `upload` parameters
+
+- `-f/--file` (image path, required; asset library requires width 300–6000px)
+- `--group-name` (asset group name, optional; must not duplicate an existing group name)
+
+### Read-only account / billing commands
+
+- `balance [-k <key>]` — prints the raw `GET /v1/billing/balance` JSON (balance, currency `credits`, data-as-of, cached flag, key_id).
+- `usage [--start-date YYYY-MM-DD] [--end-date YYYY-MM-DD] [-k <key>]` — prints the raw `GET /v1/billing/usage` JSON, optionally filtered by date range (per-model `total_cost` items + grand total).
+- `logs [-k <key>]` — prints the raw `GET /v1/logs/query` JSON (consume_id, request_id, task_id, endpoint, model, status, quota, usage, billing, …).
+- `agreement [-k <key>]` — prints the raw `GET /v1/asset/agreement/status` JSON (account_id, agreement_accepted, asset_library_enabled).
+
+If `-k/--key` is omitted, the command reads `POWERTOKENS_API_KEY` from the environment (same precedence as generation). On a 401 it exits 2; any other API error exits 1.
 
 ---
 
-## 10. Seedance 专题（独立类型）
+## 10. Seedance Deep Dive (standalone type)
 
-### 10.1 为什么是独立类型
+### 10.1 Why a standalone type
 
-Seedance 全系模型（ByteDance，1.0 / 1.5 / 2.0 / 2.5 及 Mini/Fast 变体）有三个与其他视频模型**系统性不同**的前置：
-1. 必须签《Asset Library User Agreement》（仪表盘手签，无 API）；
-2. 图生视频的素材必须走资产库，以 `asset://<ASSET_ID>` 传入；
-3. 文生视频的 prompt 必须放进 `media:[{type:text, text:...}]`，服务端**不认顶层 `prompt` 字段**。
+The entire Seedance family (ByteDance, 1.0 / 1.5 / 2.0 / 2.5 and Mini/Fast variants) has three prerequisites that are **systematically different** from other video models:
+1. Must sign the "Asset Library User Agreement" (manual in the dashboard, no API);
+2. Image-to-video assets must go through the asset library, passed as `asset://<ASSET_ID>`;
+3. Text-to-video prompt must be placed in `media:[{type:text, text:...}]` — the server **does not recognize a top-level `prompt` field**.
 
-因此把它提升为独立类型 `--type seedance`，而不是在 `video` 里打补丁。普通 `video` 的 `auto` 候选已剔除它。
+So it is promoted to a standalone type `--type seedance` rather than patched inside `video`. The `auto` candidate for ordinary `video` already excludes it.
 
-### 10.2 协议签署流程（本地标记 + 报错回退）
+### 10.2 Agreement signing flow (local flag + error fallback)
 
-PT **没有**「查询协议是否已签」的 API 端点，所以 skill 用**本地标记 + 报错回退**近似判断：
+PT has **no** API endpoint to "query whether the agreement is signed", so the skill approximates with a **local flag + error fallback**:
 
-- 未标记时，生成前会打印 4 步「跳转 PT 开通」引导（**不阻断**提交）；
-- 你签好后跑 `python pt_video.py seedance enable` 标记已签，之后不再弹引导；
-- 若提交仍被服务端判「未签」（关键词命中），skill 自动 `reset` 标记并重新弹引导；
-- 首次成功生成后自动记为已签。
+- When unflagged, before generation it prints a 4-step "jump to PT onboarding" guide (**does not block** submission);
+- After you sign, run `python pt_video.py seedance enable` to flag as signed, and the guide stops showing;
+- If submission is still rejected by the server as "unsigned" (keyword hit), the skill auto-`reset`s the flag and shows the guide again;
+- On first successful generation it auto-marks as signed.
+
+`seedance status` now also does a **best-effort server-side check**: if `POWERTOKENS_API_KEY` is set, it calls `GET /v1/asset/agreement/status` and reports `agreement_accepted_server` / `asset_library_enabled_server` alongside the local flag. If the key is not set, it skips the server check.
 
 ```bash
-python pt_video.py seedance status    # 查看当前标记
-python pt_video.py seedance enable    # 签好后标记
-python pt_video.py seedance disable   # 取消标记
+python pt_video.py seedance status    # view current flag (+ best-effort server check)
+python pt_video.py seedance enable    # flag after signing
+python pt_video.py seedance disable   # clear the flag
 ```
 
-### 10.3 文生视频 vs 图生视频（实测澄清）
+### 10.3 Text-to-video vs image-to-video (clarified by testing)
 
-- **文生视频只需 `-p`，无需任何 media**：提交时引擎自动把 prompt 放进 `media:[{type:text}]`。
-- **图生视频**（首帧/参考图）才需要素材，且素材必须经资产库上传后以 `asset://<ASSET_ID>` 格式传入。
+- **Text-to-video needs only `-p`, no media at all**: on submission the engine auto-places the prompt into `media:[{type:text}]`.
+- **Image-to-video** (first frame / reference image) needs assets, and the asset must be uploaded via the asset library and passed as `asset://<ASSET_ID>`.
 
-> ⚠️ **纠正旧认知**：网络/早期文档有「BytePlus 系文生视频必须带 media」的说法，是**误判**——当初用假 `asset://` 占位符才触发 `BytePlus video models only accept media`；换成真实 Key 实测，纯 prompt 文生视频可正常走到扣费校验（余额不足时返回 `pre-consume quota failed`）。
+> ⚠️ **Correction of an old belief**: some network/early docs claimed "BytePlus-family text-to-video must carry media" — that was a **misjudgment**. It was triggered by using a fake `asset://` placeholder (`BytePlus video models only accept media`); tested with a real Key, plain-prompt text-to-video proceeds normally to the charge check (returns `pre-consume quota failed` when balance is insufficient).
 
-### 10.4 素材上传闭环（`upload`，免费）
+### 10.4 Asset upload loop (`upload`, free)
 
-图生视频必须用 `asset://` 素材。两步拿到：
+Image-to-video must use `asset://` assets. Get them in two steps:
 
 ```bash
-# 1) 上传本地图（资产库要求宽 300–6000px），免费，返回 asset://<id>
+# 1) upload a local image (asset library requires width 300–6000px), free, returns asset://<id>
 python pt_video.py upload -f ./first_frame.png
-# 2) 用 asset id 做首帧
-python pt_video.py generate --type seedance -m seedance-1-5-pro-251215 -p "镜头缓慢推进" --first-frame asset://<id>
+# 2) use the asset id as first frame
+python pt_video.py generate --type seedance -m seedance-1-5-pro-251215 -p "slow camera push-in" --first-frame asset://<id>
 ```
 
-> Seedance 类型下，`--first-frame` 等媒体**只收 `asset://`**；传公网 `http(s)` 会在前置校验被拒绝（避免绕过协议）。
+> Under the Seedance type, media like `--first-frame` **only accepts `asset://`**; passing a public `http(s)` URL is rejected at pre-validation (to avoid bypassing the agreement).
 
 ---
 
-## 11. 跨账户资产共享与安全注意
+## 11. Cross-account asset sharing & security notes
 
-**实测结论（2026-10-27，真实双账户）**：PowerTokens 的 `asset://` 资产 id 是**跨账户可解析、读路径不做账户隔离**的共享引用。
+**Tested conclusion (2026-10-27, real dual accounts)**: PowerTokens `asset://` asset ids are **cross-account resolvable shared references** — the read path does no account isolation.
 
-- 用账户 A 上传的 `asset://xxx`，可以直接在**账户 B 的 Key** 下作为首帧生成视频，生成任务完整跑完、消耗记在账户 B。
-- **安全含义**：不要把涉密 / PII 内容放进 asset 却指望「账户隔离」——任何知道 asset id 的人都能在自有 Key 下引用它做生成（只要过预扣费）。**asset id 应视作「不可猜测但可共享」的 token**。
-- **产品机会**：这也意味着「上传一次素材、多人/多账户复用生成」是平台原生支持的能力，可在协作类产品里直接利用。
-
----
-
-## 12. 输出与下载
-
-- **视频**：轮询成功后默认下载到 `out/<task_id>.mp4` 并打印链接；`--no-download` 只返回链接。
-- **图片**：同步返回后默认下载到 `out/<model>_<n>.png`（多张自动加 `_1`/`_2` 序号）；`--no-download` 只返回 `data[].url`。
-- **图片 URL 有效期**：`data[].url` 是临时签名地址（约 24 小时），请及时下载或转存。
-- 所有生成产物落在仓库内 `out/` 目录（已加入 `.gitignore`，不会被提交）。
+- An `asset://xxx` uploaded under account A can be used directly as a first frame under **account B's Key** to generate video; the task runs to completion and the cost is charged to account B.
+- **Security implication**: do not put confidential / PII content into an asset and expect "account isolation" — anyone who knows the asset id can reference it under their own Key to generate (as long as pre-deduction passes). **Treat the asset id as an "unguessable but shareable" token.**
+- **Product opportunity**: this also means "upload once, reuse across people/multiple accounts" is a natively supported platform capability, usable directly in collaborative products.
 
 ---
 
-## 13. 接入方式 A：Agent Skills
+## 12. Output & Download
 
-本仓库根目录**本身就是一个 Agent Skill 文件夹**（含 `SKILL.md`），复制到 agent 的 skills 目录即可被读取。
+- **Video**: after polling succeeds, defaults to downloading to `out/<task_id>.mp4` and printing the link; `--no-download` returns the link only.
+- **Image**: after sync returns, defaults to downloading to `out/<model>_<n>.png` (multiple images get `_1`/`_2` suffixes automatically); `--no-download` returns `data[].url` only.
+- **Image URL validity**: `data[].url` is a temporary signed address (~24 hours) — download or re-host promptly.
+- All generation artifacts land in the repo's `out/` directory (already in `.gitignore`, won't be committed).
 
-| Agent | skills 目录 |
+---
+
+## 13. Integration A: Agent Skills
+
+The repo root **is itself an Agent Skill folder** (contains `SKILL.md`) — copy it into the agent's skills directory to be read.
+
+| Agent | skills directory |
 |---|---|
 | Claude Code | `~/.claude/skills/powertokens-kit/` |
-| Cursor | `<project>/.cursor/skills/powertokens-kit/` 或用户级 skills 目录 |
-| GitHub Copilot | 项目内 `.github/skills/` 或按 Copilot skills 文档 |
+| Cursor | `<project>/.cursor/skills/powertokens-kit/` or user-level skills directory |
+| GitHub Copilot | in-project `.github/skills/` or per Copilot skills docs |
 | Codex (OpenAI) | `~/.codex/skills/powertokens-kit/` |
-| Trae / Zed / Kiro / Junie / Roo Code | 对应 skills 目录（参考各工具文档） |
+| Trae / Zed / Kiro / Junie / Roo Code | respective skills directory (see each tool's docs) |
 
 ```bash
-# 例：Claude Code
+# Example: Claude Code
 mkdir -p ~/.claude/skills
 cp -r . ~/.claude/skills/powertokens-kit
 ```
 
-目录结构（本仓库根即 skill 文件夹）：
+Directory structure (the repo root is the skill folder):
 
 ```
 powertokens-kit/
-├── SKILL.md          # Agent Skills 清单（name + description + 指令）
-├── pt_video.py       # 引擎（直连官方 REST，零依赖）
-├── mcp_server.py     # MCP server（可选）
+├── SKILL.md          # Agent Skills manifest (name + description + instructions)
+├── pt_video.py       # engine (direct official REST, zero deps)
+├── mcp_server.py     # MCP server (optional)
 ├── LICENSE
 ├── README.md
+├── README.zh-CN.md   # Chinese version of this document
 ├── pyproject.toml
 └── docs/
-    ├── publish.md          # 注册表提交清单
-    └── pitfall-archive.md  # 踩坑档案
+    ├── publish.md          # registry submission checklist
+    ├── publish.zh-CN.md    # Chinese version
+    └── pitfall-archive.md  # pitfall archive
 ```
 
-`SKILL.md` 的 `description` 使用工具无关的触发语（如 “generate a video with PowerTokens”），不含任何单一 agent 专有字眼，因此可被 40+ agent 通用。
+`SKILL.md`'s `description` uses tool-agnostic trigger phrases (e.g. "generate a video with PowerTokens") with no single-agent-specific wording, so it is universal across 40+ agents.
 
 ---
 
-## 14. 接入方式 B：MCP server
+## 14. Integration B: MCP server
 
-仅 MCP server 需要 `mcp` 依赖（见 §7 方式二）。运行：
+Only the MCP server needs the `mcp` dependency (see §7 Method 2). Run:
 
 ```bash
-python mcp_server.py           # stdio；agent 客户端自动拉起
+python mcp_server.py           # stdio; the agent client launches it automatically
 ```
 
-在各 MCP 客户端的配置里加上（把路径换成你的绝对路径，并带上 Key 环境变量）：
+Add this to each MCP client's config (replace the path with your absolute path, and include the Key env var):
 
 ```json
 {
@@ -391,97 +417,130 @@ python mcp_server.py           # stdio；agent 客户端自动拉起
 }
 ```
 
-各客户端配置入口：
+Client config entry points:
 
-| 客户端 | 入口 |
+| Client | Entry |
 |---|---|
-| Claude Desktop | 设置 → 开发者 → Edit Config（claude_desktop_config.json） |
+| Claude Desktop | Settings → Developer → Edit Config (claude_desktop_config.json) |
 | Claude Code | `claude mcp add powertokens-kit -- python /abs/path/mcp_server.py` |
 | Cursor | Settings → MCP → Add |
-| Trae | 设置 → MCP → 添加 |
-| VS Code (Copilot) | 命令面板 → MCP: Add Server |
-| Windsurf / Cline / Zed | 对应 MCP 配置面板 / JSON |
+| Trae | Settings → MCP → Add |
+| VS Code (Copilot) | Command Palette → MCP: Add Server |
+| Windsurf / Cline / Zed | respective MCP config panel / JSON |
 
-### MCP 暴露的工具
+### MCP tools exposed
 
-| 工具 | 说明 |
+| Tool | Description |
 |---|---|
-| `check_key` | 检查 API Key 是否就绪 |
-| `list_models(kind)` | 列出模型 + 定价 + 参数；`kind=all\|video\|image\|seedance` |
-| `estimate_cost(model, duration_s, resolution)` | 估算一次生成消耗（美元） |
-| `generate_video(prompt, model, duration_s, resolution, output, timeout_s)` | 生成视频（异步自动轮询） |
-| `generate_image(prompt, model, aspect_ratio, n, output)` | 生成图片（同步） |
-| `generate_seedance(prompt, model, duration_s, resolution, first_frame, output, timeout_s)` | 生成 Seedance 视频（独立类型） |
+| `check_key` | check whether the API Key is ready |
+| `list_models(kind)` | list models + pricing + params; `kind=all\|video\|image\|seedance` |
+| `estimate_cost(model, duration_s, resolution)` | estimate one generation's cost (USD) |
+| `generate_video(prompt, model, duration_s, resolution, output, timeout_s)` | generate video (async auto-poll) |
+| `generate_image(prompt, model, aspect_ratio, n, output)` | generate image (sync) |
+| `generate_seedance(prompt, model, duration_s, resolution, first_frame, output, timeout_s)` | generate Seedance video (standalone type) |
+| `query_balance()` | **read account balance (by Key)** — `GET /v1/billing/balance` |
+| `query_usage(start_date, end_date)` | **read billing summary by model type** — `GET /v1/billing/usage` |
+| `query_logs()` | **read consumption records** — `GET /v1/logs/query` |
+| `query_agreement()` | **read asset-library agreement status** — `GET /v1/asset/agreement/status` |
 
-> 注：`upload`（资产上传）目前仅 CLI 提供，MCP 工具未暴露；Seedance 图生视频所需的 `asset://` 可先通过 CLI `upload` 拿到，再传给 `generate_seedance` 的 `first_frame`。
-
----
-
-## 15. 定价与消耗估算
-
-- 视频基于 PT **预扣单价**估算；系数：时长线性（5s→10s = ×2），1080p = 720p ×2。
-  例：`seedance-1-5-pro-251215` 5s/720p = $0.247 → 10s/720p = $0.494 → 5s/1080p = $0.494。
-- 图片按张计费，PT 未开放单价 API，表中标 `n/a`，以仪表盘为准。
-- `estimate` 子命令只估算、**不扣费**，也不进入生成流程。
-- PT 额度按**美元**计；生成前服务端会做 `pre-consume quota failed` 预扣校验——**校验不通过不会扣费**。
+> Note: `upload` (asset upload) is currently CLI-only and not exposed as an MCP tool; the `asset://` needed for Seedance image-to-video can be obtained first via CLI `upload`, then passed to `generate_seedance`'s `first_frame`. The four `query_*` tools are read-only and never generate or deduct credits.
 
 ---
 
-## 16. API 直连参考
+## 15. Pricing & cost estimation
 
-所有端点 Base：`https://api.powertokens.ai`，鉴权：`Authorization: Bearer <POWERTOKENS_API_KEY>`。
+- Video is estimated from PT's **pre-deduction unit price**; coefficients: duration is linear (5s→10s = ×2), 1080p = 720p ×2.
+  Example: `seedance-1-5-pro-251215` 5s/720p = $0.247 → 10s/720p = $0.494 → 5s/1080p = $0.494.
+- Images are billed per image; PT has not opened a unit-price API, marked `n/a` in the table — refer to the dashboard.
+- The `estimate` subcommand only estimates, **does not charge**, and does not enter the generation flow.
+- PT quota is counted in **USD**; before generation the server does a `pre-consume quota failed` pre-deduction check — **no charge if the check fails**.
 
-| 用途 | 方法 + 路径 | 要点 |
+---
+
+## 16. Direct API reference
+
+Generation endpoints base: `https://api.powertokens.ai`, auth: `Authorization: Bearer <POWERTOKENS_API_KEY>`.
+
+| Purpose | Method + path | Key points |
 |---|---|---|
-| 提交视频 | `POST /v1/videos` | body：`model` / `prompt`（顶层，普通视频用；Seedance 用 `media:[{type:text}]`）/ `size`(720P) / `ratio` / `seconds`(**字符串**) / `generate_audio` / `media[]` |
-| 轮询视频 | `GET /v1/videos/{task_id}` | 状态 `succeeded`/`completed` 后取 `metadata.url` |
-| 文生图 | `POST /v1/images/generations` | OpenAI 风格，同步返回 `data[].url`（**带 `/generations` 后缀**） |
-| 列出可用模型 | `GET /v1/models` | 返回当前 Key 可调用的模型列表（用于 auto 候选 / 预校验） |
-| 上传资产 | `POST powertokens.ai/api/.../upload` | 异步：返回 `task_id` → 轮询 `get-asset-id` 拿 `asset_id` → 引用 `asset://<id>` |
+| Submit video | `POST /v1/videos` | body: `model` / `prompt` (top-level, for ordinary video; Seedance uses `media:[{type:text}]`) / `size`(720P) / `ratio` / `seconds`(**string**) / `generate_audio` / `media[]` |
+| Poll video | `GET /v1/videos/{task_id}` | after status `succeeded`/`completed`, take `metadata.url` |
+| Text-to-image | `POST /v1/images/generations` | OpenAI-style, sync returns `data[].url` (**with `/generations` suffix**) |
+| List available models | `GET /v1/models` | returns the model list callable by the current Key (for auto candidate / pre-check) |
+| Upload asset | `POST powertokens.ai/api/.../upload` | async: returns `task_id` → poll `get-asset-id` for `asset_id` → reference `asset://<id>` |
 
-常见错误：
-- `cannot unmarshal number into ... seconds of type string`：服务端 `seconds` 是 `enum<string>`，必须传字符串（引擎已处理）。
-- `pre-consume quota failed`：余额不足，预扣校验未通过，**未扣费**。
-- `BytePlus video models only accept media`：多为传了无效/假 `asset://` 导致（详见 §10.3）。
-- `404` 于 `/v1/images`：正确路径是带 `/generations` 后缀的 `/v1/images/generations`。
+**Account / billing / asset-library endpoints — different host & auth**: the four read-only commands in §9 (`balance`, `usage`, `logs`, `agreement`) hit a **separate host `https://powertokens.ai/api`** (the dashboard / asset backend), **not** `api.powertokens.ai`, and use **bare-key auth** (`Authorization: <key>`, no `Bearer`) — the same domain and auth style as asset upload.
 
----
+| Purpose | Method + path (host `powertokens.ai/api`) | Key points |
+|---|---|---|
+| Account balance (by Key) | `GET /v1/billing/balance` | returns balance / currency `credits` / cached flag / key_id |
+| Billing summary by model | `GET /v1/billing/usage` | optional `start_date` / `end_date` (YYYY-MM-DD); per-model `total_cost` + grand total |
+| Consumption records | `GET /v1/logs/query` | consume_id / request_id / task_id / endpoint / model / status / quota / usage / billing |
+| Asset-library agreement status | `GET /v1/asset/agreement/status` | account_id / agreement_accepted / asset_library_enabled |
 
-## 17. 常见问题 / 排错
+> ⚠️ **Not verified on real hardware**: the sandbox has no usable Key. If these endpoints return 401/403, the `powertokens.ai/api` host may require a web-login token rather than the API Key — verify with a real Key.
 
-**Q：视频生成一直停在某个状态？**
-A：视频是异步生成，真实出片 1–3 分钟。脚本每 10s 轮询，默认总上限 600s；超时可加 `--timeout`。若长时间 `unknown`，多半是服务端排队，可稍后拿 `task_id` 用 `GET /v1/videos/{id}` 复查（后续版本会补 `status` 子命令）。
-
-**Q：图片 URL 打不开？**
-A：`data[].url` 是临时签名地址（约 24 小时）。请及时用 `--no-download` 之外的默认行为下载，或自行 `curl` 保存。
-
-**Q：Seedance 提示要签协议？**
-A：去 <https://powertokens.ai/assets-library?tab=1> 手签，然后 `python pt_video.py seedance enable`。
-
-**Q：为什么我的 `auto` 没选到 Seedance？**
-A：Seedance 是独立类型，普通 `video` 的 auto 不含它；要显式 `--type seedance`。
-
-**Q：跨账户能用同一个 asset id 吗？**
-A：可以（见 §11）——asset id 跨账户可解析，但注意安全含义。
-
-**Q：MCP server 启动报缺 `mcp`？**
-A：`pip install -e ".[mcp]"` 或 `pip install "mcp[cli]>=1.2"`。
+Common errors:
+- `cannot unmarshal number into ... seconds of type string`: the server's `seconds` is `enum<string>` and must be passed as a string (the engine handles this).
+- `pre-consume quota failed`: insufficient balance, pre-deduction check failed, **no charge**.
+- `BytePlus video models only accept media`: mostly caused by an invalid/fake `asset://` (see §10.3).
+- `404` on `/v1/images`: the correct path is `/v1/images/generations` with the `/generations` suffix.
 
 ---
 
-## 18. 已知限制与路线图
+## 17. FAQ / Troubleshooting
 
-- **轮询熔断**：429 退避 / 5xx 熔断为已知待办（见 `docs/pitfall-archive.md` A.02/A.03）。
-- **`status` 子命令**：按 `task_id` 单独复查状态未实现。
-- **图片单价**：PT 未开放单价 API，`estimate` 对图片返回 `n/a`。
-- **Seedance 协议无 API 签署**：只能仪表盘手签 + 本地标记近似。
-- **结果视频直连下载**：部分 result URL 在本机直连 R2 可能返回 403（桶热链/访问策略），生成任务 server-side 完成不受影响；下载链路策略待进一步确认。
+### 17.1 PT HTTP status codes (401 / 402 / 403)
+
+PT assigns specific semantics to these status codes. Our CLI / MCP / gateway surface the original status and PT's message on stderr; the CLI maps auth failures to exit code 2 and everything else to exit code 1.
+
+| Status | Meaning | Typical trigger |
+|--------|---------|-----------------|
+| `401 Unauthorized` | API Key invalid / expired / missing | Bad or absent key |
+| `402 Payment Required` | Insufficient balance / quota | Generation when credits are exhausted |
+| `403 Forbidden` | No permission / model delisted | Key lacks access, or the model was removed |
+
+Notes:
+- The read-only account / billing commands (`balance` / `usage` / `logs` / `agreement`, and the gateway `/account/*` routes) never return `402` — they only query.
+- A `401` / `403` from the `https://powertokens.ai/api` host may mean the host expects a **web-login token** rather than the API Key — verify with a real Key (not verified in the sandbox).
+
+**Q: Video generation stuck at some status?**
+A: Video is generated asynchronously; real render time is 1–3 minutes. The script polls every 10s with a default total cap of 600s; raise `--timeout` if needed. If it stays `unknown` for a long time, it's likely server-side queuing — you can later re-check with `GET /v1/videos/{id}` using the `task_id` (a `status` subcommand will be added in a later version).
+
+**Q: Image URL won't open?**
+A: `data[].url` is a temporary signed address (~24 hours). Download promptly (the default behavior, or use `curl` manually).
+
+**Q: Seedance says I need to sign the agreement?**
+A: Go to <https://powertokens.ai/assets-library?tab=1> to sign manually, then `python pt_video.py seedance enable`.
+
+**Q: Why didn't my `auto` pick Seedance?**
+A: Seedance is a standalone type; the `auto` for ordinary `video` does not include it — use explicit `--type seedance`.
+
+**Q: Can I use the same asset id across accounts?**
+A: Yes (see §11) — asset ids are cross-account resolvable, but mind the security implication.
+
+**Q: MCP server fails to start, missing `mcp`?**
+A: `pip install -e ".[mcp]"` or `pip install "mcp[cli]>=1.2"`.
+
+**Q: The `balance`/`usage`/`logs`/`agreement` commands return 401/403?**
+A: These hit the `powertokens.ai/api` host with bare-key auth (see §16). Confirm you're passing the right Key via `-k` or `POWERTOKENS_API_KEY`; if 401/403 persists, the host may need a web-login token instead of the API Key.
 
 ---
 
-## 19. 贡献
+## 18. Known limitations & roadmap
 
-欢迎 Issue / PR。改动请保持「引擎单一真相源」原则：CLI / SKILL / MCP 三处共用 `pt_video.py`，不要在 MCP 或 SKILL 里重复实现生成逻辑。新增踩坑请同步更新 `docs/pitfall-archive.md`。
+- **Polling circuit breaker**: 429 backoff / 5xx circuit breaking is a known to-do (see `docs/pitfall-archive.md` A.02/A.03).
+- **`status` subcommand**: re-checking status by `task_id` alone is not implemented.
+- **Image unit price**: PT has not opened a unit-price API, `estimate` returns `n/a` for images.
+- **Seedance agreement has no API signing**: only manual dashboard signing + local flag approximation.
+- **Result video direct download**: some result URLs may return 403 on direct R2 access from this machine (bucket hotlink/access policy); the server-side generation task is unaffected; the download-link policy needs further confirmation.
+- **Account/billing endpoints not verified on real hardware**: see §16 caveat.
+
+---
+
+## 19. Contributing
+
+Issues / PRs welcome. Keep the "engine single source of truth" principle: CLI / SKILL / MCP all share `pt_video.py`; do not re-implement generation logic in MCP or SKILL. New pitfalls should be synced to `docs/pitfall-archive.md`.
 
 ---
 
@@ -493,8 +552,9 @@ A：`pip install -e ".[mcp]"` 或 `pip install "mcp[cli]>=1.2"`。
 
 ## 21. Changelog
 
-- **0.4.1** — 纠正「Seedance 文生视频必须带 media」误判（实测纯 prompt 可行）；补充跨账户资产共享发现（A.14）；`upload` 资产上传闭环；文档对齐。
-- **0.4.0** — Seedance 拆为独立类型（`image`/`video`/`seedance` 并列）；协议「本地标记 + 报错回退」开通流程；`force_asset` 媒体校验；MCP `generate_seedance` 工具。
-- **0.3.0** — 补齐图片生成（同步 `/v1/images/generations`）；REST 直连替代 CLI。
-- **0.2.0** — 异步视频提交 + 轮询；`auto` 模型选择；定价/参数查询。
-- **0.1.0** — 初始引擎骨架。
+- **0.5.0** — Add **read-only account/billing commands**: CLI `balance` / `usage` / `logs` / `agreement` and matching MCP tools (`query_balance` / `query_usage` / `query_logs` / `query_agreement`); `seedance status` now best-effort checks server-side agreement; document the `powertokens.ai/api` bare-key domain for account/billing/asset endpoints.
+- **0.4.1** — Correct the misjudgment that "Seedance text-to-video must carry media" (tested: plain prompt works); add the cross-account asset-sharing finding (A.14); `upload` asset-upload loop; docs aligned.
+- **0.4.0** — Split Seedance into a standalone type (`image`/`video`/`seedance` parallel); "local flag + error fallback" onboarding flow; `force_asset` media validation; MCP `generate_seedance` tool.
+- **0.3.0** — Add image generation (sync `/v1/images/generations`); REST direct replaces CLI.
+- **0.2.0** — Async video submit + polling; `auto` model selection; pricing/param query.
+- **0.1.0** — Initial engine skeleton.

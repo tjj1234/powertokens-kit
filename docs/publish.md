@@ -1,55 +1,57 @@
-# 发布到注册表（ClawHub / mcp.so / Smithery）
+# Publishing to Registries (ClawHub / mcp.so / Smithery)
 
-本文件是给维护者看的「提交清单」。仓库根目录**本身就是一个 Agent Skill 文件夹**（含 `SKILL.md`），
-同时也是 MCP server 的源码。两种注册表复用同一份内容。
+> 📘 This document is in English. [中文文档](publish.zh-CN.md)
+
+This file is a **submission checklist** for maintainers. The repo root **is itself an Agent Skill folder** (it contains `SKILL.md`),
+and is also the source of the MCP server. The two registry types reuse the same content.
 
 ---
 
-## A. 提交到 ClawHub（Agent Skills 注册表）
+## A. Submit to ClawHub (Agent Skills registry)
 
-ClawHub 是 `agentskills.io` 开放标准的社区注册表，收录可被 40+ agent 直接读取的 `SKILL.md` skill。
+ClawHub is the community registry for the `agentskills.io` open standard, indexing `SKILL.md` skills that can be read directly by 40+ agents.
 
-前提检查（提交前确认）：
+Pre-submission checks:
 
-- [ ] 仓库根有 `SKILL.md`，frontmatter 含 `name`（与目录名一致：小写、连字符）和 `description`（≤1024 字，说明「做什么 + 何时用」）。
-- [ ] `description` 写的是工具无关的触发语（如「generate a video with PowerTokens」），**不含任何单一 agent 专有字眼**。
-- [ ] 有 `license` 字段（本项目 MIT）。
-- [ ] `SKILL.md` 正文 ≤ 500 行（超出请拆到 `references/`）。
-- [ ] `pt_video.py` 可直接 `python pt_video.py check` 运行（不依赖本仓库外的路径）。
+- [ ] The repo root has `SKILL.md`, whose frontmatter contains `name` (matching the directory name: lowercase, hyphenated) and `description` (≤1024 chars, stating "what it does + when to use it").
+- [ ] The `description` uses tool-agnostic trigger phrases (e.g. "generate a video with PowerTokens"), **with no single-agent-specific wording**.
+- [ ] There is a `license` field (this project: MIT).
+- [ ] The `SKILL.md` body is ≤ 500 lines (if exceeded, split into `references/`).
+- [ ] `pt_video.py` runs directly via `python pt_video.py check` (does not depend on paths outside this repo).
 
-提交流程（以 ClawHub 网页/CLI 为准，步骤如下述）：
+Submission flow (follow ClawHub's web/CLI; steps below):
 
-1. 在 GitHub 上发布一个 **Release**（建议带 tag，如 `v0.1.0`），保证 `SKILL.md` 在仓库根。
-2. 打开 ClawHub 提交页（或在 Agent Skills 兼容客户端里执行发布命令），填入：
-   - Skill 仓库 URL：`https://github.com/tjj1234/powertokens-kit`
-   - 入口路径：`/`（根目录即 skill 文件夹）
-   - 分类：`media / video-generation`
-3. 提交后等待审核/索引；上线后用户可在客户端执行类似：
+1. Publish a **Release** on GitHub (a tag is recommended, e.g. `v0.1.0`), ensuring `SKILL.md` is at the repo root.
+2. Open the ClawHub submission page (or run the publish command in an Agent-Skills-compatible client), and fill in:
+   - Skill repo URL: `https://github.com/tjj1234/powertokens-kit`
+   - Entry path: `/` (the root directory is the skill folder)
+   - Category: `media / video-generation`
+3. After submission, wait for review/indexing; once live, users can run something like this in their client:
    ```bash
-   # 例：Claude Code 安装社区 skill
+   # e.g. install a community skill in Claude Code
    claude skills install powertokens-kit
    ```
-   或直接在支持的市场里一键添加。
+   or add it with one click in a supported marketplace.
 
-> 注：`name` 必须为 `powertokens-kit` 且与目录同名；若 registry 已存在同名，请在 `metadata` 里用 `author` 区分，或改名（同时改目录名与 frontmatter `name`）。
+> Note: `name` must be `powertokens-kit` and match the directory. If the registry already has that name, distinguish it via the `author` field in `metadata`, or rename (changing both the directory name and the frontmatter `name`).
 
 ---
 
-## B. 提交到 mcp.so（MCP 注册表）
+## B. Submit to mcp.so (MCP registry)
 
-mcp.so 是 MCP server 的社区目录。本项目 `mcp_server.py` 即 server 入口。
+mcp.so is the community directory for MCP servers. This project's `mcp_server.py` is the server entry point.
 
-前提检查：
+Pre-submission checks:
 
-- [ ] `pip install -e ".[mcp]"` 可成功，`python mcp_server.py` 能以 stdio 启动。
-- [ ] `README.md` 的「接入方式 B」里给了可直接复制的 `mcpServers` JSON 片段（已含 `command` / `args` / `env`）。
+- [ ] `pip install -e ".[mcp]"` succeeds, and `python mcp_server.py` starts over stdio.
+- [ ] The "Integration B" section of `README.md` gives a copy-pasteable `mcpServers` JSON snippet (with `command` / `args` / `env`).
 
-提交流程：
+Submission flow:
 
-1. 打开 <https://mcp.so> → Add MCP Server。
-2. 填写：
-   - **Name**：`powertokens-kit`
-   - **Repository / Command**：
+1. Open <https://mcp.so> → Add MCP Server.
+2. Fill in:
+   - **Name**: `powertokens-kit`
+   - **Repository / Command**:
      ```json
      {
        "mcpServers": {
@@ -61,21 +63,23 @@ mcp.so 是 MCP server 的社区目录。本项目 `mcp_server.py` 即 server 入
        }
      }
      ```
-   - **Category**：`Media / Video`
-   - **Description**：Generate videos from PowerTokens models (Seedance/Kling/Wan/…) via CLI + MCP.
-3. 提交后用户可在支持 mcp.so 的客户端里一键 `npx`/安装。
+   - **Category**: `Media / Video`
+   - **Description**: Generate videos from PowerTokens models (Seedance/Kling/Wan/…) via CLI + MCP.
+3. After submission, users can one-click `npx`/install in clients that support mcp.so.
 
-（Smithery 流程类似，按 Smithery 的 `smithery.yaml` 或网页表单提交 server 元数据即可；server 以 stdio 暴露，无需额外适配。）
+(Smithery's flow is similar — submit the server metadata via Smithery's `smithery.yaml` or web form; the server is exposed over stdio, no extra adaptation needed.)
 
 ---
 
-## C. 发布清单（发版前逐项勾选）
+## C. Release checklist (tick off item by item before tagging)
 
-- [ ] `pt_video.py` 语法编译通过（`python -m py_compile pt_video.py`）
-- [ ] `python pt_video.py models` 在无 Key 时能输出公开目录（定价+参数）
-- [ ] `python pt_video.py check` 在缺 Key 时给出引导并 exit 2
-- [ ] `mcp_server.py` 可在有 `mcp` 依赖时启动
-- [ ] `README.md` 的「各 agent 目录 / 各客户端配置入口」与当前版本一致
-- [ ] `pyproject.toml` 的 `project.urls.Repository` 换成真实仓库地址
-- [ ] `SKILL.md` / `README.md` 里的 `your-org` 占位替换成真实 org
-- [ ] 打 Git tag 并推送：`git tag v0.1.0 && git push --tags`
+- API error semantics (401 / 402 / 403) are documented in README §17.1 — keep this in sync if PT changes the contract.
+
+- [ ] `pt_video.py` compiles (`python -m py_compile pt_video.py`)
+- [ ] `python pt_video.py models` outputs the public catalog (pricing + params) without a Key
+- [ ] `python pt_video.py check` gives guidance and exits 2 when the Key is missing
+- [ ] `mcp_server.py` starts when the `mcp` dependency is present
+- [ ] The "per-agent directories / per-client config entry" section of `README.md` matches the current version
+- [ ] `pyproject.toml`'s `project.urls.Repository` is set to the real repo URL
+- [ ] The `your-org` placeholders in `SKILL.md` / `README.md` are replaced with the real org
+- [ ] Tag and push Git: `git tag v0.1.0 && git push --tags`
