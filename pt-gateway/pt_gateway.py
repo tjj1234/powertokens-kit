@@ -111,15 +111,21 @@ def _kind_of(model):
 
 # ---------- 健壮轮询（§2.5：429 退避 + 5xx 熔断）----------
 def _retry_after(err):
-    """尽力从 ApiError 取 Retry-After；引擎未暴露响应头时返回 None（退化为指数退避）。"""
-    raw = getattr(err, "raw", None) or {}
-    hdrs = raw.get("headers") or {}
-    ra = hdrs.get("Retry-After") or hdrs.get("retry-after")
-    if ra:
-        try:
-            return float(ra)
-        except Exception:
-            return None
+    """从 ApiError 取 Retry-After（秒）；取不到返回 None（退化为指数退避）。
+
+    引擎（pt_video.ApiError）现在会把响应头带出来；raw["headers"] 保留兼容旧路径。
+    HTTP 头名大小写不敏感（服务端可能发 retry-after）。
+    """
+    hdrs = getattr(err, "headers", None) or {}
+    if not hdrs:
+        raw = getattr(err, "raw", None) or {}
+        hdrs = raw.get("headers") or {}
+    for name, val in hdrs.items():
+        if str(name).lower() == "retry-after":
+            try:
+                return float(val)
+            except Exception:
+                return None
     return None
 
 
@@ -148,6 +154,12 @@ def poll_task(key, task_id, timeout=POLL_TIMEOUT):
             status = e.status or 0
             if status == 429:
                 wait_s = _retry_after(e) or backoff
+                remaining = deadline - time.monotonic()
+                if wait_s > remaining:
+                    # 服务端要求等的比剩余超时还久：等下去也必然超时，直接给明确错误，
+                    # 不要为了一个注定失败的重试把调用方拖到超时之后。
+                    raise ApiError(429, f"限流：服务端要求 {wait_s:.0f}s 后重试，"
+                                        f"超过剩余超时 {max(0.0, remaining):.0f}s（task={task_id}）")
                 backoff = min(backoff * 2, 60)
                 time.sleep(wait_s)
                 continue

@@ -25,10 +25,8 @@ def task(status, **extra):
 
 
 def err(status, msg="boom", headers=None):
-    e = ApiError(status, msg)
-    if headers is not None:
-        e.raw = {"headers": headers}
-    return e
+    """构造带响应头的 ApiError —— 与真实引擎路径一致（引擎现在会透出 headers）。"""
+    return ApiError(status, msg, headers=headers)
 
 
 class TestPollHappyPath(GatewayTestBase):
@@ -93,6 +91,17 @@ class TestPollRateLimit(GatewayTestBase):
         self.install_api([err(429, "r", {"retry-after": "2.5"}), task("succeeded")])
         pt_gateway.poll_task("KEY", TID, timeout=600)
         self.assertEqual([2.5], self.clock.sleeps)
+
+    def test_retry_after_beyond_deadline_fails_fast(self):
+        """服务端要求等 999s、总超时只有 10s：不能真睡 999s 把调用方拖死，
+        应立即给出明确的限流错误（不是静默超时，也不是硬等）。"""
+        self.install_api([err(429, "rate limited", {"Retry-After": "999"})],
+                         default=task("running"))
+        with self.assertRaises(ApiError) as ctx:
+            pt_gateway.poll_task("KEY", TID, timeout=10)
+        self.assertEqual(429, ctx.exception.status)
+        self.assertIn("限流", str(ctx.exception.message))
+        self.assertEqual([], self.clock.sleeps, "明知等不到（Retry-After > 剩余超时）就不该睡")
 
 
 class TestPollServerErrors(GatewayTestBase):
@@ -171,12 +180,84 @@ class TestRetryAfterParsing(unittest.TestCase):
     def test_missing_raw_degrades_to_none(self):
         self.assertIsNone(pt_gateway._retry_after(ApiError(429, "r")))
 
-    def test_known_gap_engine_error_carries_no_headers(self):
-        """已知缺口（P1，不阻塞发布）：引擎 ApiError 不带响应头，
-        因此真机 429 时 Retry-After 拿不到，只能走指数退避。
-        这里钉死"退化行为是优雅的"（返回 None、不抛异常），
-        修 pt_video._api_call 带上 headers 后，本用例应改为断言能解析出值。"""
-        self.assertIsNone(pt_gateway._retry_after(ApiError(429, "real engine error")))
+    def test_error_without_headers_degrades_gracefully(self):
+        """N4 已修：引擎能带出响应头；万一服务端没给 Retry-After，也要优雅退化，
+        返回 None 而不是抛异常（让 poll_task 走指数退避）。"""
+        self.assertIsNone(pt_gateway._retry_after(ApiError(429, "no retry-after header")))
+
+    def test_headers_attribute_takes_priority(self):
+        """新路径：ApiError.headers 直接可用（不依赖 raw 兼容层）。"""
+        e = ApiError(429, "r", headers={"Retry-After": "9"})
+        self.assertEqual(9.0, pt_gateway._retry_after(e))
+
+    def test_case_insensitive_header_name(self):
+        """HTTP 头名大小写不敏感：服务端发 RETRY-AFTER 也得认。"""
+        e = ApiError(429, "r", headers={"RETRY-AFTER": "4"})
+        self.assertEqual(4.0, pt_gateway._retry_after(e))
+
+
+class TestEngineExposesHeaders(unittest.TestCase):
+    """N4 回归：真引擎 pt_video._api_call 遇到 429 时，必须把响应头带进 ApiError。
+
+    修复前 ApiError 只有 (status, message)，上层 _retry_after 永远拿不到 Retry-After，
+    真机限流时只能盲目指数退避。这个用例直接在 urllib 层造一个带头的 HTTPError，
+    验证从「HTTP 响应 → ApiError → _retry_after」整条链路是通的。
+    """
+
+    def test_api_call_attaches_headers_and_retry_after_is_parseable(self):
+        import io
+        import urllib.error
+        from email.message import Message
+        import pt_video
+
+        msg = Message()
+        msg["Retry-After"] = "3"
+        msg["X-Request-Id"] = "req-abc"
+        http_err = urllib.error.HTTPError(
+            "https://api.powertokens.ai/v1/videos/x", 429, "Too Many Requests",
+            msg, io.BytesIO(b'{"error":"rate limited"}'),
+        )
+
+        orig = pt_video.urllib.request.urlopen
+
+        def _raise(*a, **kw):
+            raise http_err
+
+        pt_video.urllib.request.urlopen = _raise
+        try:
+            with self.assertRaises(ApiError) as ctx:
+                pt_video._api_call("GET", "/v1/videos/x", "KEY")
+        finally:
+            pt_video.urllib.request.urlopen = orig
+
+        e = ctx.exception
+        self.assertEqual(429, e.status)
+        self.assertEqual("3", e.headers.get("Retry-After"))
+        self.assertEqual("req-abc", e.headers.get("X-Request-Id"))
+        self.assertEqual(3.0, pt_gateway._retry_after(e),
+                         "引擎已带出 Retry-After，上层必须能解析（N4）")
+
+    def test_api_call_without_retry_after_still_raises_cleanly(self):
+        """没有 Retry-After 的正常错误：headers 为空、_retry_after 为 None，链路不炸。"""
+        import io
+        import urllib.error
+        from email.message import Message
+        import pt_video
+
+        http_err = urllib.error.HTTPError(
+            "https://api.powertokens.ai/v1/videos/x", 500, "Server Error",
+            Message(), io.BytesIO(b'{"error":"boom"}'),
+        )
+        orig = pt_video.urllib.request.urlopen
+        pt_video.urllib.request.urlopen = lambda *a, **kw: (_ for _ in ()).throw(http_err)
+        try:
+            with self.assertRaises(ApiError) as ctx:
+                pt_video._api_call("GET", "/v1/videos/x", "KEY")
+        finally:
+            pt_video.urllib.request.urlopen = orig
+
+        self.assertEqual(500, ctx.exception.status)
+        self.assertIsNone(pt_gateway._retry_after(ctx.exception))
 
 
 if __name__ == "__main__":

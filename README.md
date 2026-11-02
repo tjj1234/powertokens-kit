@@ -14,6 +14,13 @@
 
 > **English:** A tool-agnostic CLI + MCP server that drives [PowerTokens](https://powertokens.ai/) image / video / Seedance models through the official REST API (no Node, no `powertokens-cli`). One engine, two shells (Agent Skills `SKILL.md` + MCP `mcp_server.py`). Works across any agent that supports the Agent Skills open standard or MCP.
 
+> **📦 本仓库包含两部分能力**
+>
+> - **本页（`pt_video.py` + `mcp_server.py`）**：image / video / seedance 生成引擎与 MCP 接入。
+> - **`pt-gateway/`（生产级统一网关）**：在引擎之上增加 **audio（TTS）** 与 **chat（多模态 / 联网搜索 / 思考模式能力标注）**，HTTP + MCP 双接口、能力目录、三层测试。
+>
+> 👉 **chat / 音频 / 网关相关文档不在本页**，见 [`pt-gateway/README.md`](pt-gateway/README.md)（chat 模型能力标注在 **§9.1**，38 个模型逐一标注 vision / audio_in / video_in / web_search / thinking）。
+
 ---
 
 ## 目录

@@ -341,13 +341,23 @@ def _api_call(method, path, key, body=None, timeout=30):
                 detail = detail.get("error") or detail.get("message") or json.dumps(detail, ensure_ascii=False)
         except Exception:
             pass
-        raise ApiError(e.code, str(detail) or e.reason)
+        raise ApiError(e.code, str(detail) or e.reason, headers=getattr(e, "headers", None))
 
 
 class ApiError(Exception):
-    def __init__(self, status, message):
+    """PT API 错误。
+
+    headers 必须透出：429 的 Retry-After 是服务端给出的重试节奏，
+    吞掉它就只能盲目指数退避，容易在限流窗口内反复撞击、放大限流。
+    """
+
+    def __init__(self, status, message, headers=None):
         self.status = status
         self.message = message
+        # 复制成普通 dict（HTTPMessage / dict 都支持 items()），保留原始大小写
+        self.headers = dict(headers.items()) if headers is not None else {}
+        # 向后兼容：早期上层从 raw["headers"] 读取
+        self.raw = {"headers": self.headers}
         super().__init__(f"HTTP {status}: {message}")
 
 
@@ -728,7 +738,8 @@ def upload_asset(key, path, group_name=None, poll_timeout=120):
         with urllib.request.urlopen(req, timeout=60) as r:
             data = json.loads(r.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
-        raise ApiError(e.code, f"资产上传失败：{e.read().decode('utf-8', 'replace')}")
+        raise ApiError(e.code, f"资产上传失败：{e.read().decode('utf-8', 'replace')}",
+                       headers=getattr(e, "headers", None))
     if data.get("code") != 200:
         raise ApiError(data.get("code", 0), f"资产上传失败：{data}")
     task_id = (data.get("data") or {}).get("task_id")
@@ -741,7 +752,8 @@ def upload_asset(key, path, group_name=None, poll_timeout=120):
             with urllib.request.urlopen(ASSET_GET_ID.format(task_id), timeout=30) as r:
                 j = json.loads(r.read().decode("utf-8"))
         except urllib.error.HTTPError as e:
-            raise ApiError(e.code, f"查询 asset_id 失败：{e.read().decode('utf-8', 'replace')}")
+            raise ApiError(e.code, f"查询 asset_id 失败：{e.read().decode('utf-8', 'replace')}",
+                           headers=getattr(e, "headers", None))
         aid = (j.get("data") or {}).get("asset_id")
         if aid:
             return aid
