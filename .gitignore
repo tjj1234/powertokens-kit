@@ -21,3 +21,6 @@ out/
 pt-gateway/registry.json
 registry.json
 *.registry.json
+
+# 测试报告产物（每次运行生成，不入库）
+pt-gateway/tests/reports/

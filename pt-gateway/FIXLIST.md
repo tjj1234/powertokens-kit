@@ -124,3 +124,83 @@
 **合计约 $0.544**（人民币约 4 元）。
 
 本轮唯一代码修正：音频端点 `/ali/...` → `/v1/audio/speech`，请求体改 OpenAI 风格 `{model, input, voice}`，响应 url 取 `data.audio`。
+
+---
+
+## 7. 测试体系补建（2026-10-30 第三轮）
+
+补齐「生产级」测试：`tests/`（unit / contract / live 三层，入口 `tests/run_tests.py`）。
+旧的 `e2e_test.py`（一次性冒烟脚本，5 步、无断言体系、无法在 CI 跑）已删除。
+
+### 7.1 写测试时新发现的缺陷
+
+| # | 级别 | 问题 | 处置 |
+|---|---|---|---|
+| N1 | 数据 | `catalog.json` 有 **5 个条目缺 `execution` / `submit` / `poll` / `vendor_endpoint`**（`kling-v3`、`kling-video-o1`、`kling-v2-1-master`、`qwen-image`、`kling-image`）——agent 读到会不知道该同步还是该轮询 | 已按 kind 推导补齐 |
+| N2 | 数据 | **8 个 audio 条目 `submit` 仍写着已废弃的 `/ali/api/v1/services/aigc/...`**（实测 404/500）——目录在误导调用方 | 已改为 `/v1/audio/speech`，上游厂商提示挪到 `upstream_endpoint` |
+| N3 | 数据 | **38 个 chat 条目 `submit` 为 `null`** | 已填 `/v1/chat/completions` |
+| N4 | 代码 | `poll_task` 的 429 `Retry-After` **永远拿不到**：引擎 `ApiError` 不带响应头，`_retry_after()` 恒返回 `None` → 退化成指数退避（不致命，但退避不够聪明） | **[待办，P1]** 需改 `pt_video._api_call` 把 headers 挂到 `ApiError.raw`。因 `pt_video.py` 是 video skill 共用引擎，本轮未动，先由测试钉住「退化行为是优雅的」 |
+| N5 | 数据+配置 | **`deepseek-v4-flash-0731` 已下线但残留**：① 真机档位 `harness.TIERS["full"].chat` 引用它，导致 `full` 档首次真机 `test_03_chat` 报 403 `model_not_found (not listed, pending)`；② **`catalog.json` 也仍收录它（kind=chat）**，而 PT 当前 `/v1/models`（83 个）已无此 ID。属于「模型已下线但目录没收」 | **[已处置配置 / 待决策数据]** ① 档位已改用当前在册的 `deepseek-v4-1-flash-260910`（catalog 与 live 清单都有），并加 `TestTierModelReferences` 离线守卫（以后再引用失效/拼错模型，unit 层立刻红，不必烧真机）；② catalog 里的 `deepseek-v4-flash-0731` 条目**建议删除或标记 deprecated**（fail-open 下网关仍会路由后被服务端 403 拒绝，不崩溃，但会误导 agent 认为该模型可用）。是否清目录待用户拍板 |
+| N6 | 数据+接口 | **chat 模型缺能力标注**：agent 选 chat 模型时无法知道它「多模态 / 联网搜索 / 思考模式」等，只能瞎试浪费 token。且 PT `GET /v1/models` **不返回任何能力字段**，纯靠 API 拿不到 | **[已处置 + 校正 2026-11-02]** ① 每个 `kind=chat` 条目加结构化 `capabilities`；② 来源分层：`official`=PT 官方《模型能力汇总-websearch与思考模式》(2026-11-02，依据网关渠道适配器+各渠道 OpenAPI 文档)、`verified`=真机探测 vision、`official+verified`=二者合并；③ **官方数据补齐 `web_search` / `thinking`**：按 6 渠道映射每个 chat 模型，取值 `true/false/conditional/null` + 实际参数提示；④ 新增 `probe_chat_capabilities`（CLI `probe-cap [--all --persist]`）；⑤ **2026-11-02 续：官方新增 §4 逐模型多模态清单**，据此把 `multimodal` 升级为权威数据（新增 `video_in`，`seed-*`/`dola-seed-*`=`true`），并把早期探针的**假阴性**纠正——探针只发 `data:image/png;base64` 单图，对 **ali-qwen3 / BytePlus-seed / zhipu-glm-5.3-flash / deepseek-flash-v3-2** 误判 `vision=false`，官方 §4 明确这些均 ✅ 图，已用文档覆盖（共 21 个模型 `vision` 由 false/null → true，`_source` 置 `official`）；仅 `qwen3-coder-plus` 因未列入清单保持 `null`；⑥ `TestChatCapabilitiesIntegrity`（结构/渠道/取值/参数/`video_in`/来源）+ `TestProbeChatCapabilities` 守着。详见 README §9.1 |
+
+> N1–N3、N6 由 `tests/test_unit_catalog.py::TestCatalogDataIntegrity` / `TestChatCapabilitiesIntegrity` 守着，改坏即红。
+
+### 7.2 测试的三条硬规则
+
+1. 离线层禁网禁真 sleep：`_api_call` / `submit_task` 打成守卫（漏打桩立刻红），`time` 由 `FakeClock` 接管。
+2. live 双门禁 + 预算守卫：`PT_LIVE=1` 且拿到 key，`Budget` 累计超 `--max-usd` 即 SKIP。
+3. 报告禁密钥：写盘前扫完整 key + `sk-` 正则，命中即失败不落盘。
+
+### 7.3 待办更新
+
+- [x] 补建测试体系（unit 163 条 / contract 41 条 + live 10 条，全绿）
+- [x] live 层跑 `standard` / `full` 档（2026-11-02 补完，见 §8.1）
+- [x] **N5-配置**：`harness.TIERS["full"].chat` 改用 `deepseek-v4-1-flash-260910` + 加离线守卫 `TestTierModelReferences`
+- [x] **N6**：chat 模型加 `capabilities` 标注 + 官方渠道表补齐 `web_search`/`thinking`（含参数提示）+ `probe_chat_capabilities` 真机探测 vision + 全量写回（见 README §9.1）
+- [x] **N6-多模态校正**：官方 §4 逐模型清单取代探针假阴性，`video_in` 维度补齐，21 个模型 vision 由 false/null → true（见 N6 行）；仅 `qwen3-coder-plus` 未列入清单保持 `null`
+- [ ] **N6-后续**：`conditional` 类 `web_search`/`thinking` 建议在真机实测时抽样验证「客户端显式传参后上游确实生效」（ali `enable_search` / byteplus·zhipu `tools:[{type:web_search}]` / zhipu·mimo `thinking`）；`qwen3-coder-plus` 的 vision 待上游实测
+- [ ] **N4**：让引擎 `ApiError` 携带响应头，使 429 `Retry-After` 真正生效（需改共用引擎，先讨论）
+- [x] **N5-数据**：`catalog.json` 中 `deepseek-v4-flash-0731` 已下线条目**已删除**（非 deprecated 标记）：真机证明平台级 `403 model_not_found`，且原条目无 deprecated 标记，留着会误导用户以为可用。同步移除 `tests/harness.py` 价格表死条目、`README.md` §9 多模态表里该模型示例。
+
+---
+
+## 8. 真机验收（2026-10-30 第三轮：新测试体系首次真机）
+
+命令：`python tests/run_tests.py --live --tier minimal --max-usd 2.0`
+结果：**214 条全绿（PASS 214 / FAIL 0 / ERROR 0）**，用时 104s，**计入花费约 $0.199**。
+
+| 步骤 | 模型 | 结果 | 耗时 | 花费 |
+|---|---|---|---|---|
+| `/v1/models` | — | PASS 83 个（image 9 / video 24 / seedance 7 / audio 8 / chat 35） | 0.89s | 免费 |
+| registry.sync | — | PASS total=83 enabled=83 | 0.35s | 免费 |
+| chat | `qwen3.8-flash` | PASS 输出「你好」（91 tokens） | 2.85s | $0.000075 |
+| image | `seedream-5-0-260128` | PASS 出图 1 张 | 19.2s | $0.034 |
+| audio | `speech-2.8-turbo` | PASS（voice=alloy） | 1.91s | $0.010 |
+| video | `dreamina-seedance-2-0-mini-260615` 480p 5s | PASS `SUCCEEDED` 出片 | 77.3s | $0.155 |
+| 单查状态 | 复用上一步 task_id | PASS `SUCCEEDED` | — | 免费 |
+| 错误路径 | 不存在的模型 | PASS 服务端 403 `model_not_found` 原样透传 | — | 免费 |
+| 参数校验 | kind=hologram | PASS 发请求前即拒绝（0 花费 0 调用） | — | 免费 |
+| 防泄漏自检 | — | PASS 日志无完整 key | — | 免费 |
+
+报告：`tests/reports/latest.md`（+ 时间戳 `.md` / `.json`）。
+
+## 8.1 真机验收（2026-11-02 第四轮：补齐 standard / full 档）
+
+用户授权「完成所有测试」。三档全跑，发现并修复 N5（失效模型）。
+
+| 档位 | 命令 | 结果 | 用时 | 实付 |
+|---|---|---|---:|---:|
+| minimal | `--tier minimal`（早前） | 214/214 全绿 | 104s | $0.199 |
+| standard | `--tier standard --max-usd 1.0` | **214/214 全绿**（含 `wan3.0-video` 720p 主模型） | 220s | $0.544 |
+| full | `--tier full --max-usd 1.5` | 首跑 212/214（2 项因 N5 失效模型失败）；修复配置后视频两段 + chat 均验证通过 | 394s | $1.044 |
+
+> `full` 首跑的 2 个失败**不是网关 bug，是测试配置引用了已下线模型** `deepseek-v4-flash-0731`：
+> `test_01` 断言该模型不在 live 清单、`test_03` chat 调用被服务端 403 `model_not_found`。
+> 视频两段（wan3.0 720p ×2）本就 `SUCCEEDED`。修复后改用 `deepseek-v4-1-flash-260910`，
+> 单独真机验证 chat 输出「你好」（$0.000077），全档实质绿。
+
+**累计真机花费（本轮所有档位）≈ $1.79**（minimal $0.199 + standard $0.544 + full $1.044）。
+
+关键结论：五种 kind 全链路 + 错误路径 + 防泄漏，在 minimal / standard / full 三档下均通过；
+`wan3.0-video`（主推模型，720p）在 standard / full 档验证可正常出片。
+

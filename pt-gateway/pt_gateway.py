@@ -449,6 +449,52 @@ class TaskGateway:
         return {"ok": True, "kind": "chat", "execution": "sync",
                 "model": model, "text": text, "raw": resp}
 
+    # ---- chat 能力真机探测（把 configured 升级为 verified）----
+    def probe_chat_capabilities(self, model, probe_vision=True, persist=False):
+        """真机探测 chat 模型视觉输入能力，作为官方文档的辅助交叉校验。
+
+        ⚠️ 局限（重要）：本探测只发一种 `data:image/png;base64` 单图请求。
+        对 ali-qwen3 / BytePlus-seed / zhipu-glm-5.3-flash / deepseek-flash-v3-2 等渠道，
+        该格式不被接受会返回非视觉类报错，从而**误判 vision=false（假阴性）**。
+        因此 catalog 中 multimodal 的权威来源是 PT 官方《模型能力汇总》§4 逐模型清单，
+        本方法仅用于"双重确认"（探针与文档一致时标 official+verified），不可单独作为结论。
+
+        探测判据：
+          - 4xx 且报错含 image/vision/picture/visual/图片/多模态 -> vision=false(verified)
+          - 200 且正常返回文本 -> vision=true(verified)（少数模型会忽略图片，保守记 true）
+          - 其他/超时 -> vision=null(未知)
+        web_search / thinking 属 PT 平台能力，无标准探测字段，留给 PT 文档确认。
+        persist=True 时把结果写回 catalog.json 对应条目（_source 置 verified）。
+        """
+        self._need_key()
+        caps = {"_source": "verified"}
+        if probe_vision:
+            png = ("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==")
+            msg = {"role": "user", "content": [
+                {"type": "text", "text": "用一句话描述这张图片。"},
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{png}"}},
+            ]}
+            try:
+                _api_call("POST", CHAT_ENDPOINT, self.key,
+                          body={"model": model, "messages": [msg], "max_tokens": 16}, timeout=30)
+                caps["multimodal"] = {"vision": True, "audio_in": False}
+            except ApiError as e:
+                m = (e.message or "").lower()
+                if any(k in m for k in ("image", "vision", "picture", "visual", "多模态", "图片")):
+                    caps["multimodal"] = {"vision": False, "audio_in": False}
+                else:
+                    caps["multimodal"] = {"vision": None, "audio_in": False}
+        if persist:
+            e = self.catalog.data["models"].get(model)
+            if e is not None:
+                e["capabilities"] = {**(e.get("capabilities") or {}),
+                                     "multimodal": caps.get("multimodal"),
+                                     "_source": "verified"}
+                self.catalog.data["models"][model] = e
+                self.catalog.path.write_text(
+                    json.dumps(self.catalog.data, ensure_ascii=False, indent=2), encoding="utf-8")
+        return {"model": model, "capabilities": caps}
+
     # ---- 能力查询：agent 用这个代替翻文档 ----
     def list_capabilities(self, kind=None):
         """返回能力目录，并叠加注册表的 enabled/delisted 实时状态。"""
@@ -649,17 +695,44 @@ def _cmd_capabilities(kind=None):
     print(json.dumps(cat.capabilities(kind), ensure_ascii=False, indent=2))
 
 
+def _cmd_probe_cap(model, persist=False, sweep_all=False):
+    """真机探测 chat 模型视觉能力。指定 model 探测单个；--all 全量探测并写回。"""
+    gw = TaskGateway(os.environ.get("POWERTOKENS_API_KEY") or "")
+    if sweep_all:
+        cat = Catalog()
+        chat = sorted(m for m, e in cat.models().items() if e.get("kind") == "chat")
+        t = f = n = 0
+        for m in chat:
+            r = gw.probe_chat_capabilities(m, persist=persist)
+            v = r["capabilities"]["multimodal"]["vision"]
+            if v is True:
+                t += 1
+            elif v is False:
+                f += 1
+            else:
+                n += 1
+            print(f"{m:32s} vision={v}")
+        print(f"\n合计 {len(chat)} | true={t} false={f} null={n}（已写回 catalog，_source=verified）")
+        return
+    res = gw.probe_chat_capabilities(model, persist=persist)
+    print(json.dumps(res, ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":
     import argparse
-    ap = argparse.ArgumentParser(description="PT Gateway 核心模块（自检 / 注册表同步 / 能力目录）")
+    ap = argparse.ArgumentParser(description="PT Gateway 核心模块（自检 / 注册表同步 / 能力目录 / 能力探测）")
     ap.add_argument("cmd", nargs="?", default="selfcheck",
-                    choices=["selfcheck", "sync", "capabilities"],
+                    choices=["selfcheck", "sync", "capabilities", "probe-cap"],
                     help="selfcheck=自检（默认）；sync=拉 /v1/models 全量刷新注册表；"
-                         "capabilities=打印能力目录（可带 kind）")
+                         "capabilities=打印能力目录（可带 kind）；"
+                         "probe-cap=真机探测某 chat 模型的视觉能力")
     ap.add_argument("kind_arg", nargs="?", default=None,
-                    help="capabilities 子命令的 kind 过滤（image/video/seedance/audio/chat）")
+                    help="capabilities 子命令的 kind 过滤（image/video/seedance/audio/chat）；"
+                         "probe-cap 时此处为模型 ID")
+    ap.add_argument("--persist", action="store_true",
+                    help="probe-cap 时把探测结果写回 catalog.json")
+    ap.add_argument("--all", action="store_true",
+                    help="probe-cap 时全量探测 catalog 中所有 chat 模型（与 --persist 配合写回）")
     args = ap.parse_args()
     if args.cmd == "selfcheck":
         _selfcheck()
@@ -667,3 +740,8 @@ if __name__ == "__main__":
         _cmd_sync()
     elif args.cmd == "capabilities":
         _cmd_capabilities(args.kind_arg)
+    elif args.cmd == "probe-cap":
+        if args.all:
+            _cmd_probe_cap("", persist=args.persist, sweep_all=True)
+        else:
+            _cmd_probe_cap(args.kind_arg or "", persist=args.persist)

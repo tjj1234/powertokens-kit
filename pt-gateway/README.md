@@ -310,10 +310,113 @@ schema：顶层 `kinds`（每类型的 execution/端点/前置要求/能力观�
 `kinds.chat` 已填真实端点，`media_generate(kind=chat)` 同步返回 `{execution:"sync", text}`；
 可用 `messages` 传多轮对话，或只用 `prompt` 作单轮 user 消息（`system` 前置）。
 
+### 9.1 chat 模型能力标注（多模态 / 联网搜索 / 思考模式）
+
+**需求背景**：agent 选 chat 模型时要先知道它「能不能看图片 / 能不能联网搜索 / 是不是思考模型」，
+否则只能瞎试、浪费 token。现在每个 `kind=chat` 的条目都带结构化 `capabilities`：
+
+```json
+"capabilities": {
+  "multimodal": {"vision": true, "audio_in": false, "video_in": false}, // 视觉/音频/视频输入：官方 §4 逐模型清单(official)
+  "channel": "deepseek",            // 该模型经 PT 哪个渠道适配器出（ali/byteplus/zhipu/deepseek/minimax/mimo）
+  "web_search": false,              // 联网搜索：官方渠道表(official)
+  "web_search_param": null,         // 要开启时实际传的参（null=不支持）
+  "thinking": true,                 // 思考/推理模式：官方渠道表(official)
+  "thinking_param": "thinking:{\"type\":\"enabled\"|\"disabled\"}", // 开启时实际传的参
+  "tools": true,                    // 是否支持 function calling
+  "streaming": true,                // 是否支持 SSE 流式输出
+  "_source": "official+verified"    // official=官方文档 / verified=真机探测 / 两者合并
+}
+```
+
+**来源分层（关键）**：PT 的 `GET /v1/models` **不返回任何能力字段**，所以这些不会从 API 自动来。
+- `web_search` / `thinking`：**官方权威数据**，来自 PT《模型能力汇总-websearch与思考模式》
+  （依据网关渠道适配器代码 + 各渠道 OpenAPI 文档，截至 2026-11-02）。取值含义：
+  - `true`：渠道有明确参数入口（如 DeepSeek `thinking`、MiniMax `reasoning_split`）
+  - `false`：网关与上游均无该能力（如 DeepSeek / MiniMax / mimo 的 web_search）
+  - `"conditional"`：**网关不注入，需客户端显式传参，且实际可用模型由上游白名单决定**
+    （如 ali 的 `enable_search`、BytePlus / 智谱的 `tools:[{type:web_search}]`、智谱 / mimo 的 `thinking`）
+  - `null`：未匹配到渠道 / 未知
+- `multimodal`（含 `vision` / `audio_in` / `video_in`）：**官方权威数据**，来自 PT《模型能力汇总》(2026-11-02)
+  的 **§4 逐模型多模态清单**（依据网关渠道适配器代码 + 各渠道 OpenAPI 文档）。
+  ⚠️ 校验经验：早期用 `probe_chat_capabilities` 真机探测 `vision` 时，因只发 `data:image/png;base64`
+  单图请求，对 **ali-qwen3 / BytePlus-seed / zhipu-glm-5.3-flash / deepseek-flash-v3-2** 等渠道
+  产生过**假阴性**（这些渠道不接受该图片格式，返回非视觉报错）。故最终以官方 §4 清单为准，
+  探针仅作"与文档一致时双重确认"之用（`official+verified`），不可单独作为结论。
+  另：官方明确 `seed-*` / `dola-seed-*` 支持**图/视频**输入，故这些模型的 `video_in=true`。
+
+**官方渠道能力矩阵（直接决定 web_search / thinking 取值）**：
+
+| 渠道 | Web Search | 思考模式 |
+|---|---|---|
+| 阿里百炼（ali） | 🟡 `enable_search:true`（仅部分 qwen 模型） | 🟡 `enable_thinking:true`（qwen3 系列 / qwq） |
+| BytePlus | 🟡 网关不注入，需手动 `tools:[{type:web_search}]` | 🟢 `thinking` + `reasoning_effort` |
+| 智谱（zhipu_4v） | 🟡 手动 `tools:[{type:web_search}]`（glm-4.7/5 系列） | 🟡 `thinking`（原样透传，部分模型文档支持） |
+| DeepSeek | 🔴 不支持 | 🟢 `thinking:{enabled\|disabled}` |
+| MiniMax | 🔴 不支持 | 🟢 `reasoning_split`(OpenAI) / `thinking`(Claude) |
+| mimo | 🔴 不支持 | 🟡 透传 `thinking`（待上游实测） |
+
+（🟢=渠道有明确入口 / 🟡=需手动传参且依赖上游白名单 / 🔴=均无）
+
+**官方逐模型多模态清单（§4，决定 vision / video_in 取值；覆盖 38 个 chat 中的 37 个）**：
+
+| 渠道 | 多模态结论 |
+|---|---|
+| 阿里百炼（ali） | `qwen3-max` / `qwen3.5~3.8` 系列 / `deepseek-v3.2` / `deepseek-v4-pro-0813` ✅ 图 |
+| BytePlus | `seed-*` / `dola-seed-*` ✅ 图/视频（`video_in=true`）；`deepseek-v3-2-251201` / `deepseek-v4-1-flash-260910` / `gpt-oss-120b` ✅ 图 |
+| 智谱（zhipu_4v） | `glm-5-turbo/5/5.1/5.2/5.3` / `glm-4.7/4.7-flash/4.5-air` ❌ 仅文本；仅 `glm-5.3-flash` ✅ 图 |
+| DeepSeek | `deepseek-v4-pro` / `deepseek-v4-flash` / `deepseek-flash` ✅ 图 |
+| MiniMax | `M2.5/M2.7/M3/M3.1-Flash` 全系 ✅ 图 |
+| mimo | `mimo-v2.6-pro` / `mimo-v2.6-flash` ✅ 图（`mimo-v2.5` 系列未列入清单，不推断） |
+
+> 说明：`qwen3-coder-plus` 未列入官方逐模型清单，按"不推断"原则 `vision` 保持 `null`（待上游实测）。
+> 网关对多模态**原样透传、不做白名单**，实际可用性以上游为准。
+
+复现 / 交叉校验 `vision`（探测只发一条极短请求，失败即快退，成本几美分；注意它可能产生前述假阴性）：
+```bash
+python pt_gateway.py probe-cap <model>            # 单模型探测 vision（辅助校验，非权威）
+python pt_gateway.py probe-cap --all --persist    # 全量探测（结果以官方 §4 为准，冲突时以文档覆盖）
+```
+
 CLI 快查：
 ```bash
 python pt_gateway.py capabilities            # 打印全部能力目录
 python pt_gateway.py capabilities seedance   # 只看某类
+python pt_gateway.py capabilities chat       # 看全部 chat 模型及其 capabilities（含 web_search/thinking/param）
 ```
+
+---
+
+## 10. 测试（三层：unit / contract / live）
+
+测试入口只有一个，`tests/run_tests.py`（零外部依赖，Python 3.9+ 标准库；也兼容 pytest）：
+
+```bash
+python tests/run_tests.py                    # 离线层：unit + contract，0 花费、秒级
+python tests/run_tests.py --only polling     # 只跑 id 含关键字的用例
+python tests/run_tests.py --live             # 授权跑真机层（花钱，受预算守卫保护）
+python tests/run_tests.py --live --tier standard --max-usd 1.0
+```
+
+| 层 | 文件 | 联网 | 花费 | 跑多久 | 覆盖什么 |
+|---|---|---|---|---|---|
+| unit | `test_unit_*.py` | 禁止（离线守卫会直接判失败） | 0 | <1s | 状态归一化、请求体构造、轮询退避/熔断、注册表 diff、目录数据完整性、kind 路由 |
+| contract | `test_contract_*.py` | 仅 127.0.0.1 回环 | 0 | <1s | HTTP 路由/状态码映射/CORS、MCP 工具面与参数接线 |
+| live | `test_live.py` | 真实 PT API | 按档位 | 分钟级 | 五种 kind 全链路 + 错误路径 + 防泄漏自检 |
+
+**三条硬规则**（由 `tests/harness.py` 统一强制，不靠自觉）：
+
+1. **离线层不许碰网**：`_api_call` / `submit_task` 被打成守卫，漏打桩会立刻红而不是静默打真 API。
+   时间也被 `FakeClock` 接管，轮询类用例（429 退避、5xx 熔断、超时）不真 sleep 且完全确定。
+2. **live 必须显式授权**：`PT_LIVE=1` **且**拿得到 key，缺一整层 skip；付费步执行前还要过
+   `Budget` 预算守卫，累计超 `--max-usd` 立即 SKIP（宁可不跑也不超支）。
+3. **报告不许带密钥**：写盘前扫描完整 key 与 `sk-xxxx` 正则，命中即报错不落盘；
+   `test_live.py` 里还有一条用例专门校验日志脱敏有效。
+
+报告产物：`tests/reports/latest.md`（+ 时间戳版本与 `.json`），含按模块统计、失败明细、真机花费。
+退出码 0/1，可直接接 CI。
+
+> 注：`e2e_report.md` 是早期一次性冒烟脚本留下的历史记录，已被本套测试取代；
+> 新报告一律看 `tests/reports/`。
 
 ---

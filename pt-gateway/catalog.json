@@ -6,7 +6,7 @@
     "execution: sync=一次调用直接返回结果; async=提交拿 task_id 后轮询 task_status。",
     "价格字段 price_usd_5s_720p 基于 5s/720p 探测（PT 预扣单价）；n/a 表示 PT 未公开，以仪表盘为准。",
     "模型上下架由 ModelRegistry.sync() 维护：GET /v1/models 返回 PT **全量**模型清单（所有 key 相同），不再出现的模型即视为下架；本目录只维护能力档案（分辨率/时长/模式等 API 不给的字段）。",
-    "音频类（TTS）端点：Ali 兼容 POST /ali/api/v1/services/aigc/multimodal-generation/generation（同步返回 url）；请求体为 Ali 标准结构（model + input.prompt[+voice]），响应 url 多位置兜底抽取。"
+    "音频类（TTS）端点：PT 侧统一为 OpenAI 兼容 POST /v1/audio/speech（同步返回 data.audio url）；请求体 {model, input, voice}，voice 必填（OpenAI 标准音色实测可用）。注：此前假设的 /ali/api/v1/services/aigc/... 实测 404/500，已废弃；各模型的上游厂商提示见 upstream_endpoint 字段，实际调用一律走 /v1/audio/speech。"
   ],
   "kinds": {
     "image": {
@@ -50,7 +50,17 @@
         "system 角色设定",
         "temperature / max_tokens 采样控制"
       ],
-      "note": "OpenAI 兼容对话端点，同步返回 choices[0].message.content；messages 可传多轮，或用 prompt 作为单轮 user 消息（system 前置）。"
+      "note": "OpenAI 兼容对话端点，同步返回 choices[0].message.content；messages 可传多轮，或用 prompt 作为单轮 user 消息（system 前置）。",
+      "capability_schema": {
+        "multimodal.vision": "是否可接受图片输入（多模态视觉）；false=文本模型",
+        "multimodal.audio_in": "是否可接受音频输入",
+        "web_search": "是否支持联网搜索；null=PT 平台能力待确认/可探测",
+        "thinking": "是否支持思考/推理模式；true/false/null(未知)",
+        "tools": "是否支持 function calling（工具调用）",
+        "streaming": "是否支持 SSE 流式输出",
+        "_source": "configured=按基础模型家族推断(待 PT 确认)；verified=真机探测；null/unknown=未知"
+      },
+      "capabilities_legend": "chat 模型能力由 capabilities 字段描述，维度见 capability_schema。默认值为按基础模型家族推断（_source=configured），PT 平台侧的实际支持（尤其 web_search）以 PT 文档/真机探测为准；可用 gateway.probe_chat_capabilities(model, key) 真机校验 vision 支持。"
     }
   },
   "models": {
@@ -132,7 +142,12 @@
         "text",
         "image",
         "audio"
-      ]
+      ],
+      "params_observed": [],
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}",
+      "vendor_endpoint": "/v1/videos"
     },
     "kling-video-o1": {
       "kind": "video",
@@ -145,7 +160,12 @@
       "modes": [
         "text",
         "image"
-      ]
+      ],
+      "params_observed": [],
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}",
+      "vendor_endpoint": "/v1/videos"
     },
     "kling-v2-1-master": {
       "kind": "video",
@@ -159,7 +179,12 @@
         "text",
         "image",
         "audio(运镜)"
-      ]
+      ],
+      "params_observed": [],
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}",
+      "vendor_endpoint": "/v1/videos"
     },
     "seedance-1-5-pro-251215": {
       "kind": "seedance",
@@ -339,7 +364,12 @@
       ],
       "modes": [
         "text"
-      ]
+      ],
+      "params_observed": [],
+      "execution": "sync",
+      "submit": "/v1/images/generations",
+      "poll": null,
+      "vendor_endpoint": "/v1/images/generations"
     },
     "image-01": {
       "kind": "image",
@@ -378,7 +408,12 @@
       ],
       "modes": [
         "text"
-      ]
+      ],
+      "params_observed": [],
+      "execution": "sync",
+      "submit": "/v1/images/generations",
+      "poll": null,
+      "vendor_endpoint": "/v1/images/generations"
     },
     "qwen3-tts-instruct-flash": {
       "params_observed": [
@@ -389,371 +424,1066 @@
         "instructions",
         "optimize_instructions"
       ],
-      "vendor_endpoint": "/ali/api/v1/services/aigc/multimodal-generation/generation",
+      "vendor_endpoint": "/v1/audio/speech",
       "execution": "sync",
-      "submit": "/ali/api/v1/services/aigc/multimodal-generation/generation",
+      "submit": "/v1/audio/speech",
       "poll": null,
-      "kind": "audio"
+      "kind": "audio",
+      "upstream_endpoint": "/ali/api/v1/services/aigc/multimodal-generation/generation"
     },
     "speech-2.8-hd": {
       "params_observed": [],
-      "vendor_endpoint": "/minimax/v1/t2a_v2",
+      "vendor_endpoint": "/v1/audio/speech",
       "execution": "sync",
-      "submit": "/ali/api/v1/services/aigc/multimodal-generation/generation",
+      "submit": "/v1/audio/speech",
       "poll": null,
-      "kind": "audio"
+      "kind": "audio",
+      "upstream_endpoint": "/minimax/v1/t2a_v2"
     },
     "speech-2.8-turbo": {
       "params_observed": [],
-      "vendor_endpoint": "/minimax/v1/t2a_v2",
+      "vendor_endpoint": "/v1/audio/speech",
       "execution": "sync",
-      "submit": "/ali/api/v1/services/aigc/multimodal-generation/generation",
+      "submit": "/v1/audio/speech",
       "poll": null,
-      "kind": "audio"
+      "kind": "audio",
+      "upstream_endpoint": "/minimax/v1/t2a_v2"
     },
     "speech-2.6-hd": {
       "params_observed": [],
-      "vendor_endpoint": "/minimax/v1/t2a_v2",
+      "vendor_endpoint": "/v1/audio/speech",
       "execution": "sync",
-      "submit": "/ali/api/v1/services/aigc/multimodal-generation/generation",
+      "submit": "/v1/audio/speech",
       "poll": null,
-      "kind": "audio"
+      "kind": "audio",
+      "upstream_endpoint": "/minimax/v1/t2a_v2"
     },
     "speech-2.6-turbo": {
       "params_observed": [],
-      "vendor_endpoint": "/minimax/v1/t2a_v2",
+      "vendor_endpoint": "/v1/audio/speech",
       "execution": "sync",
-      "submit": "/ali/api/v1/services/aigc/multimodal-generation/generation",
+      "submit": "/v1/audio/speech",
       "poll": null,
-      "kind": "audio"
+      "kind": "audio",
+      "upstream_endpoint": "/minimax/v1/t2a_v2"
     },
     "speech-02-hd": {
       "params_observed": [],
-      "vendor_endpoint": "/minimax/v1/t2a_v2",
+      "vendor_endpoint": "/v1/audio/speech",
       "execution": "sync",
-      "submit": "/ali/api/v1/services/aigc/multimodal-generation/generation",
+      "submit": "/v1/audio/speech",
       "poll": null,
-      "kind": "audio"
+      "kind": "audio",
+      "upstream_endpoint": "/minimax/v1/t2a_v2"
     },
     "speech-02-turbo": {
       "params_observed": [],
-      "vendor_endpoint": "/minimax/v1/t2a_v2",
+      "vendor_endpoint": "/v1/audio/speech",
       "execution": "sync",
-      "submit": "/ali/api/v1/services/aigc/multimodal-generation/generation",
+      "submit": "/v1/audio/speech",
       "poll": null,
-      "kind": "audio"
+      "kind": "audio",
+      "upstream_endpoint": "/minimax/v1/t2a_v2"
     },
     "audio1.0": {
       "params_observed": [],
-      "vendor_endpoint": "/vidu/ent/v2/text2audio",
-      "execution": "async",
-      "submit": "/ali/api/v1/services/aigc/multimodal-generation/generation",
-      "poll": "/v1/videos/{task_id}",
-      "kind": "audio"
-    },
-    "deepseek-v4-flash-0731": {
-      "params_observed": [],
-      "vendor_endpoint": "/v1/chat/completions",
+      "vendor_endpoint": "/v1/audio/speech",
       "execution": "sync",
-      "submit": null,
+      "submit": "/v1/audio/speech",
       "poll": null,
-      "kind": "chat"
+      "kind": "audio",
+      "upstream_endpoint": "/vidu/ent/v2/text2audio"
     },
     "deepseek-v4-pro-0813": {
       "params_observed": [],
       "vendor_endpoint": "/v1/chat/completions",
       "execution": "sync",
-      "submit": null,
+      "submit": "/v1/chat/completions",
       "poll": null,
-      "kind": "chat"
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": true,
+          "audio_in": false,
+          "video_in": false
+        },
+        "channel": "ali",
+        "web_search": false,
+        "web_search_param": null,
+        "thinking": false,
+        "thinking_param": null,
+        "tools": true,
+        "streaming": true,
+        "_source": "official",
+        "notes": {
+          "web_search": "ali 渠道 deepseek 一般不支持联网搜索",
+          "thinking": "ali 渠道 deepseek 未在文档保证思考模式"
+        }
+      }
     },
     "qwen3-coder-plus": {
       "params_observed": [],
       "vendor_endpoint": "/v1/chat/completions",
       "execution": "sync",
-      "submit": null,
+      "submit": "/v1/chat/completions",
       "poll": null,
-      "kind": "chat"
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": null,
+          "audio_in": false,
+          "video_in": false
+        },
+        "channel": "ali",
+        "web_search": "conditional",
+        "web_search_param": "enable_search:true",
+        "thinking": true,
+        "thinking_param": "enable_thinking:true",
+        "tools": true,
+        "streaming": true,
+        "_source": "official+verified",
+        "notes": {
+          "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
+          "thinking": "仅 qwen3 系列 / qwq 系列支持"
+        }
+      }
     },
     "qwen3-max": {
       "params_observed": [],
       "vendor_endpoint": "/v1/chat/completions",
       "execution": "sync",
-      "submit": null,
+      "submit": "/v1/chat/completions",
       "poll": null,
-      "kind": "chat"
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": true,
+          "audio_in": false,
+          "video_in": false
+        },
+        "channel": "ali",
+        "web_search": "conditional",
+        "web_search_param": "enable_search:true",
+        "thinking": true,
+        "thinking_param": "enable_thinking:true",
+        "tools": true,
+        "streaming": true,
+        "_source": "official",
+        "notes": {
+          "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
+          "thinking": "仅 qwen3 系列 / qwq 系列支持"
+        }
+      }
     },
     "qwen3.5-flash": {
       "params_observed": [],
       "vendor_endpoint": "/v1/chat/completions",
       "execution": "sync",
-      "submit": null,
+      "submit": "/v1/chat/completions",
       "poll": null,
-      "kind": "chat"
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": true,
+          "audio_in": false,
+          "video_in": false
+        },
+        "channel": "ali",
+        "web_search": "conditional",
+        "web_search_param": "enable_search:true",
+        "thinking": true,
+        "thinking_param": "enable_thinking:true",
+        "tools": true,
+        "streaming": true,
+        "_source": "official",
+        "notes": {
+          "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
+          "thinking": "仅 qwen3 系列 / qwq 系列支持"
+        }
+      }
     },
     "qwen3.6-plus": {
       "params_observed": [],
       "vendor_endpoint": "/v1/chat/completions",
       "execution": "sync",
-      "submit": null,
+      "submit": "/v1/chat/completions",
       "poll": null,
-      "kind": "chat"
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": true,
+          "audio_in": false,
+          "video_in": false
+        },
+        "channel": "ali",
+        "web_search": "conditional",
+        "web_search_param": "enable_search:true",
+        "thinking": true,
+        "thinking_param": "enable_thinking:true",
+        "tools": true,
+        "streaming": true,
+        "_source": "official",
+        "notes": {
+          "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
+          "thinking": "仅 qwen3 系列 / qwq 系列支持"
+        }
+      }
     },
     "qwen3.7-max": {
       "params_observed": [],
       "vendor_endpoint": "/v1/chat/completions",
       "execution": "sync",
-      "submit": null,
+      "submit": "/v1/chat/completions",
       "poll": null,
-      "kind": "chat"
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": true,
+          "audio_in": false,
+          "video_in": false
+        },
+        "channel": "ali",
+        "web_search": "conditional",
+        "web_search_param": "enable_search:true",
+        "thinking": true,
+        "thinking_param": "enable_thinking:true",
+        "tools": true,
+        "streaming": true,
+        "_source": "official",
+        "notes": {
+          "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
+          "thinking": "仅 qwen3 系列 / qwq 系列支持"
+        }
+      }
     },
     "qwen3.7-plus": {
       "params_observed": [],
       "vendor_endpoint": "/v1/chat/completions",
       "execution": "sync",
-      "submit": null,
+      "submit": "/v1/chat/completions",
       "poll": null,
-      "kind": "chat"
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": true,
+          "audio_in": false,
+          "video_in": false
+        },
+        "channel": "ali",
+        "web_search": "conditional",
+        "web_search_param": "enable_search:true",
+        "thinking": true,
+        "thinking_param": "enable_thinking:true",
+        "tools": true,
+        "streaming": true,
+        "_source": "official",
+        "notes": {
+          "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
+          "thinking": "仅 qwen3 系列 / qwq 系列支持"
+        }
+      }
     },
     "qwen3.8-flash": {
       "params_observed": [],
       "vendor_endpoint": "/v1/chat/completions",
       "execution": "sync",
-      "submit": null,
+      "submit": "/v1/chat/completions",
       "poll": null,
-      "kind": "chat"
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": true,
+          "audio_in": false,
+          "video_in": false
+        },
+        "channel": "ali",
+        "web_search": "conditional",
+        "web_search_param": "enable_search:true",
+        "thinking": true,
+        "thinking_param": "enable_thinking:true",
+        "tools": true,
+        "streaming": true,
+        "_source": "official",
+        "notes": {
+          "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
+          "thinking": "仅 qwen3 系列 / qwq 系列支持"
+        }
+      }
     },
     "qwen3.8-max": {
       "params_observed": [],
       "vendor_endpoint": "/v1/chat/completions",
       "execution": "sync",
-      "submit": null,
+      "submit": "/v1/chat/completions",
       "poll": null,
-      "kind": "chat"
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": true,
+          "audio_in": false,
+          "video_in": false
+        },
+        "channel": "ali",
+        "web_search": "conditional",
+        "web_search_param": "enable_search:true",
+        "thinking": true,
+        "thinking_param": "enable_thinking:true",
+        "tools": true,
+        "streaming": true,
+        "_source": "official",
+        "notes": {
+          "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
+          "thinking": "仅 qwen3 系列 / qwq 系列支持"
+        }
+      }
     },
     "deepseek-v3-2-251201": {
       "params_observed": [],
       "vendor_endpoint": "/v1/chat/completions",
       "execution": "sync",
-      "submit": null,
+      "submit": "/v1/chat/completions",
       "poll": null,
-      "kind": "chat"
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": true,
+          "audio_in": false,
+          "video_in": false
+        },
+        "channel": "byteplus",
+        "web_search": "conditional",
+        "web_search_param": "tools:[{\"type\":\"web_search\"}]",
+        "thinking": true,
+        "thinking_param": "thinking:{\"type\":\"enabled\"}+reasoning_effort",
+        "tools": true,
+        "streaming": true,
+        "_source": "official",
+        "notes": {
+          "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
+          "thinking": "需客户端显式传参；上游是否生效以渠道文档/实测为准"
+        }
+      }
     },
     "deepseek-v4-1-flash-260910": {
       "params_observed": [],
       "vendor_endpoint": "/v1/chat/completions",
       "execution": "sync",
-      "submit": null,
+      "submit": "/v1/chat/completions",
       "poll": null,
-      "kind": "chat"
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": true,
+          "audio_in": false,
+          "video_in": false
+        },
+        "channel": "byteplus",
+        "web_search": "conditional",
+        "web_search_param": "tools:[{\"type\":\"web_search\"}]",
+        "thinking": true,
+        "thinking_param": "thinking:{\"type\":\"enabled\"}+reasoning_effort",
+        "tools": true,
+        "streaming": true,
+        "_source": "official+verified",
+        "notes": {
+          "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
+          "thinking": "需客户端显式传参；上游是否生效以渠道文档/实测为准"
+        }
+      }
     },
     "dola-seed-2-1-turbo-260628": {
       "params_observed": [],
       "vendor_endpoint": "/v1/chat/completions",
       "execution": "sync",
-      "submit": null,
+      "submit": "/v1/chat/completions",
       "poll": null,
-      "kind": "chat"
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": true,
+          "audio_in": false,
+          "video_in": true
+        },
+        "channel": "byteplus",
+        "web_search": "conditional",
+        "web_search_param": "tools:[{\"type\":\"web_search\"}]",
+        "thinking": true,
+        "thinking_param": "thinking:{\"type\":\"enabled\"}+reasoning_effort",
+        "tools": true,
+        "streaming": true,
+        "_source": "official",
+        "notes": {
+          "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
+          "thinking": "需客户端显式传参；上游是否生效以渠道文档/实测为准"
+        }
+      }
     },
     "seed-1-6-250915": {
       "params_observed": [],
       "vendor_endpoint": "/v1/chat/completions",
       "execution": "sync",
-      "submit": null,
+      "submit": "/v1/chat/completions",
       "poll": null,
-      "kind": "chat"
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": true,
+          "audio_in": false,
+          "video_in": true
+        },
+        "channel": "byteplus",
+        "web_search": "conditional",
+        "web_search_param": "tools:[{\"type\":\"web_search\"}]",
+        "thinking": true,
+        "thinking_param": "thinking:{\"type\":\"enabled\"}+reasoning_effort",
+        "tools": true,
+        "streaming": true,
+        "_source": "official",
+        "notes": {
+          "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
+          "thinking": "需客户端显式传参；上游是否生效以渠道文档/实测为准"
+        }
+      }
     },
     "seed-1-6-flash-250715": {
       "params_observed": [],
       "vendor_endpoint": "/v1/chat/completions",
       "execution": "sync",
-      "submit": null,
+      "submit": "/v1/chat/completions",
       "poll": null,
-      "kind": "chat"
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": true,
+          "audio_in": false,
+          "video_in": true
+        },
+        "channel": "byteplus",
+        "web_search": "conditional",
+        "web_search_param": "tools:[{\"type\":\"web_search\"}]",
+        "thinking": true,
+        "thinking_param": "thinking:{\"type\":\"enabled\"}+reasoning_effort",
+        "tools": true,
+        "streaming": true,
+        "_source": "official",
+        "notes": {
+          "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
+          "thinking": "需客户端显式传参；上游是否生效以渠道文档/实测为准"
+        }
+      }
     },
     "seed-1-8-251228": {
       "params_observed": [],
       "vendor_endpoint": "/v1/chat/completions",
       "execution": "sync",
-      "submit": null,
+      "submit": "/v1/chat/completions",
       "poll": null,
-      "kind": "chat"
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": true,
+          "audio_in": false,
+          "video_in": true
+        },
+        "channel": "byteplus",
+        "web_search": "conditional",
+        "web_search_param": "tools:[{\"type\":\"web_search\"}]",
+        "thinking": true,
+        "thinking_param": "thinking:{\"type\":\"enabled\"}+reasoning_effort",
+        "tools": true,
+        "streaming": true,
+        "_source": "official",
+        "notes": {
+          "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
+          "thinking": "需客户端显式传参；上游是否生效以渠道文档/实测为准"
+        }
+      }
     },
     "seed-2-0-lite-260228": {
       "params_observed": [],
       "vendor_endpoint": "/v1/chat/completions",
       "execution": "sync",
-      "submit": null,
+      "submit": "/v1/chat/completions",
       "poll": null,
-      "kind": "chat"
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": true,
+          "audio_in": false,
+          "video_in": true
+        },
+        "channel": "byteplus",
+        "web_search": "conditional",
+        "web_search_param": "tools:[{\"type\":\"web_search\"}]",
+        "thinking": true,
+        "thinking_param": "thinking:{\"type\":\"enabled\"}+reasoning_effort",
+        "tools": true,
+        "streaming": true,
+        "_source": "official",
+        "notes": {
+          "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
+          "thinking": "需客户端显式传参；上游是否生效以渠道文档/实测为准"
+        }
+      }
     },
     "seed-2-0-mini-260215": {
       "params_observed": [],
       "vendor_endpoint": "/v1/chat/completions",
       "execution": "sync",
-      "submit": null,
+      "submit": "/v1/chat/completions",
       "poll": null,
-      "kind": "chat"
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": true,
+          "audio_in": false,
+          "video_in": true
+        },
+        "channel": "byteplus",
+        "web_search": "conditional",
+        "web_search_param": "tools:[{\"type\":\"web_search\"}]",
+        "thinking": true,
+        "thinking_param": "thinking:{\"type\":\"enabled\"}+reasoning_effort",
+        "tools": true,
+        "streaming": true,
+        "_source": "official",
+        "notes": {
+          "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
+          "thinking": "需客户端显式传参；上游是否生效以渠道文档/实测为准"
+        }
+      }
     },
     "seed-2-0-pro-260328": {
       "params_observed": [],
       "vendor_endpoint": "/v1/chat/completions",
       "execution": "sync",
-      "submit": null,
+      "submit": "/v1/chat/completions",
       "poll": null,
-      "kind": "chat"
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": true,
+          "audio_in": false,
+          "video_in": true
+        },
+        "channel": "byteplus",
+        "web_search": "conditional",
+        "web_search_param": "tools:[{\"type\":\"web_search\"}]",
+        "thinking": true,
+        "thinking_param": "thinking:{\"type\":\"enabled\"}+reasoning_effort",
+        "tools": true,
+        "streaming": true,
+        "_source": "official",
+        "notes": {
+          "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
+          "thinking": "需客户端显式传参；上游是否生效以渠道文档/实测为准"
+        }
+      }
     },
     "deepseek-flash": {
       "params_observed": [],
       "vendor_endpoint": "/v1/chat/completions",
       "execution": "sync",
-      "submit": null,
+      "submit": "/v1/chat/completions",
       "poll": null,
-      "kind": "chat"
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": true,
+          "audio_in": false,
+          "video_in": false
+        },
+        "channel": "deepseek",
+        "web_search": false,
+        "web_search_param": null,
+        "thinking": true,
+        "thinking_param": "thinking:{\"type\":\"enabled\"|\"disabled\"}",
+        "tools": true,
+        "streaming": true,
+        "_source": "official",
+        "notes": {
+          "web_search": "DeepSeek 官方 API 无联网搜索能力"
+        }
+      }
     },
     "deepseek-v4-pro": {
       "params_observed": [],
       "vendor_endpoint": "/v1/chat/completions",
       "execution": "sync",
-      "submit": null,
+      "submit": "/v1/chat/completions",
       "poll": null,
-      "kind": "chat"
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": true,
+          "audio_in": false,
+          "video_in": false
+        },
+        "channel": "deepseek",
+        "web_search": false,
+        "web_search_param": null,
+        "thinking": true,
+        "thinking_param": "thinking:{\"type\":\"enabled\"|\"disabled\"}",
+        "tools": true,
+        "streaming": true,
+        "_source": "official+verified",
+        "notes": {
+          "web_search": "DeepSeek 官方 API 无联网搜索能力"
+        }
+      }
     },
     "mimo-v2.6-flash": {
       "params_observed": [],
       "vendor_endpoint": "/v1/chat/completions",
       "execution": "sync",
-      "submit": null,
+      "submit": "/v1/chat/completions",
       "poll": null,
-      "kind": "chat"
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": true,
+          "audio_in": false,
+          "video_in": false
+        },
+        "channel": "mimo",
+        "web_search": false,
+        "web_search_param": null,
+        "thinking": "conditional",
+        "thinking_param": "thinking(透传,待实测)",
+        "tools": true,
+        "streaming": true,
+        "_source": "official+verified",
+        "notes": {
+          "web_search": "mimo 不支持联网搜索",
+          "thinking": "网关无专门字段处理，仅透传 thinking，需上游实测"
+        }
+      }
     },
     "mimo-v2.6-pro": {
       "params_observed": [],
       "vendor_endpoint": "/v1/chat/completions",
       "execution": "sync",
-      "submit": null,
+      "submit": "/v1/chat/completions",
       "poll": null,
-      "kind": "chat"
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": true,
+          "audio_in": false,
+          "video_in": false
+        },
+        "channel": "mimo",
+        "web_search": false,
+        "web_search_param": null,
+        "thinking": "conditional",
+        "thinking_param": "thinking(透传,待实测)",
+        "tools": true,
+        "streaming": true,
+        "_source": "official+verified",
+        "notes": {
+          "web_search": "mimo 不支持联网搜索",
+          "thinking": "网关无专门字段处理，仅透传 thinking，需上游实测"
+        }
+      }
     },
     "MiniMax-M2.5": {
       "params_observed": [],
       "vendor_endpoint": "/v1/chat/completions",
       "execution": "sync",
-      "submit": null,
+      "submit": "/v1/chat/completions",
       "poll": null,
-      "kind": "chat"
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": true,
+          "audio_in": false,
+          "video_in": false
+        },
+        "channel": "minimax",
+        "web_search": false,
+        "web_search_param": null,
+        "thinking": true,
+        "thinking_param": "reasoning_split(OpenAI)/thinking(Claude)",
+        "tools": true,
+        "streaming": true,
+        "_source": "official+verified",
+        "notes": {
+          "web_search": "MiniMax chat 官方仅保障基础字段"
+        }
+      }
     },
     "MiniMax-M2.5-highspeed": {
       "params_observed": [],
       "vendor_endpoint": "/v1/chat/completions",
       "execution": "sync",
-      "submit": null,
+      "submit": "/v1/chat/completions",
       "poll": null,
-      "kind": "chat"
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": true,
+          "audio_in": false,
+          "video_in": false
+        },
+        "channel": "minimax",
+        "web_search": false,
+        "web_search_param": null,
+        "thinking": true,
+        "thinking_param": "reasoning_split(OpenAI)/thinking(Claude)",
+        "tools": true,
+        "streaming": true,
+        "_source": "official+verified",
+        "notes": {
+          "web_search": "MiniMax chat 官方仅保障基础字段"
+        }
+      }
     },
     "MiniMax-M2.7": {
       "params_observed": [],
       "vendor_endpoint": "/v1/chat/completions",
       "execution": "sync",
-      "submit": null,
+      "submit": "/v1/chat/completions",
       "poll": null,
-      "kind": "chat"
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": true,
+          "audio_in": false,
+          "video_in": false
+        },
+        "channel": "minimax",
+        "web_search": false,
+        "web_search_param": null,
+        "thinking": true,
+        "thinking_param": "reasoning_split(OpenAI)/thinking(Claude)",
+        "tools": true,
+        "streaming": true,
+        "_source": "official+verified",
+        "notes": {
+          "web_search": "MiniMax chat 官方仅保障基础字段"
+        }
+      }
     },
     "MiniMax-M2.7-highspeed": {
       "params_observed": [],
       "vendor_endpoint": "/v1/chat/completions",
       "execution": "sync",
-      "submit": null,
+      "submit": "/v1/chat/completions",
       "poll": null,
-      "kind": "chat"
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": true,
+          "audio_in": false,
+          "video_in": false
+        },
+        "channel": "minimax",
+        "web_search": false,
+        "web_search_param": null,
+        "thinking": true,
+        "thinking_param": "reasoning_split(OpenAI)/thinking(Claude)",
+        "tools": true,
+        "streaming": true,
+        "_source": "official+verified",
+        "notes": {
+          "web_search": "MiniMax chat 官方仅保障基础字段"
+        }
+      }
     },
     "MiniMax-M3": {
       "params_observed": [],
       "vendor_endpoint": "/v1/chat/completions",
       "execution": "sync",
-      "submit": null,
+      "submit": "/v1/chat/completions",
       "poll": null,
-      "kind": "chat"
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": true,
+          "audio_in": false,
+          "video_in": false
+        },
+        "channel": "minimax",
+        "web_search": false,
+        "web_search_param": null,
+        "thinking": true,
+        "thinking_param": "reasoning_split(OpenAI)/thinking(Claude)",
+        "tools": true,
+        "streaming": true,
+        "_source": "official+verified",
+        "notes": {
+          "web_search": "MiniMax chat 官方仅保障基础字段"
+        }
+      }
     },
     "MiniMax-M3.1-Flash": {
       "params_observed": [],
       "vendor_endpoint": "/v1/chat/completions",
       "execution": "sync",
-      "submit": null,
+      "submit": "/v1/chat/completions",
       "poll": null,
-      "kind": "chat"
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": true,
+          "audio_in": false,
+          "video_in": false
+        },
+        "channel": "minimax",
+        "web_search": false,
+        "web_search_param": null,
+        "thinking": true,
+        "thinking_param": "reasoning_split(OpenAI)/thinking(Claude)",
+        "tools": true,
+        "streaming": true,
+        "_source": "official+verified",
+        "notes": {
+          "web_search": "MiniMax chat 官方仅保障基础字段"
+        }
+      }
     },
     "glm-4.5-air": {
       "params_observed": [],
       "vendor_endpoint": "/v1/chat/completions",
       "execution": "sync",
-      "submit": null,
+      "submit": "/v1/chat/completions",
       "poll": null,
-      "kind": "chat"
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": false,
+          "audio_in": false,
+          "video_in": false
+        },
+        "channel": "zhipu",
+        "web_search": "conditional",
+        "web_search_param": "tools:[{\"type\":\"web_search\"}]",
+        "thinking": true,
+        "thinking_param": "thinking:{\"type\":\"enabled\",\"clear_thinking\":true}",
+        "tools": true,
+        "streaming": true,
+        "_source": "official",
+        "notes": {
+          "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
+          "thinking": "需客户端显式传参；上游是否生效以渠道文档/实测为准"
+        }
+      }
     },
     "glm-4.7": {
       "params_observed": [],
       "vendor_endpoint": "/v1/chat/completions",
       "execution": "sync",
-      "submit": null,
+      "submit": "/v1/chat/completions",
       "poll": null,
-      "kind": "chat"
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": false,
+          "audio_in": false,
+          "video_in": false
+        },
+        "channel": "zhipu",
+        "web_search": "conditional",
+        "web_search_param": "tools:[{\"type\":\"web_search\"}]",
+        "thinking": true,
+        "thinking_param": "thinking:{\"type\":\"enabled\",\"clear_thinking\":true}",
+        "tools": true,
+        "streaming": true,
+        "_source": "official",
+        "notes": {
+          "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
+          "thinking": "需客户端显式传参；上游是否生效以渠道文档/实测为准"
+        }
+      }
     },
     "glm-4.7-flash": {
       "params_observed": [],
       "vendor_endpoint": "/v1/chat/completions",
       "execution": "sync",
-      "submit": null,
+      "submit": "/v1/chat/completions",
       "poll": null,
-      "kind": "chat"
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": false,
+          "audio_in": false,
+          "video_in": false
+        },
+        "channel": "zhipu",
+        "web_search": "conditional",
+        "web_search_param": "tools:[{\"type\":\"web_search\"}]",
+        "thinking": true,
+        "thinking_param": "thinking:{\"type\":\"enabled\",\"clear_thinking\":true}",
+        "tools": true,
+        "streaming": true,
+        "_source": "official",
+        "notes": {
+          "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
+          "thinking": "需客户端显式传参；上游是否生效以渠道文档/实测为准"
+        }
+      }
     },
     "glm-5": {
       "params_observed": [],
       "vendor_endpoint": "/v1/chat/completions",
       "execution": "sync",
-      "submit": null,
+      "submit": "/v1/chat/completions",
       "poll": null,
-      "kind": "chat"
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": false,
+          "audio_in": false,
+          "video_in": false
+        },
+        "channel": "zhipu",
+        "web_search": "conditional",
+        "web_search_param": "tools:[{\"type\":\"web_search\"}]",
+        "thinking": true,
+        "thinking_param": "thinking:{\"type\":\"enabled\",\"clear_thinking\":true}",
+        "tools": true,
+        "streaming": true,
+        "_source": "official",
+        "notes": {
+          "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
+          "thinking": "需客户端显式传参；上游是否生效以渠道文档/实测为准"
+        }
+      }
     },
     "glm-5-turbo": {
       "params_observed": [],
       "vendor_endpoint": "/v1/chat/completions",
       "execution": "sync",
-      "submit": null,
+      "submit": "/v1/chat/completions",
       "poll": null,
-      "kind": "chat"
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": false,
+          "audio_in": false,
+          "video_in": false
+        },
+        "channel": "zhipu",
+        "web_search": "conditional",
+        "web_search_param": "tools:[{\"type\":\"web_search\"}]",
+        "thinking": true,
+        "thinking_param": "thinking:{\"type\":\"enabled\",\"clear_thinking\":true}",
+        "tools": true,
+        "streaming": true,
+        "_source": "official",
+        "notes": {
+          "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
+          "thinking": "需客户端显式传参；上游是否生效以渠道文档/实测为准"
+        }
+      }
     },
     "glm-5.1": {
       "params_observed": [],
       "vendor_endpoint": "/v1/chat/completions",
       "execution": "sync",
-      "submit": null,
+      "submit": "/v1/chat/completions",
       "poll": null,
-      "kind": "chat"
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": false,
+          "audio_in": false,
+          "video_in": false
+        },
+        "channel": "zhipu",
+        "web_search": "conditional",
+        "web_search_param": "tools:[{\"type\":\"web_search\"}]",
+        "thinking": "conditional",
+        "thinking_param": "thinking:{\"type\":\"enabled\",\"clear_thinking\":true}",
+        "tools": true,
+        "streaming": true,
+        "_source": "official",
+        "notes": {
+          "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
+          "thinking": "需客户端显式传参；上游是否生效以渠道文档/实测为准"
+        }
+      }
     },
     "glm-5.2": {
       "params_observed": [],
       "vendor_endpoint": "/v1/chat/completions",
       "execution": "sync",
-      "submit": null,
+      "submit": "/v1/chat/completions",
       "poll": null,
-      "kind": "chat"
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": false,
+          "audio_in": false,
+          "video_in": false
+        },
+        "channel": "zhipu",
+        "web_search": "conditional",
+        "web_search_param": "tools:[{\"type\":\"web_search\"}]",
+        "thinking": "conditional",
+        "thinking_param": "thinking:{\"type\":\"enabled\",\"clear_thinking\":true}",
+        "tools": true,
+        "streaming": true,
+        "_source": "official",
+        "notes": {
+          "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
+          "thinking": "需客户端显式传参；上游是否生效以渠道文档/实测为准"
+        }
+      }
     },
     "glm-5.3": {
       "params_observed": [],
       "vendor_endpoint": "/v1/chat/completions",
       "execution": "sync",
-      "submit": null,
+      "submit": "/v1/chat/completions",
       "poll": null,
-      "kind": "chat"
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": false,
+          "audio_in": false,
+          "video_in": false
+        },
+        "channel": "zhipu",
+        "web_search": "conditional",
+        "web_search_param": "tools:[{\"type\":\"web_search\"}]",
+        "thinking": "conditional",
+        "thinking_param": "thinking:{\"type\":\"enabled\",\"clear_thinking\":true}",
+        "tools": true,
+        "streaming": true,
+        "_source": "official",
+        "notes": {
+          "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
+          "thinking": "需客户端显式传参；上游是否生效以渠道文档/实测为准"
+        }
+      }
     },
     "glm-5.3-flash": {
       "params_observed": [],
       "vendor_endpoint": "/v1/chat/completions",
       "execution": "sync",
-      "submit": null,
+      "submit": "/v1/chat/completions",
       "poll": null,
-      "kind": "chat"
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": true,
+          "audio_in": false,
+          "video_in": false
+        },
+        "channel": "zhipu",
+        "web_search": "conditional",
+        "web_search_param": "tools:[{\"type\":\"web_search\"}]",
+        "thinking": "conditional",
+        "thinking_param": "thinking:{\"type\":\"enabled\",\"clear_thinking\":true}",
+        "tools": true,
+        "streaming": true,
+        "_source": "official",
+        "notes": {
+          "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
+          "thinking": "需客户端显式传参；上游是否生效以渠道文档/实测为准"
+        }
+      }
     },
     "qwen-image-3.0-pro": {
       "params_observed": [
@@ -1057,5 +1787,6 @@
       "poll": "/v1/videos/{task_id}",
       "kind": "video"
     }
-  }
+  },
+  "multimodal_source": "PT 官方渠道适配器代码 + OpenAPI 文档《模型能力汇总》(2026-11-02) §4 逐模型清单；网关对多模态原样透传、不做白名单，实际可用性以上游为准。"
 }
