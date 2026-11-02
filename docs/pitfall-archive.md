@@ -4,15 +4,17 @@
 > 周期：2026-09-28 ~ 10-26（REST 直连 + 图片路由 + Seedance 协议 → 0.4.0 拆为独立类型）
 > 引擎：`pt_video.py` · 配置：`~/.config/powertokens-video/config.json`（可用 `PT_VIDEO_CONFIG` 覆盖）
 > 真实出片：**视频 1 次**（wan3.0-video · 480p · 5s · 2.1MB）+ **图片 1 次**（image-01 · 1:1 · 245KB）
-> 单测：**0 项**（尚未补，见 B 层「已知短板」）
+> 单测：**0 项**（0.2.0 时点）→ **228 项离线套件**（2026-11-02，`pt-gateway/tests/`，unit + contract 两层，live 层需显式 `--live`）
 > 接口：视频 `POST /v1/videos` 提交 + 轮询；图片 `POST /v1/images/generations`（同步，不轮询）
 >
 > ⚠️ 本档案是**对照 0.2.0 真实代码与实测结果校正过的版本**。与旧版（powertokens-wan 档案）的差异见文末「校正说明」。
 > **2026-10-30 追加**：新增 pt-gateway 子模块（跨模型统一异步任务网关）踩坑 —— **A.15–A.19**（PT 认知）、**C.24–C.27**（本机工具）、**F.39**（协作流程）；并更正 B 层「轮询熔断未实现」为**已在 pt-gateway 落地**（引擎 `pt_video.py` 仍为旧实现，勿混谈）。
+> **2026-11-02 追加**：新增 **A.20–A.23**（`Retry-After` 跨模块链路断裂 / 模型下架的 403 形态 / chat 的 web_search·thinking 三重条件 / 多模态探针整族假阴性）、**E.40**（PT 预签名产物 URL 触发 GitHub Push Protection）、**H.4**（分层真机验收成本实测）。并**更正** B 层：此前宣称「429 尊重 `Retry-After` 已落地」，实际因引擎丢响应头而恒失效，2026-11-02 才真正修好（见 A.20）。
+> 📌 项目已于 2026-11-02 更名 **powertokens-kit**（`0.5.0`），覆盖 image / video / seedance / audio / chat；配置路径 `~/.config/powertokens-kit/config.json` 优先、自动回落旧的 `powertokens-video`。文中历史段落保留原版本名，是对当时状态的准确记录。
 
 ---
 
-## ⚡ 五条最值钱的通用教训
+## ⚡ 七条最值钱的通用教训
 
 1. **第三方网关的文档枚举不可信，必须实测真实响应。** 成功态 `succeeded`/`completed` 写法不一；无效 Key 的报错形态需拿假 Key 打一次确认。
 2. **轮询逻辑必须对「查询失败」和「状态读不出」显式处理。** 0.2.0 当前**尚未做熔断**（见 B 层已知短板），长视频轮询遇网关抖动可能静默空转。
@@ -20,6 +22,7 @@
 4. **限流（429）与服务器错误（5xx）不宜共用阈值。** 429 是暂时的、退避后大概率恢复；5xx 才该快速失败。
 5. **改同一文件禁止并行 Edit，改用原子批量替换脚本。** 并发写同文件会静默丢写（返回 success 但磁盘没改）。
 6. **视频/图片端点形态与同步异步差异不能想当然。** 图片是 `POST /v1/images/generations` 同步返回 `data[].url`，视频是 `POST /v1/videos` 异步轮询 task_id——盲猜 `/v1/images` 会吃 404（见 A.12）。第三方模型的「协议/白名单/素材格式」前置条件往往只能仪表盘手动处理，skill 应「检测 + 引导」而非「代签」（见 A.13）。
+7. **「报错」不等于「不支持」，「文档写已实现」也不等于链路真通。** 同一能力在不同渠道 / 不同传参格式下常是一种通一种不通，单点探测的否定结论最不可靠（A.23）；跨模块时上层写对了、下层没给数据，功能照样是死的（A.20）。两者的解药一样：**让测试穿透真实调用栈**，别只测纯函数、别只看文档声明。
 
 ---
 
@@ -147,6 +150,34 @@
   生成任务 server-side 完成即为铁证；结果文件能否经裸 URL 公网下载需另查（可能与桶的 Referer/签名策略有关）。
 - **处置**：本发现不影响 skill 代码（asset 引用行为符合文档预期）；仅作为安全/产品注意事项沉淀。
 
+### A.20【新增 · 致命】`Retry-After` 「已实现」却永远拿不到：跨模块错误对象丢响应头
+- **现象**：本档案 B 层写着「429 尊重 `Retry-After`，已在 pt-gateway 落地」，但真机限流时**每次**都按 1→2→4s 盲目退避，从没读过服务端给的值。
+- **根因**：缺陷在**跨模块契约**上，不在任何单个模块里——引擎 `pt_video._api_call` 捕获 `HTTPError` 后只抛 `ApiError(code, message)`，把 `e.headers` 丢了；上层 `pt_gateway._retry_after()` 读 `err.raw["headers"]` 恒为空 → 永远返回 `None`。两层单看都「对」，拼起来是死的。
+- **为什么测试也没发现**：离线用例只测 `_retry_after` 这个**纯函数**（手工喂一个带 headers 的假对象），从不经过引擎的 `HTTPError` 转换——所以「200+ 条全绿」证明不了链路通。
+- **修法（2026-11-02 已实现）**：`ApiError(status, message, headers=None)` 透出响应头；`_api_call` / `_upload_asset` / asset 轮询**三处** `HTTPError` 转换全部传 `headers=getattr(e, "headers", None)`；`_retry_after` 优先读 `err.headers` 且头名**大小写不敏感**（服务端可能发 `retry-after`），`raw["headers"]` 保留兼容；新增一条测试**在 urllib 层造带头的真 `HTTPError`**，验证「HTTP 响应 → ApiError → `_retry_after`」整条链。
+- **修好后引出的新风险（必须一起处理）**：以前拿不到 `Retry-After`，不存在睡过头；现在能拿到了，就会出现「服务端要求等 999s、但总超时只有 10s」。已加 **deadline 保护**：`Retry-After` 超过剩余超时 → 立即抛 `429 限流：服务端要求 999s 后重试，超过剩余超时 10s`，**不硬睡**（有用例断言此时 `sleeps == []`）。
+- **教训**：① 错误对象是跨模块契约，**透出响应头和透出 body 一样重要**，否则上层的「智能退避」永远只能退化；② 纯函数单测会漏掉「上游根本没给数据」这类缺陷，至少要有一条**穿透真实调用栈**的链路测试；③ 文档写「已实现」不算数，能力声明要能指到一条**会让它变红的测试**。
+
+### A.21【新增】模型下架的 403 形态：`model_not_found ... not listed (pending)`，而它还在 `/v1/models` 里
+- **现象**：真机 full 档跑 `deepseek-v4-flash-0731`，403：`model_not_found ... not listed (pending), please contact admin to enable it`。
+- **认知要点**：这句话同时承载两种可能——「你的 key 没开这个模型」和「平台已下架 / 待上架」。`not listed (pending)` + `contact admin` 是**平台侧话术**，不是在说 key 权限。更要紧的是它**仍然出现在 `/v1/models` 列表**里（H.2 的延伸）——所以「列表里有」≠「能用」，「调用 403」≠「key 无权限」。
+- **处置**：从 `catalog.json` **删除**该条目，而不是标 deprecated。依据是真机已证明平台级不可用、非临时维护；留着会让 CLI `list` / MCP `list_capabilities` 把它当活模型展示，用户调用必 403——**静默陷阱比直接删更危险**。`deprecated` 只适合「还在但将移除」。
+- **连带风险**：测试档位（`harness.TIERS`）里硬编码的模型 ID 同样会腐化。已加离线守卫 `TestTierModelReferences`：tier 引用的模型必须存在于 catalog，**否则离线就红**，不必等到真机 403 才发现。
+- **教训**：① 模型清单天然会腐化，**任何硬编码模型 ID 的地方都要有离线守卫**；② 「删」比「标 deprecated」安全的前提是**已被真机证明不可用**，否则会误删一个只是在维护的模型。
+
+### A.22【新增】chat 的 web_search / thinking 是「渠道级 + 客户端传参 + 上游白名单」三重条件
+- **现象**：给 38 个 chat 模型标「能不能联网 / 能不能思考」，发现**没有统一答案**，连同一模型在不同渠道也不一样。
+- **真相（PT 官方《模型能力汇总》+ 真机交叉）**：① 网关**不注入**这些参数，必须客户端显式传；② 参数名**按渠道不同**——ali 是 `enable_search:true` / `enable_thinking:true`，byteplus 与 zhipu 的联网搜索走 `tools` 里的工具声明，zhipu / mimo 的思考另有参数；③ 即使传了，**是否真生效由上游白名单决定**（同渠道不是所有模型都支持）。
+- **处置**：能力字段用**三值**而非布尔——`true` / `false` / `"conditional"`，并单独记 `web_search_param` / `thinking_param` 与 `_source`（`configured` / `verified` / `official` / `official+verified`）；`"conditional"` 的 notes 明确写「网关不注入、需客户端传参、依赖上游白名单」。
+- **教训**：① 能力要分三层看——**网关支持**（透传）/ **协议支持**（参数存在）/ **上游支持**（真生效），揉成一个布尔就是撒谎；② 不确定时用三值枚举 + notes，比硬写 `true/false` 既诚实又可用；③ 官方文档按渠道分表，本身就在告诉你：**能力是渠道属性，不是模型属性**。
+
+### A.23【新增 · 致命】多模态探针整族假阴性：单格式 base64 `data:` URI 会被部分渠道拒
+- **现象**：真机探针（发一张 `data:image/png;base64,...` 单图问「这是什么」)判 vision，结果 ali-qwen3 / BytePlus-seed / 智谱 / DeepSeek 等渠道**整族报错** → 判 `vision=false`，**21 个实际支持视觉的模型被误判**。
+- **根因**：不同渠道对图片输入的**承载格式**兼容性不同（`data:` URI / 公网 URL / 必须先上传）。探针只用一种格式，被拒就当成「模型不支持视觉」，其实只是「这种传法这个渠道不认」。
+- **校正**：拿官方《模型能力汇总》§4 逐模型清单比对，21 个 `false` 全部应为 `true`；`seed-*` / `dola-seed-*` 还额外支持 `video_in`。官方清单没列到的（如 `qwen3-coder-plus`）保持 `vision: null`，不猜。
+- **处置**：① catalog 顶层加 `multimodal_source`，写明数据来源与「网关原样透传、实际可用性以上游为准」的边界；② 每条能力带 `_source`，让人能分清是探测来的还是文档来的；③ 探针降级为「辅助交叉校验」工具，docstring 明确写**不可单独作结论、有假阴性风险**。
+- **教训**：① **单点探针的否定结论最不可靠**——「报错」可能只是「这种传法不行」，不等于「这个能力没有」；② 能力标注必须带**来源与置信度**，别把探测值和文档结论揉成一个布尔；③ 不知道就写 `null`，别用 `false` 冒充「已确认没有」。
+
 ---
 
 ## B. 异步 / 轮询逻辑设计类（通用模式 + 0.2.0 已知短板）
@@ -201,6 +232,8 @@ skill 要给不会代码的同事用，「安全」和「零门槛」是两条�
 - **E.33 config 文件不能进分发包（Key 泄漏）**：Key 存 `~/.config/powertokens-video/config.json`，若打包进 zip 等于把 Key 明文送人。解法：config 与 skill 包分离，zip 只含 `SKILL.md` / `pt_video.py` / `mcp_server.py` / `README.md` 四件；每次打包后必做泄漏扫描（`grep` Key 片段，命中数必须为 0）；config 权限 0600。
 - **E.34 同事不会代码 → 不让用户跑任何命令**：确立「用户全程只用说话，命令一律由 agent 代跑」——对话里识别 `sk-pt-` 开头字符串 → agent 自己 `config --set-key` → `check` 回显池状态 → 直接干活。SKILL.md 明确禁止让用户跑命令 / 编辑文件 / 设环境变量。
 - **E.35 「同事没装 Python」是伪问题**：WorkBuddy 客户端自带托管 Python/Node 运行时。后续彻底去 CLI 改纯 REST 后，连 Node 依赖也去掉了——只要 Python 3.9+。少一层依赖少一类故障。
+
+- **E.40 PT 产物 URL 自带预签名凭证，写进报告/文档会触发 GitHub Push Protection**：push 被 GitHub 拦下，报 **VolcEngine Access Key ID**，命中 `pt-gateway/e2e_report.md:32`——那是 seedream 生成图片的下载地址，query 里带 `X-Tos-Credential=***`（火山 TOS 的 Access Key ID）+ 签名 + `X-Tos-Expires=86400`。PT 返回的产物 URL（TOS / R2）常是**预签名 URL**，凭证与签名写在 query 里，形态足以触发 secret 扫描；它们 24h 就过期，但扫描器不认「已过期」，且**一旦进了历史提交就会永久拦推**（扫的是整条待推分支，不是本次改动）。处置：① 测试报告/临时产物一律不进仓库——`tests/reports/` **整目录** gitignore（一开始只忽略 `*.md`/`*.json`，一个 `.txt` 就漏网）；② 已被历史带上的用 `git filter-branch --index-filter "git rm --cached <path>" --prune-empty -- --all` 从全部 commit 移除再推（远端从未推成功过时零风险）；③ 文档贴产物 URL 示例时 query 截断成 `?X-Tos-Credential=***`。教训：**secret 扫描不只认 API key 形态，也认云存储签名 URL**；测试产物默认 gitignore，别等被拦。
 
 ---
 
@@ -262,6 +295,7 @@ skill 要给不会代码的同事用，「安全」和「零门槛」是两条�
 
 ### B 层补充：A.02 / A.03 的轮询熔断**已在 pt-gateway 落地**（2026-10-30 更正）
 - `pt-gateway/pt_gateway.py` 重写了 `poll_task`（覆盖引擎原版）：429 尊重 `Retry-After`、否则指数退避（≤60s）；5xx **连续 5 次熔断**抛出；其他 4xx 直接透传；超时明确报错。即 A.02 / A.03 的「路线图」在此子模块已实现。
+- **2026-11-02 更正**：上面「429 尊重 `Retry-After`」在 2026-11-02 之前**实际是失效的**——引擎 `ApiError` 不透出响应头，`_retry_after()` 恒返回 `None`，所谓「尊重」从来没发生过。已修，见 **A.20**。典型形态：上层写对了、下层没给数据、文档却宣布已落地。
 - ⚠️ **别混谈**：这是 **pt-gateway** 的实现；引擎 `pt_video.py`（0.2.0）的 `poll_task` 仍是「仅超时抛错、无熔断」（见 A.02 表格第 12 行）。在文档/对话里必须指明是哪个模块。
 
 ### C.24【新增】Bash 工具会**整体失效**，不是 PATH 损坏
@@ -298,6 +332,7 @@ skill 要给不会代码的同事用，「安全」和「零门槛」是两条�
 | 5 | 把 `classify_rest` / `rest_poll` 三重熔断 / `fetch_model_ids` / `ensure_model_allowed` / `status` 子命令写成「已落地」 | 0.2.0 实际只有简单轮询 + `precheck_explicit_model`；上述高级能力改为**已知短板 / 路线图**，不谎称已实现 |
 | 6 | 旧版仅覆盖视频（0.2.0） | 0.3.0 扩展为**图文通用**：图片端点 `POST /v1/images/generations` 同步（A.12）、Seedance Asset Library 协议 + BytePlus media 前置（A.13）；真实出片新增图片 1 次（image-01） |
 | 7 | 未覆盖 pt-gateway 子模块；B 层称「轮询熔断未实现」 | 2026-10-30 新增 **A.15–A.19**（端点分层的两次反向误判 / PT 无取消接口 / `/v1/models` 只是权限视图 + fail-closed 门禁 / 无 key 爬 docs 建全局真相 / 音频字段待实测）、**C.24–C.27**、**F.39**；并更正 B 层：熔断**已在 pt-gateway 落地**，引擎 `pt_video.py` 仍为旧实现 |
+| 8 | 未覆盖 chat（38 个模型）的能力标注与探测；把 429 `Retry-After` 写成「已落地」 | 2026-11-02 新增 **A.20–A.23**（Retry-After 整链断裂并修复 / 下架模型的 403 形态 / chat 能力三重条件 / 多模态探针假阴性）、**E.40**、**H.4**；并更正 B 层「已落地」实为失效 |
 
 ---
 
@@ -323,5 +358,18 @@ skill 要给不会代码的同事用，「安全」和「零门槛」是两条�
 视频生成耗时约 145s；图像约 22s；TTS 约 3s；chat 约 1s。
 回归测试省钱法：视频换成 Seedance Mini 480p（$0.031/s）可把整轮压到约 $0.20。
 
-*踩坑档案 · 校正于 2026-10-26 · 2026-10-30 追加 pt-gateway 段落 · 阿伴 🦝*
+### H.4 分层真机验收的成本实测（2026-11-02，为「要不要再跑一遍」提供判据）
+
+| 档位 | 覆盖内容 | 实测花费 |
+|---|---|---|
+| minimal | 每类能力各打一发，验证链路通 | **$0.199** |
+| standard | 主要模型族 + 错误路径 | **$0.544** |
+| full | 全模型遍历（38 chat + 全 image/audio/video） | **$1.044** |
+| 累计 | 含一次单独验证 | **≈ $1.79** |
+
+- **full 首跑就撞上已下架模型**（A.21）——印证「模型清单会腐化」，并直接催生了离线守卫。
+- **省钱判据**：① 只改**数据**（删条目、改能力标注）→ 跑离线即可，0 成本、1 秒；② 改**引擎 / 错误路径** → 造假 429 比真机更确定，因为真机根本造不出 429；③ 只有发版前或新增模型时才值得跑真机全量。
+- 视频仍占成本 90%+（同 H.3），缩短视频时长 / 分辨率比砍用例更划算。
+
+*踩坑档案 · 校正于 2026-10-26 · 2026-10-30 追加 pt-gateway 段落 · 2026-11-02 追加 chat 能力 / 429 链路 / 预签名 URL · 阿伴 🦝*
 *诊断工具留存：`pt_video.py`（引擎）· `mcp_server.py`（MCP 壳）· `README.md`（安装）· `docs/publish.md`（发布）*
