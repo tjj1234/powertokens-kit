@@ -24,3 +24,13 @@ registry.json
 
 # 测试报告产物（每次运行生成，不入库）
 pt-gateway/tests/reports/
+
+# WorkBuddy 项目数据 / 会话记忆（非临时缓存，本地保留但不入库）
+.workbuddy/
+
+# 一次性脚本与真机探测结果（交付前清理，双保险）
+# 仓库根目录下所有下划线开头的 .py 都是本地临时工具，不属于交付物
+_*.py
+_pt_probe*.json
+_apply_*.py
+_*.tmp

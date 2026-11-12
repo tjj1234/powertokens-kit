@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>catalog v2 落地变更报告 · 2026-11-12</title>
+<style>
+  :root{
+    --bg:#f7f8fa; --card:#ffffff; --ink:#1f2937; --muted:#6b7280;
+    --line:#e5e7eb; --blue:#2563eb; --green:#16a34a; --amber:#d97706;
+    --soft-blue:#eff6ff; --soft-green:#f0fdf4; --soft-amber:#fffbeb;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:32px 20px 56px;background:var(--bg);color:var(--ink);
+       font-family:system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;
+       line-height:1.65;font-size:14px}
+  .wrap{max-width:1040px;margin:0 auto}
+  header{border-bottom:2px solid var(--blue);padding-bottom:18px;margin-bottom:26px}
+  h1{margin:0 0 6px;font-size:26px;letter-spacing:-.3px}
+  .sub{color:var(--muted);font-size:13px}
+  .badge{display:inline-block;background:var(--soft-green);color:var(--green);
+         border:1px solid #bbf7d0;border-radius:999px;padding:2px 10px;font-size:12px;
+         font-weight:600;margin-left:8px;vertical-align:middle}
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:28px}
+  .kpi{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+  .kpi .n{font-size:24px;font-weight:700;color:var(--blue);line-height:1.2}
+  .kpi .l{color:var(--muted);font-size:12px;margin-top:4px}
+  section{background:var(--card);border:1px solid var(--line);border-radius:12px;
+          padding:20px 22px;margin-bottom:18px}
+  h2{font-size:17px;margin:0 0 14px;padding-left:10px;border-left:3px solid var(--blue)}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{background:#f9fafb;color:var(--muted);font-weight:600;font-size:12px}
+  tr:last-child td{border-bottom:none}
+  code{background:#f3f4f6;border-radius:4px;padding:1px 5px;font-size:12px;
+       font-family:ui-monospace,Consolas,monospace}
+  .tag{display:inline-block;border-radius:5px;padding:1px 7px;font-size:11px;font-weight:600}
+  .t-add{background:var(--soft-green);color:var(--green)}
+  .t-mod{background:var(--soft-blue);color:var(--blue)}
+  .t-wait{background:var(--soft-amber);color:var(--amber)}
+  .note{background:var(--soft-blue);border-left:3px solid var(--blue);
+        padding:10px 14px;border-radius:0 8px 8px 0;margin-top:12px;font-size:13px}
+  .wait{background:var(--soft-amber);border-left:3px solid var(--amber);
+        padding:10px 14px;border-radius:0 8px 8px 0;font-size:13px}
+  ul{margin:8px 0 0;padding-left:20px}
+  li{margin:4px 0}
+  footer{color:var(--muted);font-size:12px;text-align:center;margin-top:28px}
+  .mono{font-family:ui-monospace,Consolas,monospace;font-size:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>catalog v2 落地变更报告 <span class="badge">已验收 · 全绿</span></h1>
+  <div class="sub">对象：<span class="mono">tjj1234/powertokens-kit</span> · <span class="mono">pt-gateway/catalog.json</span> · 日期 2026-11-12 · 依据 <span class="mono">docs/catalog_v2_决策锁定_20261112.md</span> 的 14 条拍板决策</div>
+</header>
+
+<div class="kpis">
+  <div class="kpi"><div class="n">1 → 2</div><div class="l">schema 版本升级</div></div>
+  <div class="kpi"><div class="n">86 / 5</div><div class="l">模型数 / kinds（未动）</div></div>
+  <div class="kpi"><div class="n">246 / 246</div><div class="l">离线测试 PASS（退出码 0）</div></div>
+  <div class="kpi"><div class="n">OK</div><div class="l">零依赖校验器 100+ 项全通过</div></div>
+</div>
+
+<section>
+  <h2>1. 新增的 4 个顶层节</h2>
+  <table>
+    <tr><th style="width:150px">节</th><th>内容</th><th style="width:110px">来源</th></tr>
+    <tr><td><code>currency</code></td><td><code>credits_per_usd = 1000</code>（PT API 2.0.0 <code>/v1/billing/estimate</code> 的 <code>1000 quota/USD</code>）。<code>3</code> 是 <code>per_1k_tokens</code> 的 <code>quota_per_unit</code>，非换算率。</td><td><code>official</code></td></tr>
+    <tr><td><code>auto_policy</code></td><td><code>purposes</code> 有序候选：<code>agent</code> / <code>search</code> 各 3 个跨渠道候选；附 A1 的 4 条跳过规则。<code>routing.recommended</code> 为第二层无序标签兜底。</td><td><code>product</code></td></tr>
+    <tr><td><code>errors</code></td><td>生成域 9 类错误码字典：<code>rate_limited</code> / <code>upstream_error</code> / <code>timeout</code> / <code>auth_invalid</code> / <code>insufficient_balance</code> / <code>model_unavailable</code> / <code>param_unsupported</code> / <code>content_filtered</code> / <code>context_too_long</code>。含 A.04 官方 401/402/403 语义 + 3 条真机报文；账户域状态码表未混入。</td><td><code>official+verified</code> 等</td></tr>
+    <tr><td><code>capability_gaps</code></td><td>5 类当前不可调用能力（ASR / TTS / OCR / Embeddings·Rerank / 实时语音），每项 <code>in_kinds: false</code>；<code>kinds</code> 仍只有 5 类（B1）。</td><td><code>documented</code></td></tr>
+  </table>
+  <div class="note"><strong>只加字段，不改已有字段</strong>：原子写入前对原有值做逐条深比对，顶层 <code>note</code> / <code>kinds</code> / <code>multimodal_source</code> 与 79 个非主力模型条目完全未动。</div>
+</section>
+
+<section>
+  <h2>2. 7 个主力模型的 P0 字段</h2>
+  <table>
+    <tr><th>模型</th><th style="width:90px">渠道</th><th style="width:110px">web_search</th><th>新增字段组</th></tr>
+    <tr><td><code>glm-4.7</code></td><td>zhipu</td><td>conditional</td><td><code>limits</code> · <code>tool_calling</code> · <code>web_search_detail</code> · <code>routing</code></td></tr>
+    <tr><td><code>deepseek-v4-pro</code></td><td>deepseek</td><td>false</td><td><code>limits</code> · <code>tool_calling</code> · <code>routing</code></td></tr>
+    <tr><td><code>qwen3.8-flash</code></td><td>ali</td><td>conditional</td><td><code>limits</code> · <code>tool_calling</code> · <code>web_search_detail</code> · <code>routing</code></td></tr>
+    <tr><td><code>seed-2-0-pro-260328</code></td><td>byteplus</td><td>conditional</td><td><code>limits</code> · <code>tool_calling</code> · <code>web_search_detail</code> · <code>routing</code></td></tr>
+    <tr><td><code>MiniMax-M3</code></td><td>minimax</td><td>false</td><td><code>limits</code> · <code>tool_calling</code> · <code>routing</code></td></tr>
+    <tr><td><code>glm-5.2</code></td><td>zhipu</td><td>conditional</td><td><code>limits</code> · <code>tool_calling</code> · <code>web_search_detail</code> · <code>routing</code></td></tr>
+    <tr><td><code>mimo-v2.6-pro</code></td><td>mimo</td><td>false</td><td><code>limits</code> · <code>tool_calling</code> · <code>routing</code></td></tr>
+  </table>
+  <div class="note"><strong>不编造实测结论（A3/A4）</strong>：<code>tool_calling.verified</code> / <code>works</code> / <code>returns_sources</code> 全部为 <code>null</code>；<code>how_to_enable</code> 从 <code>capabilities.web_search_param</code> 原样复制。<code>web_search_detail</code> 只挂在 4 个 <code>conditional</code> 模型上（正好覆盖优先实测的智谱 / 阿里 / BytePlus）。</div>
+</section>
+
+<section>
+  <h2>3. 约定与基础设施</h2>
+  <table>
+    <tr><th style="width:170px">项</th><th>落地</th></tr>
+    <tr><td>空值语义 A3</td><td><code>null</code> = 不知道 · <code>[]</code> = 确认没有 · <code>false</code> = 确认不支持。未实测一律 <code>null</code>。</td></tr>
+    <tr><td><code>_source</code> 八值 A5</td><td><code>official</code> · <code>documented</code> · <code>verified</code> · <code>official+verified</code> · <code>inferred</code> · <code>configured</code> · <code>verified(unmapped)</code> · <code>product</code>。<code>product</code> 仅用于 <code>auto_policy</code>；<code>verified(unmapped)</code> 当作已知。</td></tr>
+    <tr><td>格式说明</td><td><code>pt-gateway/catalog.schema.json</code>（给使用方，不参与运行时强校验）</td></tr>
+    <tr><td>零依赖校验器</td><td><code>pt-gateway/validate_catalog.py</code>（只用标准库，退出码 0/1）</td></tr>
+    <tr><td>CI（B2）</td><td><code>.github/workflows/ci.yml</code> —— <strong>只跑</strong> <code>python pt-gateway/tests/run_tests.py</code>；不跑 live、不做 pre-commit</td></tr>
+    <tr><td>测试与文档</td><td><code>VALID_SOURCE</code> 统一 8 值 + v2 结构断言；README 双语 §21.1；<code>CHANGELOG.md</code> 0.6.0</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>4. 账户接口「默认模块」固化（备用，不建模块）</h2>
+  <table>
+    <tr><th style="width:180px">项</th><th>结论</th></tr>
+    <tr><td>凭证分层</td><td><strong>生成仍用 API Key</strong>；其他接口按 <strong>access key + key id</strong></td></tr>
+    <tr><td><code>client_operation_id</code></td><td><strong>已移除</strong> → Q2 作废，<code>charging</code> 三个幂等字段保持 <code>null</code></td></tr>
+    <tr><td>4 个接口</td><td><code>POST /v1/payment/create</code> · <code>POST /v1/billing/estimate</code> · <code>POST /key/info</code>（无 <code>/v1</code>）· <code>POST /v1/logs/list</code>（<code>page</code> 分页）</td></tr>
+    <tr><td>5 个实现坑</td><td><code>data</code> 字符串化 JSON 需二次解析 · <code>page</code> 分页 · 驼峰 <code>redirectUrl</code>/<code>orderNo</code> · <code>/key/info</code> 无 <code>/v1</code> · 不再传 <code>client_operation_id</code></td></tr>
+    <tr><td>与 2.0.0 规划稿</td><td>不是同一版接口；<strong>以「默认模块」为准</strong>，2.0.0 核销报告 §3/§4 降级为历史差异记录</td></tr>
+  </table>
+  <div class="note">依据文档：<code>docs/PT_账户接口_默认模块依据_20261112.md</code>。本轮<strong>不改</strong> <code>pt_video.py</code> / <code>pt_gateway.py</code> / <code>mcp.py</code> / <code>server.py</code>，不新建账户客户端模块（B4/B5 后置）。</div>
+</section>
+
+<section>
+  <h2>5. 交付文件清单</h2>
+  <table>
+    <tr><th style="width:90px">类型</th><th>文件</th></tr>
+    <tr><td><span class="tag t-mod">修改</span></td><td><code>pt-gateway/catalog.json</code>（+416 行）· <code>pt-gateway/tests/test_unit_catalog.py</code> · <code>README.md</code> · <code>README.zh-CN.md</code> · <code>pt-gateway/tests/test_contract_mcp.py</code></td></tr>
+    <tr><td><span class="tag t-add">新增</span></td><td><code>pt-gateway/catalog.schema.json</code> · <code>pt-gateway/validate_catalog.py</code> · <code>CHANGELOG.md</code> · <code>.github/workflows/ci.yml</code> · <code>docs/PT_账户接口_默认模块依据_20261112.md</code></td></tr>
+    <tr><td><span class="tag t-mod">回写</span></td><td><code>docs/catalog_v2_决策锁定_20261112.md</code>（新增 §8）· <code>docs/PT_待确认问题清单_20261112.md</code>（Q2 作废）· <code>docs/PT_API_2.0.0_官方答复核销_20261112.md</code>（以默认模块为准）</td></tr>
+  </table>
+  <div class="note"><strong>顺带修的既有红</strong>：<code>test_exactly_three_tools</code> 断言 MCP 只有 3 个工具，但 0.5.0 已加入 <code>account_query</code>（HEAD 版 <code>mcp.py:125</code> 就有）。已把断言校正为 4 个并改名；<strong>与本轮 catalog 无关</strong>，未改任何 MCP 功能代码。若你希望 MCP 恢复只暴露 3 个工具，这一处可回退并改 <code>mcp.py</code>。</div>
+</section>
+
+<section>
+  <h2>6. 仍需输入（不阻塞本轮 P0）</h2>
+  <div class="wait">
+    <ul>
+      <li><strong>模板全文</strong>：<code>limits</code> 子字段形状、<code>auto_policy.purposes</code> 用途键全集与列表元素形态、<code>capability_gaps</code> 精确格式 —— 本轮按「不猜」留空，到位后一次补齐。</li>
+      <li><strong>A2 措辞修订</strong>：「准确费用以 estimate 为准」→「最终准确扣费以消费记录 <code>quota</code> / <code>final_quota</code> 为准」，待你一句话确认。</li>
+      <li><strong>P2</strong>：<code>pricing</code> / <code>charging</code>；<code>--max-usd</code> 真机单次预算；Q3 生成响应里 <code>request_id</code> 的位置。</li>
+      <li><strong>「默认模块」字段级全文</strong>：<code>page</code> 默认值/上限、<code>key_id</code> 获取途径、<code>Authorization</code> 确切形态。</li>
+    </ul>
+  </div>
+</section>
+
+<footer>
+  验收：<code>python pt-gateway/tests/run_tests.py</code> → 246/246 PASS（0）· <code>python pt-gateway/validate_catalog.py</code> → OK（0）<br>
+  边界：<strong>未提交、未 push、未打 tag</strong>，等确认后再决定。
+</footer>
+
+</div>
+</body>
+</html>

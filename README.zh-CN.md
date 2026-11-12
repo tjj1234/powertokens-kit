@@ -552,9 +552,36 @@ A：这些命令打到 `powertokens.ai/api` 域、用裸 key 鉴权（见 §16�
 
 ## 21. Changelog
 
+- **0.7.0** — **`catalog.json` v2.1（PT 12/12 答复落地）**：`errors` 8 处数据订正（D4 §1 生成域 code 全表、429 `model_rate_limited` + `Retry-After`、5xx 透传 502/503 + 自动退费、超时固定 500 + `do_request_failed`、400 `unsupported_parameter` / `context_length_exceeded`、`token_invalid|expired|disabled`、403+503 `model_not_found`、历史 403 余额报文作废）；新增顶层 `retry_policy`（4+1 条受理/重试规则 + `X-Oneapi-Request-Id`）与 `charging`（异步全额退 vs 同步流中途按量结算）；`kinds.seedance.interface_variants`（标准接口 / 供应商兼容接口双端点）与 `result_persistence`（永久 vs 24h）；`currency.notes` 补 C3。schema / 校验器 / 测试同步；**生成链路功能代码一行未改**。
+- **0.6.0** — **`catalog.json` v2（P0）**：`schema` 1 → 2；新增顶层 `currency`、`auto_policy.purposes`、`errors`（生成域 9 类）、`capability_gaps`；7 个主力模型补 `limits` / `tool_calling` / `routing`（4 个 `conditional` 模型另补 `web_search_detail`）。`_source` 统一 8 值；未实测值一律 `null`。交付 `catalog.schema.json`、零依赖 `validate_catalog.py`、v2 单元断言与「只跑离线测试」的最小 CI。详见 `CHANGELOG.md` 与 §21.1。
 - **0.5.0** — 新增**只读账户 / 计费命令**：CLI `balance` / `usage` / `logs` / `agreement` 与配套 MCP 工具（`query_balance` / `query_usage` / `query_logs` / `query_agreement`）；`seedance status` 现在 best-effort 真查服务端签署状态；补充账户 / 计费 / 资产库端点所在的 `powertokens.ai/api` 裸 key 域说明。
 - **0.4.1** — 纠正「Seedance 文生视频必须带 media」误判（实测纯 prompt 可行）；补充跨账户资产共享发现（A.14）；`upload` 资产上传闭环；文档对齐。
 - **0.4.0** — Seedance 拆为独立类型（`image`/`video`/`seedance` 并列）；协议「本地标记 + 报错回退」开通流程；`force_asset` 媒体校验；MCP `generate_seedance` 工具。
 - **0.3.0** — 补齐图片生成（同步 `/v1/images/generations`）；REST 直连替代 CLI。
 - **0.2.0** — 异步视频提交 + 轮询；`auto` 模型选择；定价/参数查询。
 - **0.1.0** — 初始引擎骨架。
+
+### 21.1 catalog v2 字段读取约定（schema 2）
+
+`pt-gateway/catalog.json` 是模型能力的唯一事实来源 —— Agent 直接读它，不要在 Agent 项目里另存一份能力表。v2 **只加字段**，已有值一律不动。
+
+**空值语义（A3）**：`null` = 不知道；`[]` = 确认没有；`false` = 确认不支持。不要把 `null` 当成 `false`，更不要编造 `true`。
+
+**`_source` 恰好 8 值（A5）**：`official`、`documented`、`verified`、`official+verified`、`inferred`、`configured`（等同 `inferred`）、`verified(unmapped)`、`product`。
+
+- 优先级：人工确认的 `verified` > `official` / `documented` > 自动探测 > `inferred`。自动探测**不覆盖**前三类，只更新 `_checked_at`，结果写进单独的探测报告。
+- **`verified(unmapped)` 当作已知**，不是未知：模型确实被真机探测过，只是响应没能映射到已知能力维度。不要把它当空白重新探测。
+- `product` **仅用于**顶层 `auto_policy`（产品侧路由决策）；模型级 `routing.recommended` 用 `configured`。
+
+**结构**：`auto_policy.purposes` 是按用途的**有序候选列表**（第一层）；`routing.recommended` 是**无序标签**，仅在 `auto_policy` 未覆盖某用途时兜底。`errors` 只装**生成域** 9 类错误，账户域状态码表（无 402）不得混入。`capability_gaps` 列出尚未可调用的能力，`kinds` 始终只有 5 类（`image` / `video` / `seedance` / `audio` / `chat`）。
+
+格式说明：`pt-gateway/catalog.schema.json`**v2.1 新增（2026-11-12，PT 12/12 答复）**：`retry_policy` 是**顶层节**（不是 `errors` 第 10 类），
+装 4+1 条受理/重试规则 —— 非 2xx 一定没受理、自动全额退费，可安全重试；而
+`200 + SSE finish_reason=error|timeout|abort` 已 settle 并扣费，**禁止自动重试**。`charging` 按链路分叉：
+异步任务失败/超时全额 `RefundTaskQuota`，同步 chat 流中途失败按实测 token 扣费且 `status` 仍是 `success`
+（对账用 `logs.other.finish_reason` 过滤）。`kinds.seedance.interface_variants` 记录两套端点
+（当前用 `openai_standard` 的 `/v1/videos`）；`result_persistence` 记录标准接口 PT 自有地址永久、
+供应商兼容接口上游签名链接 24h（实测前 `--no-download` 不承诺永久）。字段名刻意**避开「透传」二字**
+—— 仓库里该词已有 6+ 种互相冲突的含义。
+
+ · 离线校验：`python pt-gateway/validate_catalog.py`。

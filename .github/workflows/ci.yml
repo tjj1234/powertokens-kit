@@ -1,0 +1,19 @@
+name: pt-gateway offline CI
+
+# 最小 CI（B2）：只跑离线测试入口，零外部依赖、0 花费。
+# 不跑 live 测试、不做 pre-commit、不上传任何凭证。
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  offline-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run offline test suite (unit + contract, no live, 0 cost)
+        run: python pt-gateway/tests/run_tests.py

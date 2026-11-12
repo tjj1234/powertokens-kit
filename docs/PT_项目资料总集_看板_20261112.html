@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PT 项目资料总集 · 单一事实源 · 2026-11-12</title>
+<style>
+  :root{
+    --bg:#f7f8fa; --card:#ffffff; --ink:#1f2937; --muted:#6b7280;
+    --line:#e5e7eb; --blue:#2563eb; --green:#16a34a; --amber:#d97706;
+    --red:#dc2626; --violet:#7c3aed;
+    --soft-blue:#eff6ff; --soft-green:#f0fdf4; --soft-amber:#fffbeb;
+    --soft-red:#fef2f2; --soft-violet:#f5f3ff;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:32px 20px 56px;background:var(--bg);color:var(--ink);
+       font-family:system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;
+       line-height:1.65;font-size:14px}
+  .wrap{max-width:1080px;margin:0 auto}
+  header{border-bottom:2px solid var(--blue);padding-bottom:18px;margin-bottom:24px}
+  h1{margin:0 0 6px;font-size:25px;letter-spacing:-.3px}
+  .sub{color:var(--muted);font-size:13px}
+  .badge{display:inline-block;background:var(--soft-green);color:var(--green);
+         border:1px solid #bbf7d0;border-radius:999px;padding:2px 10px;font-size:12px;
+         font-weight:600;margin-left:8px;vertical-align:middle}
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px}
+  .kpi{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+  .kpi .n{font-size:24px;font-weight:700;color:var(--blue);line-height:1.2}
+  .kpi .l{color:var(--muted);font-size:12px;margin-top:4px}
+  .kpi.g .n{color:var(--green)} .kpi.a .n{color:var(--amber)} .kpi.v .n{color:var(--violet)}
+  section{background:var(--card);border:1px solid var(--line);border-radius:12px;
+          padding:20px 22px;margin-bottom:18px}
+  h2{font-size:17px;margin:0 0 6px;padding-left:10px;border-left:3px solid var(--blue)}
+  h2.v{border-left-color:var(--violet)}
+  h2.r{border-left-color:var(--red)}
+  h2.g{border-left-color:var(--green)}
+  .h2sub{color:var(--muted);font-size:12px;margin:0 0 14px;padding-left:13px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{background:#f9fafb;color:var(--muted);font-weight:600;font-size:12px}
+  tr:last-child td{border-bottom:none}
+  code{background:#f3f4f6;border-radius:4px;padding:1px 5px;font-size:12px;
+       font-family:ui-monospace,Consolas,monospace}
+  .tag{display:inline-block;border-radius:5px;padding:1px 8px;font-size:11px;font-weight:700;white-space:nowrap}
+  .t-ok{background:var(--soft-green);color:var(--green)}
+  .t-part{background:var(--soft-amber);color:var(--amber)}
+  .t-no{background:var(--soft-red);color:var(--red)}
+  .t-void{background:#f3f4f6;color:var(--muted)}
+  .t-blue{background:var(--soft-blue);color:var(--blue)}
+  .note{background:var(--soft-blue);border-left:3px solid var(--blue);
+        padding:10px 14px;border-radius:0 8px 8px 0;margin-top:12px;font-size:13px}
+  .warn{background:var(--soft-amber);border-left:3px solid var(--amber);
+        padding:10px 14px;border-radius:0 8px 8px 0;margin-top:12px;font-size:13px}
+  .good{background:var(--soft-green);border-left:3px solid var(--green);
+        padding:10px 14px;border-radius:0 8px 8px 0;margin-top:12px;font-size:13px}
+  ul{margin:8px 0 0;padding-left:20px} li{margin:3px 0}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  .box{border:1px solid var(--line);border-radius:10px;padding:14px 16px;background:#fcfcfd}
+  .box h3{margin:0 0 8px;font-size:14px}
+  .box.g{border-top:3px solid var(--green)} .box.a{border-top:3px solid var(--amber)}
+  .box.v{border-top:3px solid var(--violet)} .box.b{border-top:3px solid var(--blue)}
+  .grp{border-radius:8px;padding:10px 12px;margin-bottom:8px;font-size:12.5px}
+  .grp.g1{background:var(--soft-green);border-left:3px solid var(--green)}
+  .grp.g2{background:var(--soft-red);border-left:3px solid var(--red)}
+  .grp.g3{background:var(--soft-blue);border-left:3px solid var(--blue)}
+  .foot{color:var(--muted);font-size:12px;text-align:center;margin-top:26px;line-height:1.8}
+  .big{font-size:15px;font-weight:600}
+  .sm{font-size:12px;color:var(--muted)}
+  .tl{border-left:2px solid var(--line);margin-left:8px;padding-left:18px}
+  .tl .it{position:relative;margin-bottom:14px}
+  .tl .it::before{content:"";position:absolute;left:-25px;top:6px;width:12px;height:12px;
+       border-radius:50%;background:var(--blue);border:2px solid #fff;box-shadow:0 0 0 1px var(--line)}
+  .tl .it.g::before{background:var(--green)} .tl .it.a::before{background:var(--amber)}
+  .tl .it.v::before{background:var(--violet)}
+  .tl .t{font-weight:600;font-size:13px} .tl .d{color:var(--muted);font-size:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>PT 项目资料总集 <span class="badge">单一事实源 · 未改代码</span></h1>
+  <div class="sub">2026-11-12 · 把 6 批 PT 答复 + 10 份官方附件 + 21 份我方产出 + 代码/数据资产收编为一份资料 ·
+  主文档：<code>docs/PT_项目资料总集_20261112.md</code></div>
+</header>
+
+<div class="kpis">
+  <div class="kpi g"><div class="n">12 / 12</div><div class="l">发给 PT 的 10 必问 + 2 条件项全答</div></div>
+  <div class="kpi"><div class="n">31</div><div class="l">纳入台账的资料来源（附件 / 文档 / 代码）</div></div>
+  <div class="kpi a"><div class="n">9</div><div class="l">口径冲突登记（4 处新增反转）</div></div>
+  <div class="kpi v"><div class="n">0 行</div><div class="l">本轮代码 / catalog 改动</div></div>
+</div>
+
+<section>
+  <h2 class="g">一、开工判定：可以开工 ✅</h2>
+  <div class="h2sub">阻塞项已全部消失，但按你「在开工前先给文档」的要求，本轮先交资料，等你一句确认再动代码</div>
+  <div class="good">
+    <span class="big">上一轮挂着的三个卡点，这次全解了：</span>
+    <ul>
+      <li><b>第 8 处 <code>errors.model_unavailable</code></b> 原等 R2① → D4 §1 给全表，且明确「第五批对比表第 8 行作废」</li>
+      <li><b><code>charging.charged_on_failure</code></b> 原等 R10 张力 → D4 §2 拆链路裁决：异步全额退、同步流中途按量扣</li>
+      <li><b>自动重试规则</b> 原等 R11 → D4 §3 给 4+1 条可判定规则 + 429 补行</li>
+    </ul>
+  </div>
+  <table style="margin-top:14px">
+    <tr><th>档</th><th>内容</th><th>判定</th></tr>
+    <tr><td><b>G1–G4</b></td><td>catalog errors <b>8 处</b>订正 + 新增 retry_policy / 双接口 / charging / currency.notes + schema/校验器/测试/README 同步</td><td><span class="tag t-ok">立即做</span></td></tr>
+    <tr><td><b>G5</b></td><td>真机 Key 测试（T0–T8），核心是 T2 鉴权头 / T3 request_id 字段名 / T5 产物有效期</td><td><span class="tag t-ok">做，先零成本</span></td></tr>
+    <tr><td><b>G6</b></td><td>push GitHub</td><td><span class="tag t-part">仅 G5 全绿后</span></td></tr>
+    <tr><td><b>N1</b></td><td>生成链路功能代码（pt_gateway / pt_video 生成部分 / mcp / server）</td><td><span class="tag t-void">不改</span></td></tr>
+    <tr><td><b>N2</b></td><td>真接官方兼容（透传）接口</td><td><span class="tag t-void">暂不做</span></td></tr>
+    <tr><td><b>N3</b></td><td>账户客户端 Bearer 改造</td><td><span class="tag t-blue">B4/B5 后置</span></td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>二、资料台账覆盖度</h2>
+  <div class="h2sub">附件只登记路径、不复制进仓库（平台内部材料，且仓库要推 GitHub）</div>
+  <div class="grid3">
+    <div class="box b"><h3>PT 官方书面附件 · 10 份</h3>
+      <div class="sm">
+      D1 最新接口文档 2.0.0 · D2 支付/Key/预估 2.0.0<br>
+      D3 账户 1.0.0 · <b>D4 正式答复文件</b><br>
+      <b>D5 Seedance 2.0 快速上手</b> · D6 资产库快速上手<br>
+      D7 OAuth · D8 计费定价规范 · D9/D9b 模型能力汇总
+      </div>
+    </div>
+    <div class="box v"><h3>PT 答复 · 6 批</h3>
+      <div class="sm">
+      ① A.01/A.04/A.11 规范变更<br>
+      ② 12 条口述 + 2 份 2.0.0 文档 +「默认模块」<br>
+      ③ Q8 七行 + 双接口新事实<br>
+      ④ 9 行失败场景矩阵<br>
+      ⑤ 8 行参数校验对比表 + 五问<br>
+      ⑥ <b>10+2 正式答复（全答）</b>
+      </div>
+    </div>
+    <div class="box g"><h3>我方产出 · 21 份 docs</h3>
+      <div class="sm">
+      决策锁定 1 · 主清单 1 · 对外清单 1<br>
+      核销/依据 3 · HTML 看板 6<br>
+      remake 调研 6 · 工程双语 4（pitfall / publish）
+      </div>
+    </div>
+  </div>
+  <div class="note">另收录：线上公开文档（模型页 / docs 站 / powertokens-cli v1.0.45）、代码与数据资产 13 项、
+  对话中固化但无独立文件的事实（14 条拍板决策、<code>_source</code> 八值、Seedance 线协议、PT 能力边界）。</div>
+</section>
+
+<section>
+  <h2 class="v">三、六批答复时间线 · 最终全闭环</h2>
+  <div class="h2sub">每批解决了什么、又反转了什么</div>
+  <div class="tl">
+    <div class="it"><div class="t">第 1 批 · A.01 / A.04 / A.11</div><div class="d">异步成功双状态、402/401/403 语义、枚举字段必须字符串 → 代码已合规，仅补双语文档，commit 9f80dc9</div></div>
+    <div class="it"><div class="t">第 2 批 · 12 条口述 + 两份 2.0.0 文档</div><div class="d">Q1/Q3/Q5/Q6/Q7 打穿，Q2 作废；<b>曾误判 logs/query 应改 logs/list</b>（后纠偏）</div></div>
+    <div class="it a"><div class="t">第 3 批 · Q8 七行 + 双接口新事实</div><div class="d">Q8 🔴→🟢；立 S1–S3；发现标准/透传「三层全未覆盖」</div></div>
+    <div class="it a"><div class="t">第 4 批 · 9 行失败场景矩阵</div><div class="d">R2② 打穿；立 R10（流中途 settle vs 全额 Refund 张力）、R11（429 缺席）</div></div>
+    <div class="it"><div class="t">第 5 批 · 8 行参数校验对比表 + 五问</div><div class="d">Q5-5 ✅、R1 部分；主体澄清（PT 服务端网关 ≠ 本仓库）；发现 400/403 冲突</div></div>
+    <div class="it g"><div class="t">第 6 批 · 正式答复文件（10 必问 + 2 条件项）</div><div class="d"><b>12/12 全答</b>；403 全表、扣费边界、429 补行、鉴权定稿、legacy 定义、双接口端点、协议要求 → 向 PT 提问这条线收口</div></div>
+  </div>
+</section>
+
+<section>
+  <h2 class="r">四、口径冲突登记 · 9 处（本批新增 4 处反转）</h2>
+  <div class="h2sub">不静默选边：每条注明裁决依据、影响文件、验证方式</div>
+  <table>
+    <tr><th>ID</th><th>冲突</th><th>裁决</th><th>影响</th></tr>
+    <tr><td><b>C1</b></td><td>D1 账户域 <code>Authorization: {{access_token}}</code>（无 Bearer） vs D4 <code>Bearer pt_live_</code></td><td><span class="tag t-no">待实测 T2</span></td><td>账户客户端鉴权代码</td></tr>
+    <tr><td><b>C2</b></td><td>用户口述「access key + key id」 vs D4「渠道配置字段、文档笔误」</td><td><span class="tag t-ok">以 D4 为准</span></td><td>不要做 AK/SK 双头</td></tr>
+    <tr><td><b>C3</b></td><td>汇率「动态配置默认 1000」(D8) vs「固定不变」</td><td><span class="tag t-ok">catalog 保留 1000，notes 补注</span></td><td>currency 措辞</td></tr>
+    <tr><td><b>C4</b></td><td>产物有效期 <b>永久 / 14 天 / 24h</b> 三套数字（D4 / D5 / 口述）</td><td><span class="tag t-no">待实测 T5</span></td><td>默认成功即下载，<code>--no-download</code> 不承诺永久</td></tr>
+    <tr><td><b>C5</b></td><td>第五批「模型不在上架列表 → 400」 vs 真机「403 + model_not_found」</td><td><span class="tag t-ok">D4 判第五批那行作废</span></td><td><b>model_unavailable 解锁，可订正</b></td></tr>
+    <tr><td><b>C6</b></td><td>「失败不扣费」(第 3 批) vs 流中途「内部已 settle」(第 4 批)</td><td><span class="tag t-ok">D4 拆链路：异步退 / 同步按量扣</span></td><td><b>charging 不能一律 false</b></td></tr>
+    <tr><td><b>C7</b></td><td><code>/v1/models</code> 含价格 (D8) vs 不含价格 (D4)</td><td><span class="tag t-ok">以 D4 为准，不建单价表</span></td><td>chat 预估</td></tr>
+    <tr><td><b>C8</b></td><td>「默认模块」<code>/v1/logs/list</code> vs 定稿 <code>/v1/logs/query</code></td><td><span class="tag t-ok">list 仅兼容</span></td><td>现有 pt_video.py:108 <b>不用改</b></td></tr>
+    <tr><td><b>C9</b></td><td>历史「余额不足报 403」 vs A.04「402」</td><td><span class="tag t-ok">历史报文作废</span></td><td>insufficient_balance.examples[1]</td></tr>
+  </table>
+  <div class="warn"><b>另有 2 处「张力」已由 D4 拆成作用域，不算冲突</b>：同步 chat 流中途 <code>status=success</code> vs 异步任务 <code>status=failed</code>+refund 流水；以及「非 2xx 一定没受理」vs「200 流中途已扣费」。</div>
+</section>
+
+<section>
+  <h2>五、最终口径速查（事实卡）</h2>
+  <div class="h2sub">开工时写代码/写数据唯一该看的一节 · 完整版见主文档 §2</div>
+  <div class="grid2">
+    <div class="box b"><h3>鉴权与服务域</h3><div class="sm">
+      生成域 <code>api.powertokens.ai</code> → <code>Bearer &lt;API_KEY&gt;</code><br>
+      账户域 <code>powertokens.ai/api</code> → <code>pt_live_</code> 个人访问令牌<br>
+      OAuth 域 <code>/oauth/*</code> → JWT 会话凭证，<b>不能用于 API</b><br>
+      「access key + key id」是渠道配置字段，<b>笔误</b>
+    </div></div>
+    <div class="box g"><h3>错误码判定</h3><div class="sm">
+      <b>只看 <code>error.code</code>，不看 message（i18n 会变）</b><br>
+      403: <code>model_not_found</code> / <code>token_model_forbidden</code> / <code>token_group_forbidden</code> / <code>channel_disabled</code><br>
+      503: <code>model_not_found</code>（无可用渠道，靠状态码区分）<br>
+      400: <code>invalid_request</code> · 429: <code>model_rate_limited</code>
+    </div></div>
+    <div class="box a"><h3>受理 / 重试（无单一信号）</h3><div class="sm">
+      非 2xx → 没受理、已退费 → <b>可重试</b><br>
+      200 + JSON → 已结算 → 不可重试<br>
+      200 + SSE 末帧 <code>error/timeout/abort</code> → <b>已扣费</b>，不可重试<br>
+      429：一定有 <code>Retry-After</code>（默认 5s），网关限流不产生费用<br>
+      <code>X-Oneapi-Request-Id</code> 只用于报障，不是受理信号
+    </div></div>
+    <div class="box v"><h3>扣费与对账</h3><div class="sm">
+      异步失败 → 同循环全额 Refund；超时 24h sweep 兜底<br>
+      同步流中途 → 按已产出 token <b>结算扣费</b>（total_tokens=0 才全退）<br>
+      流中途记录 <code>status=success</code>、<code>quota&gt;0</code>，<b>用 finish_reason 过滤</b><br>
+      失败任务：消费 + refund 负数流水<b>成对出现、净额 0</b>
+    </div></div>
+    <div class="box g"><h3>Seedance 双接口（D5 实锤）</h3><div class="sm">
+      官方兼容：<code>POST /byteplus/api/v3/contents/generations/tasks</code>（<code>content</code> 数组，支持列表/取消）<br>
+      OpenAI 风格：<code>POST /v1/videos</code>（<code>media</code> 数组，不支持列表/取消）<br>
+      共用 Base URL 与 Bearer 鉴权；均需 <code>asset://</code><br>
+      <b>透传也需要签协议</b>；PT 建议走标准接口
+    </div></div>
+    <div class="box b"><h3>账户接口定稿</h3><div class="sm">
+      <code>GET /v1/logs/query</code> 唯一；<code>logs/list</code> 仅兼容<br>
+      分页 20/100、page 从 1；时间 Unix 秒；默认长期保留<br>
+      <code>key_id</code> 数字主键，<code>key_masked</code> 脱敏串只展示<br>
+      estimate <b>整包</b> <code>{model,endpoint,key_id,request}</code><br>
+      <code>/v1/models</code> 不含价格，不要自建单价表
+    </div></div>
+  </div>
+</section>
+
+<section>
+  <h2 class="g">六、真机 Key 测试计划（G5）</h2>
+  <div class="h2sub">先零成本、后极低成本；建议单次硬上限 0.5 USD，Key 不落盘不打印</div>
+  <table>
+    <tr><th>#</th><th>测试项</th><th>目的 / 判定</th><th>成本</th></tr>
+    <tr><td>T0</td><td>离线全量测试 + 校验器</td><td>246/246 + OK</td><td><span class="tag t-ok">0</span></td></tr>
+    <tr><td>T1</td><td><code>GET /v1/models</code></td><td>鉴权连通、模型清单</td><td><span class="tag t-ok">0</span></td></tr>
+    <tr><td><b>T2</b></td><td>账户域两种 Authorization 头对比</td><td><b>裁决 C1</b>：Bearer 还是裸值</td><td><span class="tag t-ok">0</span></td></tr>
+    <tr><td><b>T3</b></td><td>极短 chat（非流式 + 流式）</td><td><b>补完 R1</b>：header 名 / 成功 body 字段名</td><td><span class="tag t-part">极低</span></td></tr>
+    <tr><td>T4</td><td>故意传不存在 / 空 model</td><td>核对 403 / 400 错误码全表（失败不扣费）</td><td><span class="tag t-ok">0</span></td></tr>
+    <tr><td><b>T5</b></td><td>一次最低成本生成，看返回 content 地址</td><td><b>澄清 C4</b>：PT 自有地址还是上游 TOS 签名 URL</td><td><span class="tag t-part">低</span></td></tr>
+    <tr><td>T6</td><td><code>POST /v1/billing/estimate</code> 整包</td><td>确认整包被接受、不计费</td><td><span class="tag t-ok">0</span></td></tr>
+    <tr><td>T7 / T8</td><td>账户只读命令 / <code>seedance status</code></td><td>记录后置待办；协议状态 best-effort 真查</td><td><span class="tag t-ok">0</span></td></tr>
+  </table>
+  <div class="note"><b>T2 / T3 / T5 是真机测试的核心价值</b> —— 三条都是书面材料互相打架、只能靠实测定的点。</div>
+</section>
+
+<section>
+  <h2 class="r">七、等你拍板 3 件事</h2>
+  <div class="h2sub">按你「在开工前先给文档」的要求，本轮停在这里</div>
+  <div class="grid3">
+    <div class="box a"><h3>① 开工范围</h3><div class="sm">按主文档 §6 的 G1–G4 全做？还是只做 8 处 errors 订正？<br><b>建议：全做</b>，答案已齐、纯数据+文档零风险。</div></div>
+    <div class="box a"><h3>② 真机测试额度</h3><div class="sm">T3 需 1–2 次极短 chat、T5 需 1 次最低成本生成。<br><b>建议硬上限 0.5 USD</b>，够跑完且不会产生实质费用。</div></div>
+    <div class="box a"><h3>③ push 入库范围</h3><div class="sm">当前 untracked 有 19 份研究 docs + 看板 HTML + 基础设施文件。<br><b>需确认</b>是否全部入库；PT 官方附件与任何 Key <b>一律不入库</b>。</div></div>
+  </div>
+  <div class="warn">另：<code>C1</code>（鉴权头 Bearer 前缀）与 <code>C4</code>（产物有效期三套数字）是书面材料内部矛盾，
+  <b>只能靠 T2/T5 实测裁决</b>。若实测结果与设计不同，会回写主文档 §3 并相应调整 catalog 字段措辞。</div>
+</section>
+
+<div class="foot">
+  PT 项目资料总集 v1.0 · 2026-11-12 · 主文档 <code>docs/PT_项目资料总集_20261112.md</code><br>
+  自证：<code>validate_catalog.py</code> OK · <code>run_tests.py</code> 246/246 PASS · catalog 保持 schema=2 / 86 模型 / 5 kinds<br>
+  本轮未改任何代码 / catalog / 测试 / CI / README；未做真机实测；未提交 / 未 push / 未打 tag
+</div>
+
+</div>
+</body>
+</html>

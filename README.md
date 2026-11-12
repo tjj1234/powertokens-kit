@@ -552,9 +552,49 @@ Issues / PRs welcome. Keep the "engine single source of truth" principle: CLI / 
 
 ## 21. Changelog
 
+- **0.7.0** — **`catalog.json` v2.1 (PT 12/12 answers)**: 8 `errors` corrections (generation-domain D4 §1 code table, 429 `model_rate_limited` + `Retry-After`, 5xx pass-through 502/503 + auto Refund, timeout fixed 500 + `do_request_failed`, 400 `unsupported_parameter` / `context_length_exceeded`, `token_invalid|expired|disabled`, 403+503 `model_not_found`, historical 403 balance response voided); new top-level `retry_policy` (4+1 acceptance/retry rules, `X-Oneapi-Request-Id`) and `charging` (async full refund vs sync mid-stream per-token settle); `kinds.seedance.interface_variants` (openai_standard vs vendor_compatible endpoints) and `result_persistence` (permanent vs 24h); `currency.notes` C3. Schema/validator/tests synced; **generation code untouched**.
+- **0.6.0** — **`catalog.json` v2 (P0)**: `schema` 1 -> 2; add top-level `currency`, `auto_policy.purposes`, `errors` (9 generation-domain categories) and `capability_gaps`; add `limits` / `tool_calling` / `routing` (+ `web_search_detail` on the 4 `conditional` models) to the 7 main models. `_source` unified to 8 values; every unverified result stays `null`. Ships `catalog.schema.json`, a zero-dependency `validate_catalog.py`, v2 unit assertions and a minimal CI that runs the offline suite only. See `CHANGELOG.md` and §21.1.
 - **0.5.0** — Add **read-only account/billing commands**: CLI `balance` / `usage` / `logs` / `agreement` and matching MCP tools (`query_balance` / `query_usage` / `query_logs` / `query_agreement`); `seedance status` now best-effort checks server-side agreement; document the `powertokens.ai/api` bare-key domain for account/billing/asset endpoints.
 - **0.4.1** — Correct the misjudgment that "Seedance text-to-video must carry media" (tested: plain prompt works); add the cross-account asset-sharing finding (A.14); `upload` asset-upload loop; docs aligned.
 - **0.4.0** — Split Seedance into a standalone type (`image`/`video`/`seedance` parallel); "local flag + error fallback" onboarding flow; `force_asset` media validation; MCP `generate_seedance` tool.
 - **0.3.0** — Add image generation (sync `/v1/images/generations`); REST direct replaces CLI.
 - **0.2.0** — Async video submit + polling; `auto` model selection; pricing/param query.
 - **0.1.0** — Initial engine skeleton.
+
+### 21.1 catalog v2 field conventions (schema 2)
+
+`pt-gateway/catalog.json` is the single source of truth for model capabilities — agents read it
+instead of keeping a private capability table. v2 only **adds** fields; existing values are untouched.
+
+**Empty values (A3)**: `null` = unknown; `[]` = confirmed absent; `false` = confirmed unsupported.
+Never turn `null` into `false`, never fabricate `true`.
+
+**`_source` — exactly 8 values (A5)**: `official`, `documented`, `verified`, `official+verified`,
+`inferred`, `configured` (same as `inferred`), `verified(unmapped)`, `product`.
+
+- Priority: human-confirmed `verified` > `official` / `documented` > auto-probe > `inferred`.
+  Auto-probing never overwrites the first three groups; it only refreshes `_checked_at` and writes
+  a separate probe report.
+- **`verified(unmapped)` is treated as KNOWN**, not unknown: the model was really probed, the
+  response just did not map onto a known capability dimension. Do not re-probe it as a blank.
+- `product` is used **only** for the top-level `auto_policy` (product-side routing decisions);
+  model-level `routing.recommended` uses `configured`.
+
+**Layout**: `auto_policy.purposes` = ordered candidate lists (first layer); `routing.recommended` =
+unordered tags, used only as a fallback when `auto_policy` does not cover a purpose. `errors` holds
+the 9 **generation-domain** categories — the account-domain status table (which has no 402) must
+not be mixed in. `capability_gaps` lists capabilities not yet callable; `kinds` stays the 5
+callable kinds (`image` / `video` / `seedance` / `audio` / `chat`).
+
+Format reference: `pt-gateway/catalog.schema.json`**v2.1 additions (2026-11-12, PT answers 12/12)**: `retry_policy` is a **top-level**
+section (not a 10th `errors` category) holding the 4+1 acceptance/retry rules — a non-2xx is
+never accepted and is auto-refunded (safe to retry), while `200 + SSE finish_reason=error|timeout|abort`
+is already settled/charged and **must not** be auto-retried. `charging` splits the two paths:
+async tasks get a full `RefundTaskQuota` on failure/timeout, sync chat mid-stream failures are
+charged per measured token and keep `status=success` (filter by `logs.other.finish_reason`).
+`kinds.seedance.interface_variants` records both endpoint families (we use `openai_standard`
+`/v1/videos`); `result_persistence` records permanent PT-owned URLs vs 24h upstream signed links
+(`--no-download` is not promised permanent until verified). Field names deliberately avoid the
+Chinese word for "pass-through" — the repo already has 6+ conflicting meanings for it.
+
+ · offline validator: `python pt-gateway/validate_catalog.py`.

@@ -1,0 +1,98 @@
+# Changelog
+
+本文件记录 `powertokens-kit` 可交付版本的变更。catalog 的字段级决策依据见
+`docs/catalog_v2_决策锁定_20261112.md`；与 PT 官方 2.0.0 文档的核销见
+`docs/PT_API_2.0.0_官方答复核销_20261112.md`。
+
+---
+
+## 0.6.0 — 2026-11-12 · `catalog.json` v2（P0）## 0.7.0 — 2026-11-12 · `catalog.json` v2.1（PT 12/12 答复落地）
+
+**范围**：G1–G4 + G5 真机测试 + G6 发布。依据 `docs/PT_项目资料总集_20261112.md` §6.3。
+**不做**：生成链路功能代码（认证/端点/请求构造全部不变，N1）、真接供应商兼容接口（N2）、
+账户客户端 Bearer `pt_live_` 改造（N3，B4/B5 后置）。
+
+- **G1 · `errors` 8 处数据订正**（`errors` 仍恰好 9 类，未新增类）：
+  - `upstream_error`：`http_status` `[502, 503]`，OpenAI error 格式 + `message` 追加 request_id + 自动 Refund；
+  - `timeout`：`[500]` + `do_request_failed`，**删掉 notes 里「Q8 未答」过时表述**；
+  - `rate_limited`：`model_rate_limited`、`Retry-After` 一定有（网关默认 5s）、预扣费前限流不产生费用；
+  - `insufficient_balance`：`examples[1]` 历史 403 余额报文标注「按新版作废，统一 402」（C9）；
+  - `auth_invalid`：补 `token_invalid` / `expired` / `disabled`；
+  - `param_unsupported` / `context_too_long`：`[400]` + 上游原 code/type + `context_length_exceeded` 报文；
+  - `model_unavailable`：`[403, 503]` + D4 §1 四个 403 细分 code + 503 同 code「无可用渠道」，
+    第五批对比表第 8 行作废（C5 解锁）。
+- **G2 · 新增字段**：
+  - 顶层 `retry_policy` — 4+1 条受理/重试规则 + `X-Oneapi-Request-Id` 仅作报障定位；
+  - 顶层 `charging` — **按链路分叉**（C6）：`async_task.charged_on_failure=false` 全额退，
+    `sync_chat_stream.charged_on_midstream_failure=true` 按量结算且 `log_status=success`；
+  - `kinds.seedance.interface_variants` / `result_persistence` — 双端点表 + 标准永久 / 兼容接口 24h +
+    C4 冲突 caveat；字段名避开「透传」二字；
+  - `currency.notes` 补 C3（设计层汇率可配 vs 对外固定 1000）。
+- **G3 · 三道守门员同步**：`catalog.schema.json`（+2 顶层节 / +4 definitions）、
+  `validate_catalog.py`（+50 行 v2.1 校验）、`test_unit_catalog.py`（+9 个 v2.1 断言）。
+- **只加字段 + 列明的数据订正**：原子写前逐条 deep-equal，86 个模型、`note`、
+  4 类 kinds、`auto_policy`、`capability_gaps`、`errors.content_filtered` 全部未动；
+  `schema` 保持 2（v2 内订正，不升版本）。
+- **验收**：`validate_catalog.py` 128 项全 PASS；`run_tests.py` **255/255 PASS**（246 → 255）。
+- **G5 真机测试**：见 `docs/PT_项目资料总集_20261112.md` §10.2 与本次发布报告；
+  预算硬上限 0.5 USD，`T2/T3/T5` 分别裁决 C1、补 R1、澄清 C4。
+
+---
+
+
+
+**范围**：按 14 条拍板决策，只做 catalog 的 P0 字段 + 需求 2 / 3 / 4。
+**不做**：DSH 插件化、账户客户端模块、P2 的 `pricing` / `charging`、需求 5/6/7/10/11/12/13。
+
+- `schema` 1 → 2，`updated` → `2026-11-12`。**只加字段，不改已有字段**：原子写入前对原有值做逐条深比对，
+  顶层 `note` / `kinds` / `multimodal_source` 与非主力模型条目完全未动。
+- 新增 4 个顶层节：
+  - `currency` — `credits_per_usd = 1000`（`_source: official`，PT API 2.0.0 `/v1/billing/estimate`）；
+    `3` 是 `per_1k_tokens` 的 `quota_per_unit`，非换算率。
+  - `auto_policy.purposes` — AUTO 第一层，按用途的**有序候选列表**；本轮落 `agent` / `search`
+    两种用途，各 3 个跨渠道候选，`_source: product`。附 A1 的 4 条跳过规则。
+  - `errors` — 生成域 9 类错误码字典，含 A.04 官方 401/402/403 语义与 3 条真机报文
+    （`token quota is not enough`、`pre-consume quota failed`、`model_not_found ... not listed (pending)`）；
+    **账户域状态码表（含 500、无 402）未混入**。
+  - `capability_gaps` — 5 类当前不可调用能力（ASR / TTS / OCR / Embeddings·Rerank / 实时语音），
+    每项 `in_kinds: false`；`kinds` 仍只有 `image` / `video` / `seedance` / `audio` / `chat` 五类（B1）。
+- 7 个主力模型（`glm-4.7` / `deepseek-v4-pro` / `qwen3.8-flash` / `seed-2-0-pro-260328` /
+  `MiniMax-M3` / `glm-5.2` / `mimo-v2.6-pro`，覆盖 6 渠道）追加 `limits` / `tool_calling` / `routing`；
+  其中 4 个 `web_search = "conditional"` 的模型另加 `web_search_detail`，
+  `how_to_enable` 从 `capabilities.web_search_param` 原样复制（A4）。
+- **未实测的值一律 `null`**（A3）：`tool_calling.verified`、`works`、`returns_sources` 全部为 `null`，
+  来源标 `inferred` / `configured`，无任何假 `true`。`limits` 的子字段形状因模板全文未落地，
+  本轮只落结构占位与来源标注，未擅自补 `max_context_tokens` 等子键。
+- `_source` 统一 8 值（A5）：`official` / `documented` / `verified` / `official+verified` /
+  `inferred` / `configured` / `verified(unmapped)` / `product`；其中 `product` **仅用于 `auto_policy`**，
+  `routing` 用 `configured`。`verified(unmapped)` 当作已知处理（README 双语已补说明）。
+- 需求 2 基础设施：
+  - `pt-gateway/catalog.schema.json` — 给 Agent / 使用方的**格式说明**（不参与运行时强校验）。
+  - `pt-gateway/validate_catalog.py` — **手写零依赖校验器**，退出码 0/1。
+  - `pt-gateway/tests/test_unit_catalog.py` — `VALID_SOURCE` 统一 8 值 + v2 结构断言。
+  - `.github/workflows/ci.yml` — 最小 CI，**只跑** `python pt-gateway/tests/run_tests.py`；
+    不跑 live、不做 pre-commit。
+  - `pt-gateway/tests/test_contract_mcp.py` — 顺带校正 0.5.0 遗留的「只暴露 3 个工具」断言为 4 个
+    （含 `account_query`）。**与本轮 catalog 无关**，仅为让离线 CI 全绿；未改任何 MCP 功能代码。
+- 账户接口最新口径固化于 `docs/PT_账户接口_默认模块依据_20261112.md`：
+  生成域仍用 API Key；其他接口按 access key + key id；**`client_operation_id` 已移除**；
+  `data` 为字符串化 JSON 需二次解析。**账户客户端模块本轮不建**（B4/B5 后置）。
+
+**待核对 / 未落地（不阻塞本轮 P0）**
+
+| 项 | 状态 |
+|---|---|
+| `limits` 子字段形状、`auto_policy.purposes` 用途键全集与元素形态、`capability_gaps` 精确格式 | 需模板全文核对后一次补齐（决策锁定稿 §4） |
+| P2 `pricing` / `charging` | 本轮不填 |
+| `--max-usd` 真机单次预算数值 / 真机实测 `works` 等 | 未给，P0 按 A3 填 `null` |
+| 生成响应里 `request_id` 的精确位置（Q3） | PT 未答 |
+| A2「准确费用以 estimate 为准」措辞修订 | 待用户一句话确认，未写入 |
+
+---
+
+## 0.5.0
+
+新增**只读账户 / 计费命令**：CLI `balance` / `usage` / `logs` / `agreement` 与配套 MCP 工具
+（`query_balance` / `query_usage` / `query_logs` / `query_agreement`）；`seedance status` 现在
+best-effort 真查服务端签署状态；补充账户 / 计费 / 资产库端点所在的 `powertokens.ai/api` 裸 key 域说明。
+仓库双语化（英文为默认 README）。

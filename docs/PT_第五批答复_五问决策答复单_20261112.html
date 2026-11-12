@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PT 第五批答复 · 五问决策答复单 · 2026-11-12</title>
+<style>
+  :root{
+    --bg:#f7f8fa; --card:#ffffff; --ink:#1f2937; --muted:#6b7280;
+    --line:#e5e7eb; --blue:#2563eb; --green:#16a34a; --amber:#d97706;
+    --red:#dc2626; --violet:#7c3aed;
+    --soft-blue:#eff6ff; --soft-green:#f0fdf4; --soft-amber:#fffbeb;
+    --soft-red:#fef2f2; --soft-violet:#f5f3ff;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:32px 20px 56px;background:var(--bg);color:var(--ink);
+       font-family:system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;
+       line-height:1.65;font-size:14px}
+  .wrap{max-width:1080px;margin:0 auto}
+  header{border-bottom:2px solid var(--blue);padding-bottom:18px;margin-bottom:24px}
+  h1{margin:0 0 6px;font-size:25px;letter-spacing:-.3px}
+  .sub{color:var(--muted);font-size:13px}
+  .badge{display:inline-block;background:var(--soft-amber);color:var(--amber);
+         border:1px solid #fde68a;border-radius:999px;padding:2px 10px;font-size:12px;
+         font-weight:600;margin-left:8px;vertical-align:middle}
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px}
+  .kpi{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+  .kpi .n{font-size:23px;font-weight:700;color:var(--blue);line-height:1.2}
+  .kpi .l{color:var(--muted);font-size:12px;margin-top:4px}
+  .kpi.g .n{color:var(--green)} .kpi.a .n{color:var(--amber)} .kpi.v .n{color:var(--violet)}
+  section{background:var(--card);border:1px solid var(--line);border-radius:12px;
+          padding:20px 22px;margin-bottom:18px}
+  h2{font-size:17px;margin:0 0 6px;padding-left:10px;border-left:3px solid var(--blue)}
+  h2.v{border-left-color:var(--violet)} h2.r{border-left-color:var(--red)}
+  .h2sub{color:var(--muted);font-size:12px;margin:0 0 14px;padding-left:13px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{background:#f9fafb;color:var(--muted);font-weight:600;font-size:12px}
+  tr:last-child td{border-bottom:none}
+  code{background:#f3f4f6;border-radius:4px;padding:1px 5px;font-size:12px;
+       font-family:ui-monospace,Consolas,monospace}
+  .tag{display:inline-block;border-radius:5px;padding:1px 8px;font-size:11px;font-weight:700;white-space:nowrap}
+  .t-ok{background:var(--soft-green);color:var(--green)}
+  .t-part{background:var(--soft-amber);color:var(--amber)}
+  .t-no{background:var(--soft-red);color:var(--red)}
+  .t-void{background:#f3f4f6;color:var(--muted)}
+  .t-blue{background:var(--soft-blue);color:var(--blue)}
+  .note{background:var(--soft-blue);border-left:3px solid var(--blue);
+        padding:10px 14px;border-radius:0 8px 8px 0;margin-top:12px;font-size:13px}
+  .warn{background:var(--soft-amber);border-left:3px solid var(--amber);
+        padding:10px 14px;border-radius:0 8px 8px 0;margin-top:12px;font-size:13px}
+  .good{background:var(--soft-green);border-left:3px solid var(--green);
+        padding:10px 14px;border-radius:0 8px 8px 0;margin-top:12px;font-size:13px}
+  ul{margin:8px 0 0;padding-left:20px} li{margin:3px 0}
+  .q{border:1px solid var(--line);border-radius:10px;padding:13px 16px;margin-bottom:10px;background:#fcfcfd}
+  .q .t{font-weight:700;font-size:14px;margin-bottom:5px}
+  .q .t span{display:inline-block;min-width:26px;height:22px;line-height:22px;text-align:center;
+             background:var(--soft-blue);color:var(--blue);border-radius:6px;margin-right:8px;font-size:12px}
+  .q .b{font-size:13px;color:#374151}
+  .q.ok{border-left:3px solid var(--green)} .q.no{border-left:3px solid var(--red)}
+  .q.mid{border-left:3px solid var(--amber)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .foot{color:var(--muted);font-size:12px;text-align:center;margin-top:26px;line-height:1.8}
+  .big{font-size:15px;font-weight:600}
+  .sm{font-size:12px;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>PT 第五批答复 · 五问决策答复单 <span class="badge">先回答 · 未改代码</span></h1>
+  <div class="sub">2026-11-12 · 参数校验错误对比表（8 行）+ 返回体形态 + 真机 <code>context_length_exceeded</code> 报文 ·
+  用户要求「先回答我以下问题」→ 本轮只给判定与资料沉淀</div>
+</header>
+
+<div class="kpis">
+  <div class="kpi g"><div class="n">Q5-5 ✅</div><div class="l">参数类错误精确报文打穿</div></div>
+  <div class="kpi a"><div class="n">7 + 1</div><div class="l">errors 可订正 7 处，第 8 处等 R2①</div></div>
+  <div class="kpi v"><div class="n">仍 10 条</div><div class="l">需 PT 确认（L1 4 / L2 4+ / 条件 2）</div></div>
+  <div class="kpi"><div class="n">0 行改动</div><div class="l">生成代码不用改 · 本轮未动 .py / catalog</div></div>
+</div>
+
+<section>
+  <h2>1. 五问速答</h2>
+  <div class="h2sub">结论先行，逐条依据见清单 §9</div>
+
+  <div class="q mid">
+    <div class="t"><span>1</span>是否还有需要 PT 确认的？</div>
+    <div class="b"><b>有，仍 10 条</b>（L1 4 / L2 4+ / 条件 2）。本批解决了 <code>Q5-5</code>、<code>R1</code> 部分、<code>Q5-1</code> 部分；
+    <b>没有解决</b> <code>R2①</code> / <code>R10</code> / <code>R11</code> / <code>S1–S3</code> / B 组 6 条。
+    数量没降，但 <code>R2①</code> 被补强成「400 与 403 分别对应哪些模型不可用场景」，更值得问。</div>
+  </div>
+
+  <div class="q ok">
+    <div class="t"><span>2</span>可以到了修改代码的时候了吗？</div>
+    <div class="b"><b>分档：改 catalog 数据 → 可以了；改生成代码 → 仍不用；改扣费/重试行为 → 还差 2 条。</b>
+    <code>catalog.json</code> 的 <code>errors</code> <b>7 处纯数据订正可以开工</b>（第 8 处 <code>model_unavailable</code> 须等 R2①），
+    答案已齐、不动结构/枚举/断言、零风险。<code>charging.charged_on_failure</code> 等 <code>R10</code>、自动重试等 <code>R11</code>；
+    生成链路功能代码按 PT 第 4 条 <b>一行都不用改</b>。<b>按你「先回答」的指令，本轮没动手</b>——你说一句「改」我就落 7 处并跑校验器+全量测试。</div>
+  </div>
+
+  <div class="q no">
+    <div class="t"><span>3</span>透传和标准接口做了区分和说明吗？</div>
+    <div class="b"><b>没有。</b> catalog / 生成代码 / README <b>三层全未覆盖</b>（第三批评估结论未变，P0 补字段一直等你拍板）：
+    <code>kinds.seedance</code> 只有一条 <code>/v1/videos</code>，7 个模型 <code>vendor_endpoint</code> 全填 <code>/v1/videos</code>，
+    统一 <code>POST /v1/videos</code>，<code>force_asset</code> 是素材格式开关不是接口开关，README §4/§10 无双接口与 TTL。
+    <b>且本批表里的「透传」是又一个不同含义</b>（PT 服务端错误响应原样透传），别混进来。</div>
+  </div>
+
+  <div class="q ok">
+    <div class="t"><span>4</span>Seedance 签协议是怎么处理的？</div>
+    <div class="b"><b>已完整实现，四层</b>：① <code>catalog.kinds.seedance.requires</code> 声明；
+    ② CLI <b>本地标记 + 报错回退</b>（<code>pt_video.py:944-982</code>）+ <code>seedance enable|disable|status</code> + best-effort 真查
+    <code>GET /v1/asset/agreement/status</code>；③ <code>force_asset</code> 只收 <code>asset://</code> 的素材强校验；④ 独立 kind 隔离。
+    ⚠️ <b>网关层没有协议检查</b>（那 3 处 agreement 只是 <code>account_query</code> 只读 action），走 MCP/网关 REST 不会弹引导；<code>S3</code> 仍悬空。</div>
+  </div>
+
+  <div class="q">
+    <div class="t"><span>5</span>对比表</div>
+    <div class="b">属 <b>PT 服务端网关（newapi 类）的参数/错误校验行为</b>，我们是调用方，<b>不要照着它在本仓库实现一套拦截</b>。
+    已固化于清单 §9.1，核销见 §9.2。8 行归三类：上游参数类透传（4）/ 本地前置校验（2，<code>invalid_request</code>）/ 网关兜底+中间件（2）。</div>
+  </div>
+</section>
+
+<section>
+  <h2 class="r">2. ⚠️ 本批最重要的两个澄清</h2>
+  <div class="grid2">
+    <div class="q no" style="margin:0">
+      <div class="t">主体别搞错</div>
+      <div class="b">表里「✅ 本地拦截 / 网关兜底 / 中间件拦截」发生在 <b>PT 服务端</b>，不是 <code>pt-gateway/pt_gateway.py</code>。
+      我们已有的 <code>precheck_explicit_model()</code>（<code>GET /v1/models</code> 预检、防扣费）是调用方自己的，与 PT middleware abort 不冲突也不重复。</div>
+    </div>
+    <div class="q mid" style="margin:0">
+      <div class="t">新发现 400 / 403 口径冲突</div>
+      <div class="b">本批第 8 行「模型<b>不在上架列表</b> → <code>400</code> + <code>invalid_request</code> + <code>upstream_error</code>」
+      vs 仓库 A.04 / A.21 真机 / <code>errors.model_unavailable</code> 的「<b>403</b> + <code>model_not_found ... not listed (pending)</code>」。
+      <b>并入 R2①，不新增条目</b>；<code>model_unavailable</code> 因此暂不订正。</div>
+    </div>
+  </div>
+  <div class="note">本批同时给了 <code>request_id</code> 在 <code>error.message</code> 里的精确埋点格式：
+  <b>末尾追加 <code>(request id: xxx)</code></b>（真机报文 + 说明双重印证）→ <code>R1</code> 剩下的 header 名 / 成功 body 字段名 / 异步提交字段名，<b>一次低成本 chat 实测即可</b>，不必再找 PT。</div>
+</section>
+
+<section>
+  <h2>3. 开工判定：Go / No-Go 分档</h2>
+  <table>
+    <thead><tr><th style="width:30%">档</th><th style="width:15%">判定</th><th>理由</th></tr></thead>
+    <tbody>
+      <tr><td><code>catalog.json</code> 的 <code>errors</code> <b>7 处数据订正</b></td><td><span class="tag t-ok">✅ 可以开工</span></td><td>答案已齐、纯数据、属 catalog v2 交付范围；此前按你「先讨论」压着未动</td></tr>
+      <tr><td><code>charging.charged_on_failure</code> / 自动重试逻辑</td><td><span class="tag t-part">⚠️ 还差 2 条</span></td><td>等 <code>R10</code>（流中途 settle 口径）/ <code>R11</code>（429 + 单一信号）；涉及行为，不宜写死</td></tr>
+      <tr><td>生成链路功能代码（<code>pt_gateway.py</code> / <code>pt_video.py</code> / mcp / server 生成部分）</td><td><span class="tag t-ok">❌ 不用改</span></td><td>PT 第 4 条 + 本批都是服务端行为；认证 / 端点 / 请求构造全不变</td></tr>
+      <tr><td>账户客户端模块（B4/B5）</td><td><span class="tag t-blue">🔄 后置</span></td><td>需 B 组 6 条答案，本就规划后置</td></tr>
+    </tbody>
+  </table>
+
+  <div class="big" style="margin:18px 0 8px"><code>errors</code> 订正清单：7 处可立即改 + 1 处等 R2①</div>
+  <table>
+    <thead><tr><th style="width:7%">#</th><th style="width:44%">位置</th><th>答案来源</th><th style="width:12%">可否改</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td><code>upstream_error</code> 状态码 / 样例 / notes</td><td>第四批：透传 502/503、固定 500、OpenAI error、自动 Refund</td><td><span class="tag t-ok">✅</span></td></tr>
+      <tr><td>2</td><td><code>timeout</code> 状态码 / 样例 / <b>notes「Q8 未答」已过时</b></td><td>第四批 + 第三批 Q8</td><td><span class="tag t-ok">✅ 最该改</span></td></tr>
+      <tr><td>3</td><td><code>rate_limited.notes</code> 粒度 → 按账户</td><td>第二批</td><td><span class="tag t-ok">✅</span></td></tr>
+      <tr><td>4</td><td><code>insufficient_balance.examples[1].note</code> → 统一 402、历史 403 作废</td><td>第二批</td><td><span class="tag t-ok">✅</span></td></tr>
+      <tr><td>5</td><td><code>auth_invalid</code> 补 <code>token_invalid/expired/disabled</code></td><td>第二批</td><td><span class="tag t-ok">✅</span></td></tr>
+      <tr style="background:var(--soft-green)"><td>6</td><td><code>param_unsupported</code> 从全 null → 400 + 上游原 code/type</td><td><b>第五批</b></td><td><span class="tag t-ok">✅</span></td></tr>
+      <tr style="background:var(--soft-green)"><td>7</td><td><code>context_too_long</code> 从全 null → 400 + <code>context_length_exceeded</code> + 真机样例</td><td><b>第五批</b></td><td><span class="tag t-ok">✅</span></td></tr>
+      <tr style="background:var(--soft-amber)"><td>8</td><td><code>model_unavailable</code> 是否把 <code>[403]</code> 改成含 400</td><td>400/403 冲突未裁决</td><td><span class="tag t-part">⚠️ 等 R2①</span></td></tr>
+    </tbody>
+  </table>
+  <div class="good">全部是<b>数据订正</b>：不动结构、不动 <code>KNOWN_KINDS</code>、不动 <code>_source</code> 八值、不动校验断言。改完跑 <code>validate_catalog.py</code> + <code>tests/run_tests.py</code> 即可自证。</div>
+</section>
+
+<section>
+  <h2 class="v">4. 仍需 PT 确认：仍 10 条</h2>
+  <div class="h2sub">数量与上批持平，内容更精确（Q5-5 划掉 · R1 转自测 · R2① 补强 · R2② 上批已闭环）</div>
+  <div class="grid2">
+    <div class="q mid" style="margin:0">
+      <div class="t">L1 · 影响生成主线（4 条）</div>
+      <div class="b">
+        <b>R2①</b> 400 vs 403 模型不可用场景划分（本批补强）<br>
+        <b>R10</b> 流中途 settle 是否扣费 / 与全额 Refund 边界<br>
+        <b>R11</b> 429 形态 + 是否单一专用信号字段<br>
+        <b>S2</b> 「永久」是本体还是 URL 也永久（建议无论接不接都问）
+      </div>
+    </div>
+    <div class="q" style="margin:0">
+      <div class="t">L2 / 条件（6 条）</div>
+      <div class="b">
+        <b>R3</b> key_id 形态 · <b>R4</b> logs 分页时效 · <b>R6</b> 认证头 · <b>R9</b> legacy &amp; quota 流水<br>
+        <b>R7</b> estimate 请求体 · <b>R8</b> chat 单价来源（可自测/自定，优先级最低）<br>
+        <b>S1</b> 双接口端点清单 · <b>S3</b> 透传是否也签协议（仅当决定接透传）
+      </div>
+    </div>
+  </div>
+  <div class="note">可直接发送版 <code>docs/PT_最终待确认清单_可直接发给PT.md</code> 已同步：A1 补 400/403 冲突、「已确认无需再答」加入参数类错误、R1 标注 message 埋点格式已给。</div>
+</section>
+
+<section>
+  <h2>5. Seedance 协议处理链路（本轮只读复核）</h2>
+  <table>
+    <thead><tr><th style="width:20%">层</th><th>实现</th><th style="width:26%">位置</th></tr></thead>
+    <tbody>
+      <tr><td>① 数据声明</td><td><code>kinds.seedance.requires</code>：需签《Asset Library User Agreement》（仪表盘手签）+ media-text + 图生强制 <code>asset://</code></td><td><code>catalog.json</code></td></tr>
+      <tr><td>② CLI 本地标记 + 报错回退</td><td>PT 无查询/代签 API → <code>seedance_agreement_signed</code> 决定是否弹引导；<b>只提示不阻断提交</b>；报错命中关键词（agreement/协议/未签/授权…）→ 重置标记并重新引导；<b>生成成功即记为已签</b></td><td><code>pt_video.py:944-982, 1053, 1076, 1083</code></td></tr>
+      <tr><td>② 命令与只读查询</td><td><code>seedance enable|disable|status</code>；<code>status</code> 有 Key 时 best-effort 真查 <code>GET /v1/asset/agreement/status</code> → <code>agreement_accepted_server</code>；另有 <code>agreement</code> 命令 / MCP <code>query_agreement()</code> / 网关 <code>/account/agreement</code></td><td><code>pt_video.py:1129, 1224</code> · <code>mcp_server.py:193</code> · <code>server.py:137</code></td></tr>
+      <tr><td>③ 素材强校验</td><td><code>force_asset=True</code> 时 <code>build_media()</code> 只收 <code>asset://</code>，外部 http(s) 直接拒绝；<code>upload</code> 把本地文件传成 <code>asset://&lt;id&gt;</code></td><td><code>pt_video.py:683-705, 779-845</code> · <code>pt_gateway.py:296</code></td></tr>
+      <tr><td>④ 类型隔离</td><td>Seedance 独立 kind（0.4.0），普通 <code>video</code> 的 auto 候选已剔除，须 <code>--type seedance</code></td><td><code>pt_video.py:199</code> · <code>README.zh-CN.md:133</code></td></tr>
+    </tbody>
+  </table>
+  <div class="warn">
+    <b>三个边界</b>：① <b>网关层没有协议前置检查</b> —— <code>pt_gateway.py</code> 里 3 处 agreement 全是 <code>account_query</code> 只读 action，
+    走 MCP <code>generate_seedance</code> / 网关 REST 不会弹引导，只把 PT 错误原样抛出（CLI 才有整套引导/回退）；
+    ② <code>pt_video.py:945</code> 注释「PT 没有查询协议是否已签的 API」<b>已过时</b>，0.5.0 后 <code>seedance status</code> 能 best-effort 真查，功能不受影响；
+    ③ <b>S3 仍悬空</b>：透传接口是否也要签协议 / 强制 <code>asset://</code>，当前所有协议逻辑都绑在「走标准接口」这一条路径上。
+  </div>
+</section>
+
+<section>
+  <h2>6. 透传 / 标准接口：三层全未覆盖 + 术语撞车</h2>
+  <table>
+    <thead><tr><th style="width:20%">层</th><th>现状</th><th style="width:10%">覆盖</th></tr></thead>
+    <tbody>
+      <tr><td>catalog</td><td><code>kinds.seedance</code> 单条 <code>/v1/videos</code>；7 个模型字段完全一致、无变体/TTL，<code>vendor_endpoint</code> 全填 <code>/v1/videos</code></td><td><span class="tag t-no">❌</span></td></tr>
+      <tr><td>生成代码</td><td>统一 <code>POST /v1/videos</code>；<code>force_asset</code> 是素材格式开关；无 <code>--params</code>、无按供应商路由</td><td><span class="tag t-no">❌</span></td></tr>
+      <tr><td>文档</td><td>README §4 / §10 只讲三类型与三大前置，无「标准/透传」、无「永久/24h」</td><td><span class="tag t-no">❌</span></td></tr>
+    </tbody>
+  </table>
+  <div class="note">
+    仓库里「透传」已至少 6 种用法：chat <code>thinking_param</code> 参数透传 · <code>Catalog.capabilities()</code> 整条透传 ·
+    CLI/网关把 PT 原始报文透传到 stderr · <code>poll_task</code> 4xx 直接透传 · SKILL 里 <code>-m</code> 模型名原样透传 ·
+    多模态「网关原样透传」——本批再加「PT 服务端错误响应透传」与「透传接口」。
+    <b>将来落 P0 时字段名请避开「透传」二字</b>，用 <code>interface_variants</code> / <code>endpoint_variants</code> /
+    <code>result_persistence</code> / <code>asset_ttl_hours</code>，否则越描越糊（与 B1「不新增 kind、不改 <code>KNOWN_KINDS</code>」一致）。
+  </div>
+</section>
+
+<section>
+  <h2>7. 本轮边界</h2>
+  <div class="note">
+    只更新 <code>docs/*.md</code> 与本答复单；<b>未改 catalog.json / 任何 .py / 测试 / CI / README</b>（含 7 处 errors 订正，按「先回答」等拍板）；
+    未做真机实测；未提交、未 push、未打 tag。清单原文 Q1–Q8 与 §1–§8 逐行子序列校验保留。
+  </div>
+  <div class="good"><b>等你一句话</b>：① 要不要现在落 7 处 <code>errors</code> 订正；② 双接口 P0 字段加不加、字段名用哪套；③ 要不要给一次低成本 chat 实测把 <code>request_id</code> 字段名坐实。</div>
+</section>
+
+<div class="foot">
+  PT 答复核销 · 第 5 批 / 五问决策 · 2026-11-12<br>
+  资料沉淀于 <code>docs/PT_待确认问题清单_20261112.md</code> §9 · 未改代码
+</div>
+
+</div>
+</body>
+</html>

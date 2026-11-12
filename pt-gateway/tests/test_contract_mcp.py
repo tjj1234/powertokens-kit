@@ -107,9 +107,15 @@ class FakeGateway:
 class TestMcpToolSurface(unittest.TestCase):
     """静态契约：工具数量、名字、参数（不用装 mcp 包也能跑）。"""
 
-    def test_exactly_three_tools(self):
-        """设计原则：只暴露 3 个统一工具，agent 选择面小、不易选错。"""
-        self.assertEqual({"list_capabilities", "media_generate", "task_status"},
+    def test_exactly_four_tools(self):
+        """工具面契约：3 个统一生成工具 + 0.5.0 起追加的 1 个只读账户查询工具。
+
+        历史：本断言最初写死「只暴露 3 个工具」；0.5.0 新增 account_query
+        （对应 CLI 的 balance / usage / logs / agreement）后未同步，既有 CI 一直红。
+        本次按真实设计校正为 4 个；仍禁止随意扩张（见 test_no_cancel_tool）。
+        """
+        self.assertEqual({"list_capabilities", "media_generate", "task_status",
+                          "account_query"},
                          set(tool_functions().keys()))
 
     def test_no_cancel_tool(self):

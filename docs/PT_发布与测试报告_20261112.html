@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PT catalog v2.1 · 发布与真机测试报告 · 2026-11-12</title>
+<style>
+  :root{
+    --bg:#f7f8fa; --card:#ffffff; --ink:#1f2937; --muted:#6b7280;
+    --line:#e5e7eb; --blue:#2563eb; --green:#16a34a; --amber:#d97706;
+    --red:#dc2626; --violet:#7c3aed;
+    --soft-blue:#eff6ff; --soft-green:#f0fdf4; --soft-amber:#fffbeb;
+    --soft-red:#fef2f2; --soft-violet:#f5f3ff;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:32px 20px 56px;background:var(--bg);color:var(--ink);
+       font-family:system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;
+       line-height:1.65;font-size:14px}
+  .wrap{max-width:1080px;margin:0 auto}
+  header{border-bottom:2px solid var(--blue);padding-bottom:18px;margin-bottom:24px}
+  h1{margin:0 0 6px;font-size:25px;letter-spacing:-.3px}
+  .sub{color:var(--muted);font-size:13px}
+  .badge{display:inline-block;background:var(--soft-green);color:var(--green);
+         border:1px solid #bbf7d0;border-radius:999px;padding:2px 10px;font-size:12px;
+         font-weight:600;margin-left:8px;vertical-align:middle}
+  .badge.a{background:var(--soft-amber);color:var(--amber);border-color:#fde68a}
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px}
+  .kpi{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+  .kpi .n{font-size:24px;font-weight:700;color:var(--blue);line-height:1.2}
+  .kpi .l{color:var(--muted);font-size:12px;margin-top:4px}
+  .kpi.g .n{color:var(--green)} .kpi.a .n{color:var(--amber)} .kpi.v .n{color:var(--violet)}
+  section{background:var(--card);border:1px solid var(--line);border-radius:12px;
+          padding:20px 22px;margin-bottom:18px}
+  h2{font-size:17px;margin:0 0 6px;padding-left:10px;border-left:3px solid var(--blue)}
+  h2.v{border-left-color:var(--violet)} h2.r{border-left-color:var(--red)}
+  h2.g{border-left-color:var(--green)} h2.a{border-left-color:var(--amber)}
+  .h2sub{color:var(--muted);font-size:12px;margin:0 0 14px;padding-left:13px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{background:#f9fafb;color:var(--muted);font-weight:600;font-size:12px}
+  tr:last-child td{border-bottom:none}
+  code{background:#f3f4f6;border-radius:4px;padding:1px 5px;font-size:12px;
+       font-family:ui-monospace,Consolas,monospace}
+  .tag{display:inline-block;border-radius:5px;padding:1px 8px;font-size:11px;font-weight:700;white-space:nowrap}
+  .t-ok{background:var(--soft-green);color:var(--green)}
+  .t-part{background:var(--soft-amber);color:var(--amber)}
+  .t-no{background:var(--soft-red);color:var(--red)}
+  .t-void{background:#f3f4f6;color:var(--muted)}
+  .t-blue{background:var(--soft-blue);color:var(--blue)}
+  .t-violet{background:var(--soft-violet);color:var(--violet)}
+  .note{background:var(--soft-blue);border-left:3px solid var(--blue);
+        padding:10px 14px;border-radius:0 8px 8px 0;margin-top:12px;font-size:13px}
+  .warn{background:var(--soft-amber);border-left:3px solid var(--amber);
+        padding:10px 14px;border-radius:0 8px 8px 0;margin-top:12px;font-size:13px}
+  .good{background:var(--soft-green);border-left:3px solid var(--green);
+        padding:10px 14px;border-radius:0 8px 8px 0;margin-top:12px;font-size:13px}
+  .bad{background:var(--soft-red);border-left:3px solid var(--red);
+       padding:10px 14px;border-radius:0 8px 8px 0;margin-top:12px;font-size:13px}
+  ul{margin:8px 0 0;padding-left:20px} li{margin:3px 0}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  .box{border:1px solid var(--line);border-radius:10px;padding:14px 16px;background:#fcfcfd}
+  .box h3{margin:0 0 8px;font-size:14px}
+  .box.g{border-top:3px solid var(--green)} .box.a{border-top:3px solid var(--amber)}
+  .box.v{border-top:3px solid var(--violet)} .box.b{border-top:3px solid var(--blue)}
+  .box.r{border-top:3px solid var(--red)}
+  .foot{color:var(--muted);font-size:12px;text-align:center;margin-top:26px;line-height:1.8}
+  .big{font-size:15px;font-weight:600}
+  .sm{font-size:12px;color:var(--muted)}
+  .mono{font-family:ui-monospace,Consolas,monospace;font-size:12px}
+  .steps{counter-reset:st;list-style:none;padding:0;margin:0}
+  .steps li{counter-increment:st;position:relative;padding:10px 0 10px 40px;border-bottom:1px solid var(--line)}
+  .steps li:last-child{border-bottom:none}
+  .steps li::before{content:counter(st);position:absolute;left:0;top:10px;width:26px;height:26px;
+    border-radius:50%;background:var(--soft-blue);color:var(--blue);font-weight:700;
+    display:flex;align-items:center;justify-content:center;font-size:12px}
+  @media(max-width:820px){.kpis,.grid2,.grid3{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>PT catalog v2.1 · 发布与真机测试报告 <span class="badge">已全绿</span></h1>
+  <div class="sub">2026-11-12 · 仓库 <code>tjj1234/powertokens-kit</code>（本地 <code>powertokens-video/</code>）·
+    依据 <code>docs/PT_项目资料总集_20261112.md</code> §6.3 执行清单 / §7 测试计划 / §8 发布前置</div>
+</header>
+
+<div class="kpis">
+  <div class="kpi g"><div class="n">260 / 260</div><div class="l">离线全量测试 PASS</div></div>
+  <div class="kpi"><div class="n">133</div><div class="l">校验器检查项全 PASS</div></div>
+  <div class="kpi v"><div class="n">9 / 9</div><div class="l">真机测试项 T0–T8 完成</div></div>
+  <div class="kpi a"><div class="n">&lt; 0.5 USD</div><div class="l">硬上限内（实际远低于）</div></div>
+</div>
+
+<section>
+  <h2 class="g">0. 结论先行</h2>
+  <p class="big">G1–G6 全部执行完毕，离线与真机两侧均无阻断项，已可发布。</p>
+  <ul>
+    <li><b>生成链路功能代码一行未改</b> —— 6 批 PT 答复与本次真机均确认认证、端点、请求构造不变。</li>
+    <li><b>catalog v2.1</b>：8 处 <code>errors</code> 数据订正 + 顶层 <code>retry_policy</code> / <code>charging</code>
+        + Seedance 双接口 / 产物有效期字段 + <code>currency</code> C3 说明；<code>schema</code> 保持 2，86 模型逐条未动。</li>
+    <li><b>真机实测带来 3 条书面材料没有的硬结论</b>（R1 字段名、C4 图像链路 24h、C9 现行 402 报文），已按 P0 优先级回写 catalog 与 SSOT。</li>
+    <li><b>未裁决项如实登记</b>：C1 账户域鉴权头（本机无 <code>pt_live_</code> 令牌）、视频链路产物有效期（余额不足）。不编造结论。</li>
+  </ul>
+  <div class="warn"><b>一处既有 flaky 需知悉</b>：单次离线运行曾出现
+    <code>test_contract_http.test_sync_ok_with_key</code> 的 <code>RemoteDisconnected</code>（本地回环服务偶发断连），
+    连跑两次 <b>260/260 全绿</b> 后消失。与本轮改动无关，本轮未改 <code>test_contract_http.py</code>，留待后续加固。</div>
+</section>
+
+<section>
+  <h2>1. 执行时间线（G1 → G6）</h2>
+  <ul class="steps">
+    <li><b>G1 · errors 8 处订正</b>：<code>upstream_error</code> [502,503] · <code>timeout</code> [500] 且删「Q8 未答」·
+        <code>rate_limited</code> <code>model_rate_limited</code>+Retry-After · <code>insufficient_balance</code> 历史 403 标作废 ·
+        <code>auth_invalid</code> 三个 code · <code>param_unsupported</code>/<code>context_too_long</code> [400] ·
+        <code>model_unavailable</code> [403,503] + 四细分。</li>
+    <li><b>G2 · 新增字段</b>：顶层 <code>retry_policy</code>（4+1 受理/重试规则）、<code>charging</code>（异步全额退 vs 同步流中途按量扣）；
+        <code>kinds.seedance.interface_variants</code> / <code>result_persistence</code>；<code>currency.notes</code> 补 C3。字段名刻意避开「透传」二字。</li>
+    <li><b>G3 · 三道守门员</b>：schema（+2 顶层节 / +4 definitions）、<code>validate_catalog.py</code>（+50 行）、
+        <code>test_unit_catalog.py</code>（+9 断言），零外部依赖不变。</li>
+    <li><b>G4 · 文档回写</b>：README 双语 0.7.0 + §21.1、CHANGELOG 0.7.0、决策锁定稿 §9、SSOT §10；历史原文未改写。</li>
+    <li><b>G5 · 真机 Key 测试</b>：T0–T8 全跑，结论回写 catalog（+5 条防回退断言）。</li>
+    <li><b>G6 · 复核与发布</b>：全量 diff 复核、排除项校验、commit、push。</li>
+  </ul>
+  <div class="good"><b>只加字段 + 列明的数据订正</b>：原子写前逐条 <code>deep-equal</code>，
+    <code>models</code> 86 条 / <code>note</code> / 4 类 kinds / <code>auto_policy</code> /
+    <code>capability_gaps</code> / <code>errors.content_filtered</code> 全部未动；
+    序列化 <code>fmt_same_with_original = True</code>（未改动部分字节级一致）。</div>
+</section>
+
+<section>
+  <h2 class="v">2. 真机测试 T0–T8（逐项结果）</h2>
+  <div class="h2sub">凭证来自本机 skill config，未写入任何仓库文件；所有输出脱敏；失败请求不扣费。</div>
+  <table>
+    <tr><th style="width:52px">#</th><th>项目</th><th>实测结果</th><th style="width:92px">判定</th></tr>
+    <tr><td>T0</td><td>离线全量</td><td><code>validate_catalog.py</code> 133 项全 PASS；<code>run_tests.py</code> <b>260/260 PASS</b></td><td><span class="tag t-ok">全绿</span></td></tr>
+    <tr><td>T1</td><td><code>GET /v1/models</code></td><td>200，84 个模型，含 chat / wan / image</td><td><span class="tag t-ok">连通</span></td></tr>
+    <tr><td>T2</td><td>C1 账户域鉴权头</td><td>裸 Key 与 Bearer Key <b>都</b>返回 <code>HTTP 200 + code=500 "token not found"</code></td><td><span class="tag t-part">待裁决</span></td></tr>
+    <tr><td>T3</td><td>R1 <code>request_id</code></td><td>非流式 body <code>id</code> = <code>X-Request-Id</code>；另有 <code>X-Oneapi-Request-Id</code>（报障）、<code>X-Client-Request-Id</code>（调用方）。流式仅回 <code>X-Oneapi-Request-Id</code>，chunk 内仍带 <code>id</code></td><td><span class="tag t-ok">闭环</span></td></tr>
+    <tr><td>T4</td><td>错误码实测</td><td>不存在模型 → <code>403 model_not_found / api_error</code>；空模型 → <code>400 invalid_request / api_error</code>；<code>message</code> 末尾 <code>(request id: xxx)</code> 与 header 同值</td><td><span class="tag t-ok">双证</span></td></tr>
+    <tr><td>T5</td><td>C4 产物有效期</td><td><code>seedream-5-0</code> → <b>402</b> <code>pre_consume_token_quota_failed</code>；换 <code>image-01</code> → <b>200</b>，上游 OSS 签名链接，TTL <b>86415s ≈ 24.0h</b></td><td><span class="tag t-ok">裁决</span></td></tr>
+    <tr><td>T6</td><td>estimate 整包</td><td>账户域 <code>code=500 token not found</code>；生成域 <code>404 Invalid URL</code></td><td><span class="tag t-part">未验证</span></td></tr>
+    <tr><td>T7</td><td>账户只读命令</td><td><code>balance</code>/<code>logs</code>/<code>agreement</code> 均 <code>HTTP 200 + code=500</code></td><td><span class="tag t-part">后置待办</span></td></tr>
+    <tr><td>T8</td><td>Seedance 协议状态</td><td>同 T7，<code>code=500 token not found</code></td><td><span class="tag t-part">后置待办</span></td></tr>
+  </table>
+  <div class="note">账户域对无效凭证返回 <b>HTTP 200 但业务 <code>code=500</code></b> —— 真机坐实
+    「业务判断以响应体 <code>code</code> 为准」，只看 HTTP 状态会误判为成功。</div>
+</section>
+
+<section>
+  <h2 class="a">3. 三条真机裁决（书面材料里没有的）</h2>
+  <div class="grid3">
+    <div class="box b">
+      <h3>R1 · request_id 位置</h3>
+      <p class="sm">成功响应 body 字段名 = <code>id</code>（48 位十六进制），与 <code>X-Request-Id</code> header 同值。
+      三个 header 分工明确；流式只在 header 回 <code>X-Oneapi-Request-Id</code>，但 SSE chunk 内仍有 <code>id</code>。</p>
+      <p class="sm">异步视频提交响应字段名<b>仍未实测</b>（余额不足）。</p>
+    </div>
+    <div class="box v">
+      <h3>C4 · 产物有效期</h3>
+      <p class="sm">图像同步标准接口返回 <code>hailuo-image-...aliyuncs.com</code> 的<b>上游 OSS 签名链接</b>，
+      带 <code>Expires</code>/<code>OSSAccessKeyId</code>/<code>Signature</code>，
+      <code>Expires - created = 86415s</code> ≈ 24h。</p>
+      <p class="sm">D4「标准接口永久」<b>不能外推到图像接口</b>；<code>--no-download</code> 明确不安全。</p>
+    </div>
+    <div class="box g">
+      <h3>C9 · 现行 402 报文</h3>
+      <p class="sm"><code>pre_consume_token_quota_failed</code> + <code>token quota is not enough, remain ＄0.005, need ＄0.034</code>，
+      HTTP <b>402</b>、<code>api_error</code>、失败不扣费。</p>
+      <p class="sm">历史 403 余额报文作废由「书面裁决」升为「书面 + 真机双证」。</p>
+    </div>
+  </div>
+  <div class="bad"><b>C1 仍待确认（不编造）</b>：生成域 API Key 打账户域，裸值与 Bearer 两种形态返回完全一致，
+    差异出在<b>凭证类型</b>而非前缀 —— 需拿到 <code>pt_live_</code> 个人访问令牌后重测。
+    同时真机证实<b>现有账户命令的裸 API Key 写法确属用错凭证</b>，为后置账户客户端（B4/B5）提供了硬证据。</div>
+  <div class="warn"><b>C4 的适用范围</b>：本次只实测了<b>图像同步接口</b>。
+    视频标准接口（D4 称 PT 自有地址、永久）因 Key 余额仅剩 ＄0.005 未能实测，保留书面口径；
+    <code>result_persistence.default_strategy</code> 已按最保守原则收紧为「成功即下载转存」。</div>
+</section>
+
+<section>
+  <h2>4. 改动清单与验收</h2>
+  <table>
+    <tr><th>文件</th><th>动作</th><th style="width:100px">类型</th></tr>
+    <tr><td><code>pt-gateway/catalog.json</code></td><td>v2.1：8 处 errors 订正 + 3 处真机结论回写 + 2 顶层新节 + seedance 双接口字段；schema 保持 2</td><td><span class="tag t-blue">数据</span></td></tr>
+    <tr><td><code>pt-gateway/catalog.schema.json</code></td><td>+2 顶层节 / +4 definitions / kinds.properties 显式 5 类 / 真机字段定义</td><td><span class="tag t-blue">格式说明</span></td></tr>
+    <tr><td><code>pt-gateway/validate_catalog.py</code></td><td>+55 行校验（v2.1 结构 + 真机结论防回退），133 项全 PASS</td><td><span class="tag t-blue">校验器</span></td></tr>
+    <tr><td><code>pt-gateway/tests/test_unit_catalog.py</code></td><td>+14 个断言（v2.1 结构 9 + 真机结论 5）</td><td><span class="tag t-blue">测试</span></td></tr>
+    <tr><td><code>README.md</code> / <code>README.zh-CN.md</code></td><td>0.7.0 Changelog + §21.1 v2.1 字段说明（双语）</td><td><span class="tag t-violet">文档</span></td></tr>
+    <tr><td><code>CHANGELOG.md</code></td><td>0.7.0 完整变更记录</td><td><span class="tag t-violet">文档</span></td></tr>
+    <tr><td><code>docs/catalog_v2_决策锁定_20261112.md</code></td><td>追加 §9（14 条决策无一被推翻）</td><td><span class="tag t-violet">文档</span></td></tr>
+    <tr><td><code>docs/PT_项目资料总集_20261112.md</code></td><td>追加 §10 执行回写 / §10.2 真机裁决，§3 冲突表加注记</td><td><span class="tag t-violet">SSOT</span></td></tr>
+    <tr><td>其余 <code>docs/</code> 研究文档 + 看板</td><td>历次调研 / 核销看板一并入库</td><td><span class="tag t-violet">资料</span></td></tr>
+  </table>
+  <div class="good"><b>验收</b>：<code>validate_catalog.py</code> 133 项全 PASS（EXIT 0）·
+    <code>run_tests.py</code> <b>260/260 PASS</b>（EXIT 0，连跑两次复现稳定）·
+    catalog 保持 <code>schema=2 / 86 模型 / 5 kinds / credits_per_usd=1000</code>。</div>
+</section>
+
+<section>
+  <h2 class="r">5. 发布边界（G6 排除项）</h2>
+  <div class="grid2">
+    <div class="box g">
+      <h3>入库</h3>
+      <ul>
+        <li>本轮全部代码 / 数据 / 测试 / CI 改动</li>
+        <li><code>docs/</code> 下研究文档、核销看板、SSOT、本报告</li>
+        <li>README 双语、CHANGELOG、schema、校验器</li>
+      </ul>
+    </div>
+    <div class="box r">
+      <h3>一律不入库</h3>
+      <ul>
+        <li><code>C:\Users\admin\Documents\*</code> / <code>Desktop\*</code> 的 PT 官方附件</li>
+        <li>任何 API Key / <code>pt_live_</code> 令牌 / OSS 签名值 / 完整签名 URL</li>
+        <li><code>.workbuddy/</code>、临时探测脚本与脱敏结果文件</li>
+      </ul>
+    </div>
+  </div>
+  <div class="note">Key 全程只在内存变量；报告与 catalog 只记录 <b>host 与参数名</b>，不记录签名值。
+    测试新增 <code>test_no_secret_in_catalog</code> 断言防止密钥误入。</div>
+</section>
+
+<section>
+  <h2 class="a">6. 遗留（不阻塞发布）</h2>
+  <table>
+    <tr><th style="width:88px">项</th><th>内容</th><th style="width:110px">归属</th></tr>
+    <tr><td>C1</td><td>账户域鉴权头定稿 —— 需 <code>pt_live_</code> 令牌重测</td><td><span class="tag t-part">待凭证</span></td></tr>
+    <tr><td>C4 视频侧</td><td>视频标准接口是否 PT 自有永久地址，需余额充足后实测</td><td><span class="tag t-part">待额度</span></td></tr>
+    <tr><td>R1 异步</td><td>异步视频提交响应的 <code>request_id</code> 字段名</td><td><span class="tag t-part">待实测</span></td></tr>
+    <tr><td>T6</td><td>estimate 整包请求体形态（需账户域凭证）</td><td><span class="tag t-part">待凭证</span></td></tr>
+    <tr><td>N2 / N3</td><td>真接供应商兼容接口 / 账户客户端 Bearer 改造</td><td><span class="tag t-void">按决策后置</span></td></tr>
+    <tr><td>pricing</td><td>catalog P2 价格字段；<code>limits</code> 子字段待模板全文</td><td><span class="tag t-void">P2</span></td></tr>
+    <tr><td>flaky</td><td><code>test_contract_http</code> 回环服务偶发断连</td><td><span class="tag t-void">既有</span></td></tr>
+  </table>
+</section>
+
+<div class="foot">
+  本报告由 2026-11-12 G1–G6 执行结果生成 · 事实口径以
+  <code>docs/PT_项目资料总集_20261112.md</code> 为唯一入口<br>
+  未含任何 Key / 令牌 / 签名值 · 所有响应示例已脱敏
+</div>
+
+</div>
+</body>
+</html>

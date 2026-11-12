@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PT 第三批答复核销 · Q8 打穿 + Seedance 双接口覆盖评估 · 2026-11-12</title>
+<style>
+  :root{
+    --bg:#f7f8fa; --card:#ffffff; --ink:#1f2937; --muted:#6b7280;
+    --line:#e5e7eb; --blue:#2563eb; --green:#16a34a; --amber:#d97706;
+    --red:#dc2626; --violet:#7c3aed;
+    --soft-blue:#eff6ff; --soft-green:#f0fdf4; --soft-amber:#fffbeb;
+    --soft-red:#fef2f2; --soft-violet:#f5f3ff;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:32px 20px 56px;background:var(--bg);color:var(--ink);
+       font-family:system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;
+       line-height:1.65;font-size:14px}
+  .wrap{max-width:1080px;margin:0 auto}
+  header{border-bottom:2px solid var(--blue);padding-bottom:18px;margin-bottom:24px}
+  h1{margin:0 0 6px;font-size:25px;letter-spacing:-.3px}
+  .sub{color:var(--muted);font-size:13px}
+  .badge{display:inline-block;background:var(--soft-green);color:var(--green);
+         border:1px solid #bbf7d0;border-radius:999px;padding:2px 10px;font-size:12px;
+         font-weight:600;margin-left:8px;vertical-align:middle}
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px}
+  .kpi{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+  .kpi .n{font-size:24px;font-weight:700;color:var(--blue);line-height:1.2}
+  .kpi .l{color:var(--muted);font-size:12px;margin-top:4px}
+  .kpi.g .n{color:var(--green)} .kpi.a .n{color:var(--amber)} .kpi.v .n{color:var(--violet)}
+  section{background:var(--card);border:1px solid var(--line);border-radius:12px;
+          padding:20px 22px;margin-bottom:18px}
+  h2{font-size:17px;margin:0 0 6px;padding-left:10px;border-left:3px solid var(--blue)}
+  h2.v{border-left-color:var(--violet)}
+  .h2sub{color:var(--muted);font-size:12px;margin:0 0 14px;padding-left:13px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{background:#f9fafb;color:var(--muted);font-weight:600;font-size:12px}
+  tr:last-child td{border-bottom:none}
+  code{background:#f3f4f6;border-radius:4px;padding:1px 5px;font-size:12px;
+       font-family:ui-monospace,Consolas,monospace}
+  .tag{display:inline-block;border-radius:5px;padding:1px 8px;font-size:11px;font-weight:700;white-space:nowrap}
+  .t-ok{background:var(--soft-green);color:var(--green)}
+  .t-part{background:var(--soft-amber);color:var(--amber)}
+  .t-no{background:var(--soft-red);color:var(--red)}
+  .t-void{background:#f3f4f6;color:var(--muted)}
+  .t-blue{background:var(--soft-blue);color:var(--blue)}
+  .note{background:var(--soft-blue);border-left:3px solid var(--blue);
+        padding:10px 14px;border-radius:0 8px 8px 0;margin-top:12px;font-size:13px}
+  .warn{background:var(--soft-amber);border-left:3px solid var(--amber);
+        padding:10px 14px;border-radius:0 8px 8px 0;margin-top:12px;font-size:13px}
+  .good{background:var(--soft-green);border-left:3px solid var(--green);
+        padding:10px 14px;border-radius:0 8px 8px 0;margin-top:12px;font-size:13px}
+  ul{margin:8px 0 0;padding-left:20px} li{margin:3px 0}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .box{border:1px solid var(--line);border-radius:10px;padding:14px 16px;background:#fcfcfd}
+  .box h3{margin:0 0 8px;font-size:14px}
+  .decision{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:6px}
+  .dcard{border:1px solid var(--line);border-radius:10px;padding:14px 16px;background:#fcfcfd}
+  .dcard .t{font-weight:700;font-size:13px;margin-bottom:6px}
+  .dcard .b{font-size:12px;color:var(--muted);line-height:1.6}
+  .dcard.k1{border-top:3px solid var(--green)}
+  .dcard.k2{border-top:3px solid var(--amber)}
+  .dcard.k3{border-top:3px solid var(--violet)}
+  .foot{color:var(--muted);font-size:12px;text-align:center;margin-top:26px;line-height:1.8}
+  .mono{font-family:ui-monospace,Consolas,monospace;font-size:12px}
+  .big{font-size:15px;font-weight:600}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>PT 第三批答复核销 <span class="badge">资料沉淀 · 未改代码</span></h1>
+  <div class="sub">2026-11-12 · Q8 失败扣费与幂等打穿 + Seedance「标准接口 / 透传接口 + 永久 / 24h」覆盖评估 ·
+  输入：用户转述 PT 答复 7 行 + 1 条新事实 + README §4 截图 + PT 官方 CLI 公开 README</div>
+</header>
+
+<div class="kpis">
+  <div class="kpi g"><div class="n">Q8 🟢</div><div class="l">🔴 仍基本未答 → 完全解决；R5 划掉</div></div>
+  <div class="kpi a"><div class="n">3 层 0 覆盖</div><div class="l">catalog / 生成代码 / 文档 全未覆盖双接口</div></div>
+  <div class="kpi v"><div class="n">3 处撞车</div><div class="l">「透传」「24h」「vendor_endpoint」易误判</div></div>
+  <div class="kpi"><div class="n">0 行改动</div><div class="l">生成链路不用改 · 本轮未动 .py / catalog</div></div>
+</div>
+
+<section>
+  <h2>1. Q8 失败扣费与幂等 · 逐条核销</h2>
+  <div class="h2sub">PT 给的 7 行答复，逐条对应清单 §B 组 Q8 的原三问</div>
+  <table>
+    <thead><tr><th style="width:26%">汇总问题</th><th>PT 答案</th><th style="width:15%">解读</th></tr></thead>
+    <tbody>
+      <tr><td>Submit 成功但生成失败</td><td>已预扣 → polling 检测 <code>FAILURE</code> → <b>同循环内全额 <code>RefundTaskQuota</code></b></td><td><span class="tag t-ok">最终不扣费</span></td></tr>
+      <tr><td>轮询超时</td><td>已预扣 → <code>sweepTimedOutTasks</code>（默认 <b>24h</b>）→ 标 <code>FAILURE</code> + 自动退款（<b>legacy 任务除外</b>）</td><td><span class="tag t-ok">最终不扣费</span></td></tr>
+      <tr><td>退费到账时间</td><td><b>零延迟</b>，DB 事务级同步退回（钱包 / 订阅 / Token 额度 / 专属积分同时退）</td><td><span class="tag t-ok">无需轮询</span></td></tr>
+      <tr><td>防二次退费</td><td><b>三重保障</b>：入口 <code>quota==0</code> 早退 + CAS 乐观锁 + 退费后持久化 <code>Quota=0</code></td><td><span class="tag t-blue">服务端幂等</span></td></tr>
+      <tr><td>用 <code>task_id</code> 复查安全？</td><td><b>完全安全</b>。Fetch 端点只读（DB + 上游 <code>FetchTask</code>），不触发 Submit / Refund / Settle</td><td><span class="tag t-ok">可放心复查</span></td></tr>
+      <tr><td>会不会重新生成？</td><td><b>绝对不会</b>。重新生成只在 <code>POST /v1/videos</code> Submit 时发生；Fetch 路径没有任何上游 Submit 调用</td><td><span class="tag t-ok">GET 幂等</span></td></tr>
+      <tr><td>会不会二次扣费？</td><td><b>不会</b>。CAS 保证终态只结算一次；refund 后 <code>Quota</code> 置 0，二次 <code>RefundTaskQuota</code> 直接早退</td><td><span class="tag t-ok">无重复扣费</span></td></tr>
+    </tbody>
+  </table>
+  <div class="good"><b>原三问全部有答案</b>：① 失败 / 超时 / 结果未知最终都不扣费，失败即时退、超时最长 24h 退、到账零延迟；
+  ② 幂等<b>靠服务端 CAS + Quota=0</b>，不靠客户端幂等键（Q2 <code>client_operation_id</code> 作废不构成缺口）；
+  ③ <code>task_id</code> 复查完全安全。<b>Q8 🔴 → 🟢，R5 从待确认清单划掉。</b></div>
+  <div class="warn"><b>注意措辞</b>：「不扣费」指<b>最终结算</b>，不是「没有预扣」——PT 明确 Submit 成功即已预扣。
+  Agent 若在任务进行中展示余额会看到暂时减少，这不是错误扣费，也不应触发重试。</div>
+  <div class="note"><b>对现有代码是正向印证</b>：<code>pt_video.py:733/748</code> 轮询超时后提示「稍后可单独
+  <code>GET /v1/videos/{task_id}</code> 复查」，PT 答案证实该提示安全 → 可从经验做法升级为 <code>verified</code> 口径，
+  <b>代码无需改动</b>。</div>
+</section>
+
+<section>
+  <h2>2. P2 <code>charging</code> 可得口径（本轮不落地）</h2>
+  <table>
+    <thead><tr><th style="width:30%">字段</th><th>本批口径</th></tr></thead>
+    <tbody>
+      <tr><td><code>charged_on_failure</code></td><td><code>false</code>（最终不扣费；预扣全额退）</td></tr>
+      <tr><td><code>charged_on_timeout</code></td><td><code>false</code>（最终不扣费；退费窗口最长 24h）</td></tr>
+      <tr><td>三个幂等字段</td><td><b>仍 <code>null</code></b> — Q2 已作废，PT 未给客户端幂等键；「服务端幂等」≠「客户端可传幂等键」</td></tr>
+      <tr><td>可新增说明</td><td><code>refund</code> = 自动 / 零延迟 / 事务级；<code>fetch_is_readonly</code> = <code>true</code></td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2 class="v">3. 新事实：Seedance 双接口与产物有效期</h2>
+  <div class="h2sub">你给的原文 + 线上证据分级</div>
+  <div class="note"><b>用户 / PT 口述</b>：类似 seedance 这种有两个接口，一个是标准接口、一个是透传接口；
+  <b>标准接口的字段没有透传接口的字段全；标准接口生成的文件永久保存，透传接口生成的是 24 小时有效。</b></div>
+  <table style="margin-top:12px">
+    <thead><tr><th style="width:8%">#</th><th style="width:60%">事实</th><th>等级</th></tr></thead>
+    <tbody>
+      <tr><td>F1</td><td>标准 / 透传双接口、字段完整度、永久 vs 24h（用户转述 PT 口径）</td><td><span class="tag t-part">documented</span></td></tr>
+      <tr><td>F2</td><td>PT 官方 CLI「按供应商自动路由到<b>官方透传端点</b>」：字节 <code>/byteplus/api/v3/...</code>、MiniMax <code>/minimax/...</code>、Kling <code>/kling/...</code>、Vidu <code>/vidu/...</code>（<code>powertokens-cli</code> v1.0.45 README）</td><td><span class="tag t-ok">official</span></td></tr>
+      <tr><td>F3</td><td><code>--params</code> JSON 透传合并进请求体；镜像版另有「完全透传」（<code>content</code>/<code>media</code> 原样发，只补 <code>model</code>）</td><td><span class="tag t-ok">official</span> / 旁证</td></tr>
+      <tr><td>F4</td><td>图片侧也分派：Seedream/Qwen/Wan <code>/v1/images/generations</code>、Kling <code>/kling/v1/images/generations</code></td><td><span class="tag t-ok">official</span></td></tr>
+      <tr><td>F5</td><td>BytePlus/Seedance 上游结果 URL 24h、<code>task_id</code> 约 7 天；聚合网关普遍声明 signed link 24h</td><td><span class="tag t-void">第三方旁证</span></td></tr>
+      <tr><td>F6</td><td>本仓库 §4 表格 / §10 / catalog / 代码实际内容</td><td><span class="tag t-blue">verified 本地</span></td></tr>
+    </tbody>
+  </table>
+  <div class="warn"><b>F5 只用来解释「24h 从哪来」，不得当作 PT 官方口径写进 catalog。</b>
+  合理推断：透传直接交还上游 URL → 继承 24h；标准接口由 PT 侧转存 → 永久。<b>这是推断，需 S2 确认。</b>
+  另外注意：PT 官方 CLI <b>默认就走透传路由</b>，而本仓库网关统一走 <code>/v1/videos</code> —— 正是「标准接口字段少」的由来。</div>
+</section>
+
+<section>
+  <h2 class="v">4. 是否覆盖：<span class="big">三层全未覆盖</span></h2>
+  <div class="h2sub">截图里 §4「能力总览」只有三类型 + 生成机制 + 素材格式，没有接口变体、没有 TTL</div>
+  <table>
+    <thead><tr><th style="width:20%">层</th><th>实际内容</th><th style="width:10%">覆盖</th></tr></thead>
+    <tbody>
+      <tr><td>catalog · <code>kinds.seedance</code></td><td>单条 <code>submit=/v1/videos</code> + <code>poll</code>；<code>requires</code>/<code>note</code> 只讲签协议与请求体归一化</td><td><span class="tag t-no">❌</span></td></tr>
+      <tr><td>catalog · 7 个模型</td><td>结构完全一致；<code>vendor_endpoint</code> <b>全填 <code>/v1/videos</code></b>；无接口变体 / 有效期 / TTL 字段</td><td><span class="tag t-no">❌</span></td></tr>
+      <tr><td>catalog · 顶层 4 新节</td><td><code>currency</code>/<code>auto_policy</code>/<code>errors</code>/<code>capability_gaps</code> 均无相关节点</td><td><span class="tag t-no">❌</span></td></tr>
+      <tr><td>生成代码</td><td><code>pt_gateway.py</code>/<code>pt_video.py</code> 统一 <code>POST /v1/videos</code>；<code>force_asset</code> 是<b>素材格式开关</b>不是接口开关；无 <code>--params</code>、无按供应商路由</td><td><span class="tag t-no">❌</span></td></tr>
+      <tr><td>文档</td><td>README §4 表格（截图）、§10.1–10.4 只讲三类型 / 三大前置，无「标准 / 透传」与「永久 / 24h」</td><td><span class="tag t-no">❌</span></td></tr>
+      <tr><td>行为兜底</td><td>CLI 默认生成即下载到本地，不依赖结果 URL 长期有效</td><td><span class="tag t-ok">✅ 间接</span></td></tr>
+    </tbody>
+  </table>
+  <div class="warn"><b>⚠️ 三处术语撞车，别误判成「已覆盖」</b>
+    <ul>
+      <li><b>① 「透传」5 处</b>（catalog:1127/1133/1154/1160/1960）全是 chat <code>thinking_param</code> 的<b>参数透传</b>（mimo 系），不是接口变体。</li>
+      <li><b>② README:354/511「约 24 小时」</b>是 <b>image <code>data[].url</code> 临时签名地址</b>；且「URL 过期」≠「文件本体 24h 后删除」。</li>
+      <li><b>③ <code>vendor_endpoint</code> 86/86 都有</b>，但语义不统一（seedance 填统一端点、其余填厂商原生路径），<b>代码从不读它做路由</b>。有字段 ≠ 覆盖概念 —— 反而是「已存了一部分透传端点路径却没升级为契约」，seedance 这族全空着。</li>
+    </ul>
+  </div>
+  <div class="note"><b>「文件永久保存」≠「下载 URL 永久」</b>：对象存储里文件本体可长期留存，签名链接仍可能 24h 过期、需重新签发。
+  所以 S2 有答案前，<b>无论走哪条路径，成功即下载/转存都仍是必须的</b> —— 本仓库默认行为已经做到。</div>
+</section>
+
+<section>
+  <h2 class="v">5. 要不要适配：分档建议</h2>
+  <div class="decision">
+    <div class="dcard k1"><div class="t">✅ P0 · 数据 + 文档（建议做）</div>
+      <div class="b">catalog 加接口变体与产物有效期声明、README §4/§10 补说明、清单记 S1–S3。<br><br>
+      理由：catalog v2 的定位就是「Agent 只读它就知道怎么调用、有什么约束」；双接口与 TTL 属于<b>调用契约</b>。纯加字段、不改枚举、不动 <code>KNOWN_KINDS</code>，零风险。</div></div>
+    <div class="dcard k2"><div class="t">⚠️ P1 · 代码接透传（暂不做）</div>
+      <div class="b">接口变体开关 + 按供应商路由原生端点 + 24h 内转存。<br><br>
+      理由：这是<b>功能新增不是修 bug</b>，会引入新请求构造、新错误面、新 TTL 义务。除非确有标准接口没有的字段需求（<code>negative_prompt</code>/<code>seed</code>/<code>ratio</code>/多模态参考）。</div></div>
+    <div class="dcard k3"><div class="t">✅ 不改生成代码（维持）</div>
+      <div class="b"><code>pt_gateway.py</code> / <code>pt_video.py</code> / <code>mcp.py</code> / <code>server.py</code> 一行不动。<br><br>
+      理由：你上一批第 4 条已定「正常调用模型生成都不用改」；当前只走标准接口反而拿到<b>永久保存</b>的好处；默认下载已兜住 URL 过期；本批 Q8 答复也未引入任何生成侧改动。</div></div>
+  </div>
+  <div class="note"><b>若做 P0，字段名按 A3「不知道填 null，不猜」本轮不擅自落</b>：候选
+  <code>interface_variants</code> / <code>endpoint_variants</code> / <code>result_persistence</code> / <code>asset_ttl_hours</code>；
+  已知可填：标准端点 <code>/v1/videos</code> = <code>verified</code>、产物口径 = <code>documented</code>、透传完整端点 = <code>null</code>（PT 只给了前缀）。</div>
+</section>
+
+<section>
+  <h2>6. 等你拍板 3 个 · 需向 PT 确认 4 个</h2>
+  <div class="grid2">
+    <div class="box"><h3>🔵 需要你拍板</h3>
+      <ul>
+        <li><b>catalog 要不要加这组字段？</b>加的话字段名用哪套。</li>
+        <li><b>要不要真的接透传端点？</b>接则需 PT 给完整路径 + 鉴权 + 字段清单。</li>
+        <li><b>「标准接口永久保存」是否包含下载 URL 永久？</b>决定 <code>--no-download</code> 要不要加警告。</li>
+      </ul>
+    </div>
+    <div class="box"><h3>🟣 需要向 PT 确认</h3>
+      <ul>
+        <li><b>S1</b> 标准 / 透传的确切端点路径、鉴权、字段差异清单（<code>/byteplus/api/v3/...</code> 只是前缀）· L1（仅当决定接）</li>
+        <li><b>S2</b> 「永久」指文件本体还是 URL 也永久；透传 24h 起算点；过期后能否凭 <code>task_id</code> 重签 · L1</li>
+        <li><b>S3</b> 透传接口是否同样要签协议、是否同样强制 <code>asset://</code> · L2</li>
+        <li><b>R9</b> <code>legacy 任务</code> 定义、24h sweep 是否可配 / 是否兜底进程崩溃、失败任务是否留 <code>quota</code> 流水 · L2</li>
+      </ul>
+    </div>
+  </div>
+  <div class="warn">不接透传时 S1 / S3 自动降级为纯资料项；<b>S2 无论接不接都建议问</b>，它决定 <code>--no-download</code> 的安全性。
+  §4 的 R5 本批划掉，L2 仍为 5 条（R4 / R6 / R7 / R8 / R9），L1 的 R1–R3 不变。</div>
+</section>
+
+<section>
+  <h2>7. 本轮边界与自证</h2>
+  <ul>
+    <li>✅ 更新 <code>docs/PT_待确认问题清单_20261112.md</code>：顶部第三批横幅 + §7 完整核销（525 → 652 行，<b>原文 525 行按序完整保留</b>）。</li>
+    <li>✅ 新增 <code>docs/Seedance_双接口与产物有效期_覆盖评估_20261112.md</code> 与本看板。</li>
+    <li>❌ <b>未改</b> <code>catalog.json</code> / 任何 <code>.py</code> / 测试 / CI / README（含 3 处 <code>errors</code> 措辞订正仍等拍板）。</li>
+    <li>❌ 未做真机实测（端点 / TTL 需可用 Key 且产生调用）；未提交、未 push、未打 tag。</li>
+  </ul>
+</section>
+
+<div class="foot">
+  资料沉淀 · 结论以 PT 官方口径为准 · F5 第三方旁证未升格为事实<br>
+  powertokens-kit / pt-gateway · 2026-11-12 · 🦝
+</div>
+
+</div>
+</body>
+</html>

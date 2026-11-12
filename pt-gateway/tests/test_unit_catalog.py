@@ -265,8 +265,10 @@ class TestChatCapabilitiesIntegrity(unittest.TestCase):
     # 取值域：已支持 / 不支持 / 需显式传参且依赖上游白名单 / 未知
     CAP_VALUES = (True, False, "conditional", None)
     VALID_CHANNELS = ("ali", "byteplus", "zhipu", "deepseek", "minimax", "mimo")
-    VALID_SOURCE = ("configured", "verified", "official", "official+verified",
-                    "verified(unmapped)")
+    # A5：catalog v2 统一 8 值。product 仅用于顶层 auto_policy；
+    # documented / inferred / configured / verified(unmapped) 的语义见 catalog.schema.json 与 README §21.1。
+    VALID_SOURCE = ("official", "documented", "verified", "official+verified",
+                    "inferred", "configured", "verified(unmapped)", "product")
     # 官方 §4 未列入清单、因此不推断（vision 允许保持 None）的模型白名单
     MM_UNKNOWN_ALLOWED = {"qwen3-coder-plus"}
 
@@ -350,6 +352,313 @@ class TestChatCapabilitiesIntegrity(unittest.TestCase):
             self.assertIn("web_search", e["capabilities"])
             self.assertIn("thinking", e["capabilities"])
             self.assertIn("channel", e["capabilities"])
+
+
+class TestCatalogV2Integrity(unittest.TestCase):
+    """catalog v2（schema 2）结构与 14 条决策约束的离线守门员。
+
+    依据 docs/catalog_v2_决策锁定_20261112.md：A1 / A3 / A4 / A5 / B1 / B2
+    与需求 2 / 3 / 4。只断言结构、枚举与「不得编造实测结论」，不联网、0 花费。
+    与 validate_catalog.py 互补：这里是 CI 里跑的那份（run_tests.py 会收集本文件）。
+    """
+    KNOWN_KINDS = {"image", "video", "seedance", "audio", "chat"}
+    MAIN = ("glm-4.7", "deepseek-v4-pro", "qwen3.8-flash", "seed-2-0-pro-260328",
+            "MiniMax-M3", "glm-5.2", "mimo-v2.6-pro")
+    ERROR_KEYS = {"rate_limited", "upstream_error", "timeout", "auth_invalid",
+                  "insufficient_balance", "model_unavailable", "param_unsupported",
+                  "content_filtered", "context_too_long"}
+    SOURCE_8 = {"official", "documented", "verified", "official+verified",
+                "inferred", "configured", "verified(unmapped)", "product"}
+    V2_SECTIONS = ("currency", "auto_policy", "errors", "capability_gaps")
+
+    @classmethod
+    def setUpClass(cls):
+        cls.data = json.loads(CATALOG_JSON.read_text(encoding="utf-8"))
+        cls.models = cls.data["models"]
+        cls.schema = json.loads(
+            (CATALOG_JSON.parent / "catalog.schema.json").read_text(encoding="utf-8"))
+
+    # --- 需求 2：版本与格式 ----------------------------------------------
+    def test_schema_is_2(self):
+        self.assertEqual(2, self.data.get("schema"))
+
+    def test_updated_is_present(self):
+        self.assertTrue(self.data.get("updated"))
+
+    def test_v2_top_level_sections(self):
+        for sec in self.V2_SECTIONS:
+            self.assertIsInstance(self.data.get(sec), dict, "缺顶层节 %s" % sec)
+
+    def test_source_enum_is_exactly_eight_values(self):
+        enum = set(self.schema["definitions"]["source"]["enum"])
+        self.assertEqual(self.SOURCE_8, enum)
+        self.assertEqual(self.SOURCE_8, set(TestChatCapabilitiesIntegrity.VALID_SOURCE))
+
+    def test_kinds_still_five(self):
+        """B1：kinds 只保留当前可调用的 5 类，缺口走 capability_gaps。"""
+        self.assertEqual(self.KNOWN_KINDS, set(self.data["kinds"]))
+
+    # --- 需求 3：AUTO 两层 -----------------------------------------------
+    def test_auto_policy_source_is_product(self):
+        self.assertEqual("product", self.data["auto_policy"].get("_source"))
+
+    def test_auto_policy_purposes_min_two_and_exist(self):
+        purposes = self.data["auto_policy"].get("purposes", {})
+        self.assertTrue(purposes)
+        for use, cands in purposes.items():
+            self.assertGreaterEqual(len(cands), 2, "%s 候选不足 2 个" % use)
+            missing = [c for c in cands if c not in self.models]
+            self.assertEqual([], missing, "%s 引用了不存在的模型" % use)
+
+    def test_auto_policy_purposes_span_channels(self):
+        for use, cands in self.data["auto_policy"]["purposes"].items():
+            channels = {self.models[c]["capabilities"].get("channel") for c in cands}
+            self.assertGreaterEqual(len(channels), 2, "%s 未跨渠道" % use)
+
+    def test_product_source_only_in_auto_policy(self):
+        """A5：product 仅用于顶层 auto_policy。"""
+        stray = []
+
+        def walk(node, path):
+            if isinstance(node, dict):
+                for k, v in node.items():
+                    if k == "_source" and v == "product" and not path.startswith("auto_policy"):
+                        stray.append(path)
+                    walk(v, path + "/" + str(k))
+            elif isinstance(node, list):
+                for i, v in enumerate(node):
+                    walk(v, path + "/[%d]" % i)
+
+        for sec in self.V2_SECTIONS:
+            walk(self.data[sec], sec)
+        for mid in self.MAIN:
+            for g in ("limits", "tool_calling", "web_search_detail", "routing"):
+                if g in self.models[mid]:
+                    walk(self.models[mid][g], "%s/%s" % (mid, g))
+        self.assertEqual([], stray)
+
+    # --- 需求 4：errors 9 类 ---------------------------------------------
+    def test_errors_exactly_nine_categories(self):
+        self.assertEqual(self.ERROR_KEYS, set(self.data["errors"]))
+
+    def test_every_error_has_action_example_and_source(self):
+        for k, v in self.data["errors"].items():
+            self.assertIn(v.get("agent_action"),
+                          ("retry", "switch_model", "stop", "compress_context"), k)
+            self.assertGreaterEqual(len(v.get("examples", [])), 1, k)
+            self.assertIn(v.get("_source"), self.SOURCE_8, k)
+            for ex in v["examples"]:
+                self.assertIn(ex.get("_source"), self.SOURCE_8, k)
+
+    def test_generation_domain_status_semantics_present(self):
+        """A.04：401/402/403 是生成域语义，账户域状态码表（无 402）不得混入。"""
+        ins = self.data["errors"]["insufficient_balance"]
+        statuses = [e.get("status") for e in ins["examples"]]
+        self.assertIn(402, statuses)
+        self.assertIn("402", json.dumps(ins, ensure_ascii=False))
+
+    # --- P0 字段与「不编造」约束 -----------------------------------------
+    def test_main_models_have_p0_groups(self):
+        for mid in self.MAIN:
+            for g in ("limits", "tool_calling", "routing"):
+                self.assertIn(g, self.models[mid], "%s 缺 %s" % (mid, g))
+
+    def test_web_search_detail_only_on_conditional(self):
+        """A4：只给 conditional 模型；how_to_enable 从 web_search_param 原样复制。"""
+        n = 0
+        for mid in self.MAIN:
+            e = self.models[mid]
+            cond = e["capabilities"].get("web_search") == "conditional"
+            has = "web_search_detail" in e
+            self.assertEqual(cond, has, mid)
+            if has:
+                n += 1
+                self.assertEqual(e["capabilities"].get("web_search_param"),
+                                 e["web_search_detail"].get("how_to_enable"), mid)
+        self.assertEqual(4, n)
+
+    def test_no_fabricated_verified_results(self):
+        """A3：未实测一律 null —— 防止手改目录时把 null 改成 true。"""
+        for mid in self.MAIN:
+            e = self.models[mid]
+            self.assertIsNone(e["tool_calling"].get("verified"), mid)
+            if "web_search_detail" in e:
+                self.assertIsNone(e["web_search_detail"].get("works"), mid)
+                self.assertIsNone(e["web_search_detail"].get("returns_sources"), mid)
+
+    def test_routing_source_is_configured(self):
+        for mid in self.MAIN:
+            self.assertEqual("configured", self.models[mid]["routing"].get("_source"), mid)
+
+    # --- B1 / 顶层其他 ---------------------------------------------------
+    def test_capability_gaps_not_in_kinds(self):
+        gaps = self.data["capability_gaps"]
+        self.assertTrue(gaps)
+        self.assertFalse(set(gaps) & set(self.data["kinds"]))
+        for k, v in gaps.items():
+            self.assertIs(False, v.get("in_kinds"), k)
+
+    def test_currency_credits_per_usd(self):
+        """Q6 官方答案：1 USD = 1000 credits；3 是 quota_per_unit，非换算率。"""
+        cur = self.data["currency"]
+        self.assertEqual(1000, cur.get("credits_per_usd"))
+        self.assertIn(cur.get("_source"), self.SOURCE_8)
+
+
+
+class TestCatalogV21Integrity(unittest.TestCase):
+    """catalog v2.1（G1 / G2）离线守门员：8 处 errors 数据订正 + 新增顶层节 / Seedance 双接口。
+
+    依据 docs/PT_项目资料总集_20261112.md §6.3 与 §2。0 联网、0 花费。
+    """
+    SOURCE_8 = {"official", "documented", "verified", "official+verified",
+                "inferred", "configured", "verified(unmapped)", "product"}
+
+    @classmethod
+    def setUpClass(cls):
+        cls.data = json.loads(CATALOG_JSON.read_text(encoding="utf-8"))
+        cls.errs = cls.data["errors"]
+
+    def test_errors_still_exactly_nine(self):
+        """retry_policy / charging 必须走顶层，不得挤进 errors 第 10 类。"""
+        self.assertEqual(9, len(self.errs))
+        self.assertNotIn("retry_policy", self.errs)
+        self.assertNotIn("charging", self.errs)
+
+    def test_retry_policy_present_and_well_formed(self):
+        rp = self.data.get("retry_policy")
+        self.assertIsInstance(rp, dict)
+        self.assertIn(rp.get("_source"), self.SOURCE_8)
+        self.assertNotEqual("product", rp.get("_source"))
+        self.assertEqual("no_single_dedicated_signal", rp.get("signal"))
+        self.assertEqual("X-Oneapi-Request-Id", rp.get("request_id_header"))
+        self.assertEqual(5, len(rp.get("rules", [])))
+        for rule in rp["rules"]:
+            self.assertIn("observe", rule)
+            self.assertIn("auto_retry", rule)
+        # 关键：流中途失败不可自动重试
+        mid = [x for x in rp["rules"] if "finish_reason=error" in x["observe"]]
+        self.assertEqual(1, len(mid))
+        self.assertFalse(mid[0]["auto_retry"])
+        self.assertTrue(mid[0]["charged"])
+
+    def test_retry_policy_rate_limit(self):
+        rl = self.data["retry_policy"].get("rate_limit", {})
+        self.assertEqual("model_rate_limited", rl.get("code"))
+        self.assertEqual("always_present", rl.get("retry_after"))
+        self.assertEqual(5, rl.get("gateway_default_s"))
+
+    def test_charging_split_by_path(self):
+        """C6：异步失败全额退 / 同步流中途按量扣费，不能一律 false。"""
+        ch = self.data.get("charging")
+        self.assertIsInstance(ch, dict)
+        self.assertIn(ch.get("_source"), self.SOURCE_8)
+        a, s = ch["async_task"], ch["sync_chat_stream"]
+        self.assertIs(False, a.get("charged_on_failure"))
+        self.assertIs(False, a.get("charged_on_timeout"))
+        self.assertIs(True, s.get("charged_on_midstream_failure"))
+        self.assertEqual(200, s.get("http_status"))
+        self.assertEqual(["error", "timeout", "abort"], s.get("finish_reason"))
+        self.assertEqual("success", s.get("log_status"))
+
+    def test_seedance_interface_variants(self):
+        iv = self.data["kinds"]["seedance"].get("interface_variants")
+        self.assertIsInstance(iv, dict)
+        self.assertEqual("openai_standard", iv.get("active"))
+        self.assertIn("/v1/videos", iv["openai_standard"]["submit"])
+        self.assertIn("/byteplus/api/v3/", iv["vendor_compatible"]["submit"])
+        self.assertIs(True, iv.get("agreement_required_both"))
+        # 字段名必须避开「透传」二字
+        self.assertNotIn("透传", json.dumps(iv, ensure_ascii=False).split("note")[0])
+
+    def test_seedance_result_persistence_and_c4_conflict(self):
+        rpv = self.data["kinds"]["seedance"].get("result_persistence")
+        self.assertIsInstance(rpv, dict)
+        self.assertEqual("permanent", rpv["openai_standard"]["persistence"])
+        self.assertEqual("24h", rpv["vendor_compatible"]["persistence"])
+        self.assertIs(True, rpv["vendor_compatible"]["force_download_on_success"])
+        self.assertIn("C4", rpv.get("note", ""))
+
+    def test_g1_error_status_corrections(self):
+        self.assertEqual([502, 503], self.errs["upstream_error"]["http_status"])
+        self.assertEqual([500], self.errs["timeout"]["http_status"])
+        self.assertNotIn("Q8 未答", self.errs["timeout"]["notes"])
+        self.assertEqual([400], self.errs["param_unsupported"]["http_status"])
+        self.assertEqual([400], self.errs["context_too_long"]["http_status"])
+        self.assertEqual([403, 503], self.errs["model_unavailable"]["http_status"])
+        self.assertIn("作废", self.errs["insufficient_balance"]["examples"][1]["note"])
+        self.assertIn("token_invalid", self.errs["auth_invalid"]["notes"])
+        self.assertIn("model_rate_limited", self.errs["rate_limited"]["notes"])
+
+    def test_new_nodes_sources_are_valid(self):
+        bad = []
+
+        def walk(n, p):
+            if isinstance(n, dict):
+                for k, v in n.items():
+                    if k == "_source" and v not in self.SOURCE_8:
+                        bad.append("%s=%r" % (p, v))
+                    if k == "_source" and v == "product":
+                        bad.append("product@" + p)
+                    walk(v, p + "/" + k)
+            elif isinstance(n, list):
+                for i, v in enumerate(n):
+                    walk(v, p + "/[%d]" % i)
+
+        for sec in ("retry_policy", "charging"):
+            walk(self.data[sec], sec)
+        for sec in ("interface_variants", "result_persistence"):
+            walk(self.data["kinds"]["seedance"][sec], "seedance/" + sec)
+        self.assertEqual([], bad)
+
+    def test_currency_c3_note(self):
+        self.assertEqual(1000, self.data["currency"]["credits_per_usd"])
+        self.assertIn("C3", self.data["currency"]["notes"])
+
+
+
+class TestLiveFindingsV21(unittest.TestCase):
+    """2026-11-12 真机实测结论的离线固化（防止把 P0 证据改回书面口径）。"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.data = json.loads(CATALOG_JSON.read_text(encoding="utf-8"))
+
+    def test_current_402_sample_is_verified(self):
+        ex = self.data["errors"]["insufficient_balance"]["examples"][-1]
+        self.assertEqual(402, ex["status"])
+        self.assertEqual("verified", ex["_source"])
+        self.assertIn("pre_consume_token_quota_failed", ex["note"])
+
+    def test_image_sync_observed_24h(self):
+        o = self.data["kinds"]["seedance"]["result_persistence"]["image_sync_observed"]
+        self.assertEqual("verified", o["_source"])
+        self.assertEqual(86415, o["ttl_seconds"])
+        self.assertEqual(24.0, o["ttl_hours"])
+        self.assertEqual(["Expires", "OSSAccessKeyId", "Signature"], o["signed_query_keys"])
+        self.assertIn("aliyuncs.com", o["url_host"])
+
+    def test_no_secret_in_catalog(self):
+        """catalog 不得含任何签名值 / 完整签名 URL / 48 位 Key 形态串。
+        用通用形态检查，不在源码里硬编码任何真实密钥片段。"""
+        import re
+        raw = json.dumps(self.data, ensure_ascii=False)
+        self.assertIsNone(re.search(r"(?:OSSAccessKeyId|Signature|Expires)=", raw),
+                          "catalog 泄漏了签名查询串实值")
+        self.assertIsNone(re.search(r"https?://\S+\?\S*Signature", raw),
+                          "catalog 泄漏了完整签名 URL")
+        self.assertIsNone(re.search(r"\b[A-Za-z0-9]{48}\b", raw),
+                          "catalog 泄漏了 API Key 形态串")
+
+    def test_default_strategy_force_download(self):
+        s = self.data["kinds"]["seedance"]["result_persistence"]["default_strategy"]
+        self.assertIn("成功即下载", s)
+        self.assertIn("不承诺永久", s)
+
+    def test_request_id_success_body_field(self):
+        rp = self.data["retry_policy"]
+        self.assertEqual("id", rp["request_id_success_body_field"])
+        self.assertEqual("verified", rp["request_id_observed"]["_source"])
 
 
 if __name__ == "__main__":

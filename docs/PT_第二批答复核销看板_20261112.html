@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PT 第二批答复核销看板 · 2026-11-12</title>
+<style>
+  :root{
+    --bg:#f7f8fa; --card:#ffffff; --ink:#1f2937; --muted:#6b7280;
+    --line:#e5e7eb; --blue:#2563eb; --green:#16a34a; --amber:#d97706;
+    --red:#dc2626; --violet:#7c3aed;
+    --soft-blue:#eff6ff; --soft-green:#f0fdf4; --soft-amber:#fffbeb;
+    --soft-red:#fef2f2; --soft-violet:#f5f3ff;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:32px 20px 56px;background:var(--bg);color:var(--ink);
+       font-family:system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;
+       line-height:1.65;font-size:14px}
+  .wrap{max-width:1080px;margin:0 auto}
+  header{border-bottom:2px solid var(--blue);padding-bottom:18px;margin-bottom:24px}
+  h1{margin:0 0 6px;font-size:26px;letter-spacing:-.3px}
+  .sub{color:var(--muted);font-size:13px}
+  .badge{display:inline-block;background:var(--soft-green);color:var(--green);
+         border:1px solid #bbf7d0;border-radius:999px;padding:2px 10px;font-size:12px;
+         font-weight:600;margin-left:8px;vertical-align:middle}
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px}
+  .kpi{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+  .kpi .n{font-size:25px;font-weight:700;color:var(--blue);line-height:1.2}
+  .kpi .l{color:var(--muted);font-size:12px;margin-top:4px}
+  .kpi.g .n{color:var(--green)} .kpi.a .n{color:var(--amber)} .kpi.v .n{color:var(--violet)}
+  section{background:var(--card);border:1px solid var(--line);border-radius:12px;
+          padding:20px 22px;margin-bottom:18px}
+  h2{font-size:17px;margin:0 0 6px;padding-left:10px;border-left:3px solid var(--blue)}
+  .h2sub{color:var(--muted);font-size:12px;margin:0 0 14px;padding-left:13px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{background:#f9fafb;color:var(--muted);font-weight:600;font-size:12px}
+  tr:last-child td{border-bottom:none}
+  code{background:#f3f4f6;border-radius:4px;padding:1px 5px;font-size:12px;
+       font-family:ui-monospace,Consolas,monospace}
+  .tag{display:inline-block;border-radius:5px;padding:1px 8px;font-size:11px;font-weight:700;white-space:nowrap}
+  .t-ok{background:var(--soft-green);color:var(--green)}
+  .t-part{background:var(--soft-amber);color:var(--amber)}
+  .t-no{background:var(--soft-red);color:var(--red)}
+  .t-void{background:#f3f4f6;color:var(--muted)}
+  .t-blue{background:var(--soft-blue);color:var(--blue)}
+  .note{background:var(--soft-blue);border-left:3px solid var(--blue);
+        padding:10px 14px;border-radius:0 8px 8px 0;margin-top:12px;font-size:13px}
+  .warn{background:var(--soft-amber);border-left:3px solid var(--amber);
+        padding:10px 14px;border-radius:0 8px 8px 0;margin-top:12px;font-size:13px}
+  .good{background:var(--soft-green);border-left:3px solid var(--green);
+        padding:10px 14px;border-radius:0 8px 8px 0;margin-top:12px;font-size:13px}
+  ul{margin:8px 0 0;padding-left:20px} li{margin:3px 0}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .box{border:1px solid var(--line);border-radius:10px;padding:14px 16px;background:#fcfcfd}
+  .box h3{margin:0 0 8px;font-size:14px}
+  .box.l1{border-color:#fcd34d;background:var(--soft-amber)}
+  .box.l2{border-color:#c7d2fe;background:var(--soft-blue)}
+  .decision{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:6px}
+  .dcard{border:1px solid var(--line);border-radius:10px;padding:14px 16px;background:#fcfcfd}
+  .dcard .t{font-weight:700;font-size:13px;margin-bottom:6px}
+  .dcard .b{font-size:12px;color:var(--muted);line-height:1.6}
+  .dcard.k1{border-top:3px solid var(--green)}
+  .dcard.k2{border-top:3px solid var(--amber)}
+  .dcard.k3{border-top:3px solid var(--violet)}
+  .foot{color:var(--muted);font-size:12px;text-align:center;margin-top:26px;line-height:1.8}
+  .mono{font-family:ui-monospace,Consolas,monospace;font-size:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>PT 第二批答复核销看板 <span class="badge">资料沉淀 · 未改代码</span></h1>
+  <div class="sub">2026-11-12 · 输入：用户转述 PT 答复 12 条 + 两份正式文档
+    <code>API接口文档.md</code>（用户指定最新）与 <code>API接口文档(支付&amp;Key信息&amp;费用预估).md</code>（旧规划稿）</div>
+</header>
+
+<div class="kpis">
+  <div class="kpi"><div class="n">4 / 8</div><div class="l">Q1–Q8 本批解决 / 大类解决</div></div>
+  <div class="kpi a"><div class="n">3 + 5</div><div class="l">仍待确认：L1 生成主线 / L2 后置</div></div>
+  <div class="kpi g"><div class="n">0 行</div><div class="l">生成链路代码需改动</div></div>
+  <div class="kpi v"><div class="n">3 处</div><div class="l">catalog errors 可选措辞订正（未动）</div></div>
+</div>
+
+<section>
+  <h2>0. 结论先行</h2>
+  <p class="h2sub">你问的两件事，答案都在这一屏。</p>
+  <div class="decision">
+    <div class="dcard k1">
+      <div class="t">① 代码要不要改？生成侧不用</div>
+      <div class="b">你第 4 条原话已给死：「正常调用模型生成都不用改，都是正常的，只有账单查询日志非生成类的才需要」。
+      复核 <code>catalog.json</code> / <code>pt_gateway.py</code> / <code>pt_video.py</code> 生成部分一致 ——
+      <b>认证、端点、请求构造全不变</b>，catalog v2 P0 交付不受影响。</div>
+    </div>
+    <div class="dcard k2">
+      <div class="t">② 还有问题要确认？有，但分层</div>
+      <div class="b"><b>L1（3 条）</b>才与生成主线相关：<code>request_id</code> 精确字段名、403 区分与 5xx 受理信号、
+      <code>key_id</code> 多形态。<b>L2（5 条）</b>只影响后置账户客户端 / P2 pricing，<b>不阻塞本轮</b>。</div>
+    </div>
+    <div class="dcard k3">
+      <div class="t">③ 本批最重要的反转</div>
+      <div class="b">你指定附件 A 为最新并点名 <code>GET /v1/logs/query</code>，
+      等于<b>推翻上一轮「必须改成 <code>POST /v1/logs/list</code>」的结论</b>——
+      现有 <code>pt_video.py:108</code> 反而没走错。已在依据文档顶部纠偏。</div>
+    </div>
+  </div>
+  <div class="good"><b>另外两条口径坐实</b>：余额不足统一 <code>402</code>（历史 403 报文按你「都按照最新修改的报文」作废旧语义）；
+  <code>1 USD = 1000 credits</code> 且<b>不会变</b>；预估与实际不符<b>以实际扣费为主</b>（正是我此前建议的 A2 措辞修订）。</div>
+</section>
+
+<section>
+  <h2>1. Q1–Q8 核销状态</h2>
+  <p class="h2sub">「第一批」= 2.0.0 规划稿核销；「本批」= 答复 + 两份正式文档。✅解决 🟡部分 🔴未答 ⚫作废</p>
+  <table>
+    <thead><tr><th style="width:15%">问题</th><th style="width:11%">第一批</th><th style="width:11%">本批</th><th>一句话结论</th></tr></thead>
+    <tbody>
+      <tr><td><b>Q1</b> key_id / 列出 Key</td><td><span class="tag t-part">🟡 部分</span></td><td><span class="tag t-ok">🟢 基本解决</span></td>
+        <td>没有独立查 / 列 Key 的接口；<code>key_id</code> 是<b>数字主键</b>由调用方提供，令牌是账号级含多 Key、解析不出。留 1 坑：该字段在 3 个接口里有 <b>4 种形态</b>。</td></tr>
+      <tr><td><b>Q2</b> client_operation_id</td><td><span class="tag t-part">🟡 部分</span></td><td><span class="tag t-void">⚫ 作废</span></td>
+        <td>PT <b>第二次确认「没有这个 id」</b>。三个幂等字段继续 <code>null</code>，不再追问。</td></tr>
+      <tr><td><b>Q3</b> 响应里的 request_id</td><td><span class="tag t-no">🔴 未答</span></td><td><span class="tag t-ok">🟢 解决</span></td>
+        <td>四类都有：正常在 <b>body</b>、<b>流式只在 header</b>、失败 <b>header 一定有 + <code>error.message</code> 也有</b>、异步视频<b>提交时返回</b>。缺精确字段名。</td></tr>
+      <tr><td><b>Q4</b> logs 端点与分页</td><td><span class="tag t-part">🟡 部分</span></td><td><span class="tag t-part">🟡 部分</span></td>
+        <td>口径纠偏：以附件 A 的 <code>GET /v1/logs/query</code> 为准，<b>现有代码不再判错</b>；<code>POST /v1/logs/list</code> 降为批量补充端点。分页默认值 / 时效 / 保留期仍未答。</td></tr>
+      <tr><td><b>Q5</b> 错误报文</td><td><span class="tag t-no">🔴 未答</span></td><td><span class="tag t-ok">🟢 大类解决</span></td>
+        <td>完整 HTTP 语义表 + 生成域三分类 + 401 的 <code>token_invalid/expired/disabled</code>；<b>429 按账户</b>；历史 403 余额不足作废。精确 message 仍缺。</td></tr>
+      <tr><td><b>Q6</b> 1000 vs 3</td><td><span class="tag t-ok">✅ 解决</span></td><td><span class="tag t-ok">✅ 加固</span></td>
+        <td><b>不会变</b>，可当常量；消费记录金额字段单位就是 credits，<code>3</code> 是 <code>per_1k_tokens</code> 单价系数。</td></tr>
+      <tr><td><b>Q7</b> 官方费用预估</td><td><span class="tag t-ok">✅ 解决</span></td><td><span class="tag t-ok">✅ 加固</span></td>
+        <td>仅图片 / 视频；<b>chat 用 newapi 公式自估</b>；不计费、传参同调用、暂无限流；<b>以实际扣费为主</b>。</td></tr>
+      <tr><td><b>Q8</b> 失败扣费与幂等</td><td><span class="tag t-no">🔴 未答</span></td><td><span class="tag t-no">🔴 仍基本未答</span></td>
+        <td>只有历史「预扣失败未扣费」；失败 / 超时是否扣费、退费、幂等无口径。「是否已被受理」信号是<b>对 PT 的要求</b>，字段未给。</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>2. 三处关键裁决</h2>
+  <table>
+    <thead><tr><th style="width:22%">事项</th><th style="width:31%">上一轮 / 旧口径</th><th style="width:31%">本批最新</th><th>后果</th></tr></thead>
+    <tbody>
+      <tr><td>最新文档</td><td>「默认模块」对话摘要，未落地为仓库文件</td><td><b>附件 A 正式文档</b>（用户「这是最新文档」），其 §5–8 即默认模块那批</td><td>依据有了正式载体；附件 B 判为旧规划稿</td></tr>
+      <tr><td>消费记录端点</td><td>应改 <code>POST /v1/logs/list</code> + <code>page</code></td><td><b><code>GET /v1/logs/query</code></b>（附件 A §2，用户点名）</td><td><code>pt_video.py:108</code> 不再判错；上一轮结论纠偏</td></tr>
+      <tr><td>client_operation_id</td><td>附件 B §4 仍作为过滤参数存在</td><td><b>不存在</b>（PT 两次确认）</td><td>Q2 彻底作废；附件 B 的 cursor / 该字段整体失效</td></tr>
+    </tbody>
+  </table>
+  <div class="warn"><b>认证仍是唯一没对齐的横切项</b>：附件 A 通用节写「所有接口用 <code>pt_live_</code> 个人访问令牌」，
+  但 §5–8 表格 header 写「登录令牌」；附件 B 则按接口分两种（支付=登录令牌，其余=个人访问令牌）。
+  你的第 4 条只说了「非生成类才需要换凭证」，没细分 —— 已列为 <b>R6</b>，仅影响后置账户客户端。</div>
+</section>
+
+<section>
+  <h2>3. request_id 位置矩阵（Q3 定稿）</h2>
+  <table>
+    <thead><tr><th>场景</th><th>header</th><th>body</th><th>证据 / 备注</th></tr></thead>
+    <tbody>
+      <tr><td>正常 / 同步（非流式）</td><td>未说明</td><td><span class="tag t-ok">✅ 有</span></td><td>PT「在 body 里面，你可以测试下」；字段名未给</td></tr>
+      <tr><td>流式 stream</td><td><span class="tag t-ok">✅ 只在 header</span></td><td><span class="tag t-no">❌ 无</span></td><td>header 名未给</td></tr>
+      <tr><td>失败 4xx/5xx</td><td><span class="tag t-ok">✅ 一定有</span></td><td><span class="tag t-ok">✅ error.message 也有</span></td><td>「两层保障」</td></tr>
+      <tr><td>异步视频</td><td>—</td><td>提交时返回</td><td>不是轮询结果里才给</td></tr>
+      <tr><td>消费记录 <code>/v1/logs/query</code></td><td>—</td><td><code>request_id</code></td><td>同层 <code>task_id</code> / <code>consume_id</code> / <code>quota</code></td></tr>
+    </tbody>
+  </table>
+  <div class="note">PT 建议实测，但本轮<b>未做真机调用</b>（需可用 Key 且产生费用）。按「不知道填 null，不猜」，
+  该结论标 <code>documented</code>（PT 口述），不擅自升 <code>verified</code>。</div>
+</section>
+
+<section>
+  <h2>4. 仍待确认的问题 · 分层</h2>
+  <p class="h2sub">按你的范围约束：L1 才与生成主线 / catalog 相关；L2 只影响后置账户客户端 / P2 pricing，不算阻塞。</p>
+  <div class="grid2">
+    <div class="box l1">
+      <h3>L1 · 影响生成主线 / catalog（3 条）</h3>
+      <ul>
+        <li><b>R1</b> <code>request_id</code> 精确字段名：成功 body 字段、header 名、异步提交响应字段、<code>error.message</code> 埋点格式 → 建议一次低成本 chat 实测。</li>
+        <li><b>R2</b> ① <b>403「权限不足 vs 模型下架」怎么区分</b>；② 429/503/5xx「<b>是否已被受理</b>」信号的字段名与取值 → 本批是<b>对 PT 提出的要求</b>，非既成事实；在此之前 <code>agent_action: retry</code> 不宜自动重试。</li>
+        <li><b>R3</b> <code>key_id</code> 四种形态确认：只提供数字？脱敏串能否作过滤？<code>/key/info</code> 响应到底数字还是串？</li>
+      </ul>
+    </div>
+    <div class="box l2">
+      <h3>L2 · 仅影响后置模块 / P2（5 条，不阻塞）</h3>
+      <ul>
+        <li><b>R4</b> logs/query 与 logs/list 是否并存、limit 默认 / 上限、时间过滤与时区、时效、保留期、多 Key 分查。</li>
+        <li><b>R5</b> 失败 / 超时 / 未知结果是否扣费、退费、<code>task_id</code> 复查是否二次扣费；幂等靠什么。</li>
+        <li><b>R6</b> 认证头确切形态：个人访问令牌 vs 登录令牌、各自适用接口、access key + key id 传参位置。</li>
+        <li><b>R7</b> estimate 请求体是整包 <code>{model, endpoint, request, key_id}</code> 还是原生请求体。</li>
+        <li><b>R8</b> chat 预估公式的每 1K 输入 / 输出单价取自哪里。</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>5. 代码影响评估</h2>
+  <table>
+    <thead><tr><th style="width:34%">层</th><th style="width:14%">是否需改</th><th>依据 / 本轮动作</th></tr></thead>
+    <tbody>
+      <tr><td><b>生成链路</b>：catalog.json 结构、pt_gateway / pt_video 生成部分、mcp / server</td>
+        <td><span class="tag t-ok">❌ 不用改</span></td><td>你第 4 条原话 + 代码复核一致。<b>未动</b>。</td></tr>
+      <tr><td>catalog <code>errors</code> 数据订正（3 处措辞，非结构）</td>
+        <td><span class="tag t-part">🟡 建议改</span></td>
+        <td>403 历史报文 note「待 Q5-2」→ 已答；<code>rate_limited</code> 粒度「待 Q5-3」→ <b>按账户</b>；401 可补 <code>token_invalid/expired/disabled</code>。<b>等拍板，未动</b>。</td></tr>
+      <tr><td>catalog <code>currency.notes</code> / 决策稿 A2 措辞</td>
+        <td><span class="tag t-part">🟡 可改</span></td><td>PT 明确「以实际扣费为主」。<b>等拍板，未动</b>。</td></tr>
+      <tr><td><b>账户 / 账单 / 日志</b>（非生成类）<code>pt_video.py:108/119/126/280</code>、<code>pt_gateway.py:734</code></td>
+        <td><span class="tag t-no">✅ 需要改</span></td><td>换凭证、按 <code>code</code> 判断、<code>data</code> 字符串化 JSON 二次解析。<b>B4/B5 后置，本轮不建</b>。</td></tr>
+      <tr><td>README 双语 §17.1 状态码表</td><td><span class="tag t-blue">⚪ 可选</span></td><td>可补 400/413/415/422/404/409/410/503 细分语义。<b>未动</b>。</td></tr>
+      <tr><td>tests / validate_catalog.py / CI</td><td><span class="tag t-ok">❌ 不用改</span></td><td>与本批答复无关，上轮 246/246 全绿。<b>未动</b>。</td></tr>
+    </tbody>
+  </table>
+  <div class="good"><b>结论</b>：生成侧一行都不用改；要改的只有「非生成类」账户命令，而它按 B4/B5 本来就后置。
+  catalog 里 3 处属「有答案了、可以订正」而非「必须改」——现有写法都如实标了「待 Q5-2 / 待 Q5-3」，
+  不会误导 Agent。按你「先讨论、暂不动代码」的偏好，<b>本轮只出建议、不动数据</b>。</div>
+</section>
+
+<section>
+  <h2>6. 本轮落地边界</h2>
+  <ul>
+    <li>✅ 更新 <code>docs/PT_待确认问题清单_20261112.md</code>（顶部横幅 + 全文核销章节，525 行）。</li>
+    <li>✅ 回写 <code>PT_账户接口_默认模块依据_20261112.md</code>（§4 纠偏横幅）、<code>PT_API_2.0.0_官方答复核销_20261112.md</code>（指引横幅）。</li>
+    <li>✅ 产出本看板 <code>docs/PT_第二批答复核销看板_20261112.html</code>。</li>
+    <li>❌ 未改 <code>catalog.json</code> / 任何 <code>.py</code> / 测试 / CI / README；未做真机实测；未提交、未 push、未打 tag。</li>
+  </ul>
+</section>
+
+<div class="foot">
+  完整逐条证据与原文见 <span class="mono">docs/PT_待确认问题清单_20261112.md</span> 文末「第二批官方答复核销」章节<br>
+  本轮为资料沉淀与判断，不产生代码变更 · 生成链路保持 catalog v2 P0 已验收状态
+</div>
+
+</div>
+</body>
+</html>
