@@ -119,9 +119,19 @@
   <div class="kpi v"><div class="n">3 条</div><div class="l">真机硬结论推翻/收紧书面口径</div></div>
   <div class="kpi t"><div class="n">260 / 260</div><div class="l">离线测试 PASS · 校验器 133 项</div></div>
   <div class="kpi g"><div class="n">8 + 5</div><div class="l">errors 订正 8 处 · 新增字段组 5 组</div></div>
-  <div class="kpi a"><div class="n">1 处</div><div class="l">口径冲突未裁决（C1，待 pt_live_ 令牌）</div></div>
+  <div class="kpi a"><div class="n">C1 已裁决</div><div class="l">2026-11-13 真机：账户域裸值鉴权</div></div>
   <div class="kpi r"><div class="n">0 行</div><div class="l">生成链路功能代码改动</div></div>
-  <div class="kpi b"><div class="n">4ce26f4</div><div class="l">main 已 push · 远程 == 本地 · CLEAN</div></div>
+  <div class="kpi b"><div class="n">3 批</div><div class="l">G1–G6 / 0.7.1 / 0.7.2 已 push · CLEAN</div></div>
+</div>
+
+<div class="good" style="margin:14px 0">
+  <b>v2.1 · 2026-11-13 账户域真机实测已回写</b>：用户提供 <code>pt_live_</code> + 数字 <code>key_id</code> 后，
+  全程零成本跑完只读端点与不计费 estimate。<b>C1 裁决为「裸值，不带 Bearer」</b>（D4 §7 在账户域不成立）、
+  <b>T6 整包被接受且确认不计费（80→80 credits）</b>；另新增 6 条「书面 → 实测」偏差登记（logs 按 ID 精查、
+  estimate 不支持 chat、balance 的 key_id 必填、<code>/v1/key/info</code> 路径、usage 日期必填、Bearer 不成立）。
+  事实全文见 <a class="doc" href="PT_项目资料总集_20261112.md">SSOT §12</a>。
+  本轮仍<b>不改代码 / 不改 catalog</b>，所有凭证未入库、输出脱敏。
+  C4 视频侧与 R1 异步因最便宜视频需 1000 credits、余额仅 80 credits，<b>如实保留未裁决</b>。
 </div>
 
 <nav>
@@ -205,7 +215,7 @@
     <tr><td>R3</td><td><code>key_id</code> 四种形态</td><td>D4 §5：只有数字主键 + 脱敏串两个值</td><td>账户客户端 / 对账</td><td><span class="tag t-ok">✅</span></td></tr>
     <tr><td>R4</td><td>logs 分页 / 时效 / 保留 / 多 Key</td><td>D4 §6 全给</td><td>账户客户端 / 用量面板</td><td><span class="tag t-ok">✅</span></td></tr>
     <tr><td>R5</td><td>失败扣费</td><td>第 3 批 Q8 打穿后划掉</td><td>—</td><td><span class="tag t-void">⚫</span></td></tr>
-    <tr><td>R6</td><td>认证头形态</td><td>D4 §7：<code>Bearer pt_live_</code>；AK/SK 是渠道配置字段、笔误</td><td>账户客户端鉴权（N3 后置）</td><td><span class="tag t-part">⚠️ C1 待实测</span></td></tr>
+    <tr><td>R6</td><td>认证头形态</td><td>D4 §7：<code>Bearer pt_live_</code>；AK/SK 是渠道配置字段、笔误</td><td>账户客户端鉴权（N3 后置）</td><td><span class="tag t-ok">✅ C1 已裁决：裸值</span></td></tr>
     <tr><td>R7</td><td>estimate 请求体</td><td>D4 §8：整包 <code>{model,endpoint,key_id,request}</code></td><td>estimate 调用</td><td><span class="tag t-part">⚠️ T6 未验证</span></td></tr>
     <tr><td>R8</td><td>chat 单价来源</td><td>D4 §9：<code>/v1/models</code> 不含价格，不建单价表</td><td><code>pricing</code> / chat 预估</td><td><span class="tag t-ok">✅</span></td></tr>
     <tr><td>R9</td><td>legacy / sweep / 失败流水</td><td>D4 §10 全给（阈值 2026-02-22 UTC、1440 可配、15s 扫、成对流水净额 0）</td><td><code>charging.async_task</code> / 对账</td><td><span class="tag t-ok">✅</span></td></tr>
@@ -257,7 +267,7 @@
     <tr data-d="err"><td><b>F1</b></td><td><b>错误字典</b><br><code>catalog.json → errors</code>（9 类）</td><td>Q5 · R2① · R2② · R11 · C5 · C9 · 第 4/5 批矩阵</td><td><b>8 处数据订正</b>；<code>model_unavailable</code> 由 D4 §1 解锁；T4 真机双证</td><td><span class="tag t-ok">✅ 已落地</span></td></tr>
     <tr data-d="retry"><td><b>F2</b></td><td><b>受理判定与重试</b><br>新增 <code>retry_policy</code>；网关重试逻辑</td><td>Q8 · R2② · R11 · R1 · A3</td><td>4+1 条规则 + <code>rate_limit</code> + <code>request_id_observed</code>；<code>X-Oneapi-Request-Id</code> 只作报障</td><td><span class="tag t-ok">✅ 已落地</span></td></tr>
     <tr data-d="charge"><td><b>F3</b></td><td><b>扣费 / 退款 / 对账</b><br>新增 <code>charging</code>；<code>errors.timeout.notes</code></td><td>Q8 · R10 · R9 · A2 · B6 · C6</td><td>异步全额退 vs 同步流中途按量扣；legacy / sweep / 三重幂等 / 成对流水全写入</td><td><span class="tag t-ok">✅ 已落地</span></td></tr>
-    <tr data-d="charge"><td><b>F4</b></td><td><b>计费单位与预估</b><br><code>currency</code> / <code>pricing</code> / <code>pt_video.py:280</code></td><td>Q6 · Q7 · R7 · R8 · C3 · C7</td><td><code>credits_per_usd=1000</code> 不动；notes 补 C3；不建单价表；<code>estimate_vs_actual</code> 写入</td><td><span class="tag t-part">✅ T6 待验证</span></td></tr>
+    <tr data-d="charge"><td><b>F4</b></td><td><b>计费单位与预估</b><br><code>currency</code> / <code>pricing</code> / <code>pt_video.py:280</code></td><td>Q6 · Q7 · R7 · R8 · C3 · C7</td><td><code>credits_per_usd=1000</code> 不动；notes 补 C3；不建单价表；<code>estimate_vs_actual</code> 写入</td><td><span class="tag t-ok">✅ T6 已验证（不计费）</span></td></tr>
     <tr data-d="account"><td><b>F5</b></td><td><b>账户 / 日志 / 鉴权客户端</b><br><code>pt_video.py:108/119/126/280</code> · <code>pt_gateway.py:734</code> · mcp / server</td><td>Q1 · Q4 · R3 · R4 · R6 · B1–B4 · C1</td><td><b>一行未改</b>。<code>logs/query</code> 被证明正确；鉴权改造 + 分页/时区/二次解析整体后置（N3）</td><td><span class="tag t-blue">🔄 后置</span></td></tr>
     <tr data-d="seedance"><td><b>F6</b></td><td><b>Seedance 双接口 / 协议 / 素材</b><br><code>kinds.seedance</code> · 协议四层 · <code>build_media()</code></td><td>S1 · S2 · S3 · C1 · C2 · 第 3 批</td><td>新增 <code>interface_variants</code> / <code>result_persistence</code>；字段名避开「透传」；<code>agreement_required_both: true</code>；未接兼容端点</td><td><span class="tag t-ok">✅ 数据 / N2 后置</span></td></tr>
     <tr data-d="seedance"><td><b>F7</b></td><td><b>产物下载与持久化</b><br>CLI 下载 · <code>--no-download</code> · <code>result_persistence</code></td><td>S2 · A4 · C4</td><td><code>default_strategy</code> 收紧为「<b>成功即下载转存</b>」（真机 P0）；<code>image_sync_observed</code> 记 24h TTL</td><td><span class="tag t-part">✅ 视频侧待实测</span></td></tr>
@@ -289,7 +299,7 @@
     <tr><td><b>C1</b><br><span class="pill">S1</span></td><td>兼容接口端点清单（条件项）</td><td>「透传是<b>独立前缀路由</b>（<code>/byteplus/v3/...</code>、<code>/minimax/...</code>、<code>/kling/...</code>、<code>/vidu/...</code>），<b>不是 <code>/v1/videos</code> 加参数</b>；鉴权仍是 Bearer」「完整端点 + 字段差异清单等你们确认接入后给（现在给会随渠道版本过期）」</td><td><code>interface_variants</code> · N2 决策</td><td>资料闭环</td></tr>
     <tr><td><b>C2</b><br><span class="pill">S3</span></td><td>兼容接口是否也签协议（条件项）</td><td>「<b>需要</b>。<code>asset://</code> 是上游账号维度素材体系，透传时素材仍挂在我方账号下，仍受上游 Asset Library 协议约束。<b>建议走标准接口</b>，素材上传由我方代理」</td><td>协议四层 · <code>force_asset</code></td><td><code>agreement_required_both</code></td></tr>
   </table></div>
-  <div class="good"><b>12/12 全答，向 PT 提问这条线收口。</b> 剩下的不是「没答案」，而是：① 需实测的精确字段值（C1 / R1 异步 / C4 视频侧）；② 我方内部决策（是否接兼容接口、<code>--max-usd</code>）；③ 将来接兼容接口时再找 PT 要对齐文档。</div>
+  <div class="good"><b>12/12 全答，向 PT 提问这条线收口。</b> 剩下的不是「没答案」，而是：① 需余额的实测（R1 异步 / C4 视频侧；C1 已于 2026-11-13 真机裁决为裸值）；② 我方内部决策（是否接兼容接口、<code>--max-usd</code>）；③ 将来接兼容接口时再找 PT 要对齐文档。</div>
 </section>
 
 <section id="s6">
@@ -429,22 +439,22 @@
   <h2 class="a">10. 未决项与后置待办（不阻塞已发布版本）</h2>
   <div class="scroll"><table>
     <tr><th style="width:12%">项</th><th style="width:46%">内容</th><th style="width:18%">归属</th><th style="width:24%">前置条件</th></tr>
-    <tr><td><b>C1</b></td><td>账户域鉴权头定稿（Bearer vs 裸值）</td><td><span class="tag t-part">🔬 待实测</span></td><td>需 <code>pt_live_</code> 个人访问令牌</td></tr>
-    <tr><td><b>C4 视频侧</b></td><td>视频标准接口是否 PT 自有永久地址</td><td><span class="tag t-part">🔬 待实测</span></td><td>需余额充足（当前剩 ＄0.005）</td></tr>
-    <tr><td><b>R1 异步</b></td><td>异步视频提交响应的 <code>request_id</code> 字段名</td><td><span class="tag t-part">🔬 待实测</span></td><td>同上</td></tr>
-    <tr><td><b>T6</b></td><td>estimate 整包请求体形态</td><td><span class="tag t-part">🔬 待验证</span></td><td>需账户域凭证</td></tr>
-    <tr><td><b>T7 / T8</b></td><td>账户只读命令 / Seedance 协议状态真查</td><td><span class="tag t-blue">🔄 后置</span></td><td>账户客户端改造</td></tr>
+    <tr><td><b>C1</b></td><td><s>账户域鉴权头定稿（Bearer vs 裸值）</s> → <b>裸值，不带 Bearer</b></td><td><span class="tag t-ok">✅ 已裁决</span></td><td>SSOT §12.2（2026-11-13 真机）</td></tr>
+    <tr><td><b>C4 视频侧</b></td><td>视频标准接口是否 PT 自有永久地址</td><td><span class="tag t-part">🔬 待实测</span></td><td>余额 80 credits，最便宜视频需 1000 credits</td></tr>
+    <tr><td><b>R1 异步</b></td><td>异步视频提交响应的 <code>request_id</code> 字段名</td><td><span class="tag t-part">🔬 待实测</span></td><td>同上（需一次真实视频提交）</td></tr>
+    <tr><td><b>T6</b></td><td><s>estimate 整包请求体形态</s> → 整包被接受、不计费</td><td><span class="tag t-ok">✅ 已验证</span></td><td>SSOT §12.3（80→80 credits）</td></tr>
+    <tr><td><b>T7 / T8</b></td><td>账户只读命令 / 协议状态真查</td><td><span class="tag t-ok">✅ 已真查</span></td><td>SSOT §12.3；账户客户端改造仍后置</td></tr>
     <tr><td><b>N2</b></td><td>真接供应商兼容接口</td><td><span class="tag t-blue">🔄 按决策后置</span></td><td>需 PT 给对齐文档；会带来 24h 转存义务</td></tr>
-    <tr><td><b>N3 / B4 / B5</b></td><td>账户客户端 Bearer <code>pt_live_</code> 改造 + 分页 / 时区 / 二次解析</td><td><span class="tag t-blue">🔄 后置</span></td><td>T7 已有真机硬证据说明现有写法用错凭证</td></tr>
+    <tr><td><b>N3 / B4 / B5</b></td><td>账户客户端改造（<b>改为只换凭证源，不用加 Bearer</b>）+ 分页 / 时区 / 二次解析</td><td><span class="tag t-blue">🔄 后置</span></td><td>SSOT §12.2 已缩小改造范围；logs 按 ID 精查（§12.5 N1）</td></tr>
     <tr><td><b>P2 pricing</b></td><td>catalog 价格字段；<code>limits</code> 子字段形状</td><td><span class="tag t-void">🔄 P2</span></td><td>需模板全文</td></tr>
     <tr><td><b>flaky</b></td><td><code>test_contract_http</code> 回环服务偶发断连</td><td><span class="tag t-void">🔄 既有</span></td><td>与本轮改动无关</td></tr>
-    <tr><td><b>本轮文档</b></td><td>详细对照版 MD + 看板 v2.0 + SSOT 回填 + CHANGELOG 修正，<b>已提交并推送 <code>origin/main</code></b>（0.7.1）</td><td><span class="tag t-blue">✅ 已完成</span></td><td>纯文档改动；commit 号以 <code>git log -1 --oneline</code> 为准</td></tr>
+    <tr><td><b>本轮文档</b></td><td>看板 v2.1 + SSOT §12 + 详细版 v1.1 + CHANGELOG 0.7.2，<b>已提交并推送 <code>origin/main</code></b></td><td><span class="tag t-ok">✅ 已完成</span></td><td>纯文档改动；commit 号以 <code>git log -1 --oneline</code> 为准</td></tr>
   </table></div>
-  <div class="good"><b>结论</b>：向 PT 提问这条线已收口（12/12）；G1–G6 全部完成并发布；剩下的是「需凭证/额度的实测」与「按决策后置的功能」，<b>都不是资料缺口</b>。本轮补齐的是资料组织，不是新事实。</div>
+  <div class="good"><b>结论</b>：向 PT 提问这条线已收口（12/12）；G1–G6 全部完成并发布；2026-11-13 又用真实凭证裁掉 C1、验成 T6，并登记 6 条书面→实测偏差。剩下的是「需额度的实测（C4 视频侧 / R1 异步）」与「按决策后置的功能」，<b>都不是资料缺口</b>。本轮补齐的是资料组织与事实裁决，不是新猜测。</div>
 </section>
 
 <div class="foot">
-  PT 项目资料总集看板 <b>v2.0 完整版</b> · 2026-11-12 ·
+  PT 项目资料总集看板 <b>v2.1 完整版</b> · 2026-11-12 建 / 2026-11-13 账户域实测回写 ·
   v1.0 为开工前决策摘要版（7 节 / 264 行），保留于 git 历史<br>
   SSOT <code>docs/PT_项目资料总集_20261112.md</code> · 详细逐条版 <code>docs/PT_问题_答复_影响功能_全量对照_20261112.md</code><br>
   自证：<code>validate_catalog.py</code> 133 项 PASS · <code>run_tests.py</code> 260/260 PASS · commit <code>4ce26f4</code> 已 push<br>

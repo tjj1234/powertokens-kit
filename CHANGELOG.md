@@ -6,6 +6,31 @@
 
 ---
 
+## 0.7.2 — 2026-11-13 · 账户域真机实测回写（纯文档）
+
+**范围**：用户提供 `pt_live_` + 数字 `key_id` 后，零成本跑完账户域只读端点与不计费 estimate；
+只动 `docs/` 与 `CHANGELOG.md`，**未改任何 `.py` / `catalog.json` / 测试 / CI / README**。
+凭证未入库、未进日志、输出脱敏；账号余额 80 credits，**全程 0 花费**。
+
+- **C1 裁决**：账户域 `Authorization: pt_live_<token>` **裸值**（不带 `Bearer`）；
+  D4 §7 的 Bearer 在账户域不成立。现有 `_account_call` 裸值写法保留，B4/B5 只需换凭证源。
+- **T6 验证**：`POST /v1/billing/estimate` 整包 `{model, endpoint, key_id, request}` 被接受；
+  连跑两次 `balance` 均为 80 credits，**确认不计费**。
+- **T7 / T8**：balance / usage 需数字 `key_id`（usage 还需 `start_date` / `end_date`）；
+  agreement 返回协议状态与资产库开关。
+- **R3 补完**：`POST /v1/key/info` 返回数字 `key_id` + `key_masked`；`/key/info` 为 404；
+  balance / usage 响应仍把脱敏串塞在 `key_id` 字段（D4 §5 的「将统一」尚未上线）。
+- **新增 6 条偏差登记 N1–N6**：logs 按 ID 精查（非分页列表）、estimate 不支持 chat、
+  balance 的 `key_id` 必填、`/key/info` 路径要带 `/v1`、usage 日期必填、D4 §7 Bearer 不成立。
+- **仍未闭合**：C4 视频侧 / R1 异步 —— `wan3.0-video` 5 秒试算 1000 credits、
+  `kling-v2-1-master` 1400 credits，余额仅 80 credits，如实保留未裁决。
+- **文档**：SSOT 新增 §12（实测全章）并更新 §3 C1 / §10.2.1 / §11.4；详细对照版升 v1.1；
+  看板升 **v2.1** 并同步 KPI、冲突表与未决项。
+- **验收**：`validate_catalog.py` **133 项全 PASS**；`run_tests.py` **260/260 PASS**（纯文档改动后复跑）。
+- **发布**：已提交并推送 `origin/main`；commit 号以 `git log -1 --oneline` 为准。
+
+---
+
 ## 0.7.1 — 2026-11-13 · PT 资料补漏与看板 v2.0（纯文档）
 
 **范围**：只动 `docs/` 与 `CHANGELOG.md`；**未改任何 `.py` / `catalog.json` / 测试 / CI / README 内容**，生成链路功能代码仍是 0 行改动；未引入新事实。
