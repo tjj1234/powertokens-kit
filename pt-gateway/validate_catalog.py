@@ -192,6 +192,26 @@ def main():
                     "%s 非 conditional，按 A4 不该有 web_search_detail" % mid)
     r.check(len(conditional) == 4, "conditional 主力模型共 4 个", repr(conditional))
 
+    # --- 0.8.0：AUTO 用途覆盖 / vision 候选 / limits 子键 -------------------
+    required_uses = {"general", "agent", "search", "long_report", "vision"}
+    r.check(required_uses.issubset(set(purposes)),
+            "auto_policy.purposes 覆盖 5 种用途",
+            repr(sorted(required_uses - set(purposes))))
+    vision_cands = purposes.get("vision", [])
+    r.check(bool(vision_cands) and all(
+        models.get(c, {}).get("capabilities", {}).get("multimodal", {}).get("vision") is True
+        for c in vision_cands), "purposes.vision 候选都声明 vision=true", repr(vision_cands))
+    for mid in MAIN:
+        lim = models.get(mid, {}).get("limits", {})
+        r.check("max_context_tokens" in lim and "max_output_tokens" in lim,
+                "%s.limits 有 max_context_tokens / max_output_tokens 子键" % mid)
+        r.check(lim.get("max_context_tokens") is None and lim.get("max_output_tokens") is None,
+                "%s.limits 无官方来源，值保持 null 不编造" % mid)
+    lp = d.get("models_api_contract", {}).get("limits_probe", {})
+    r.check(lp.get("_source") == "models_api", "limits_probe._source == models_api")
+    r.check(lp.get("limit_like_field_carriers") == 0 and lp.get("model_count") == 77,
+            "limits_probe 记录 77 模型 / 0 个上下限字段")
+
     # --- v2.1：G1 errors 订正 + G2 新增节（依据资料总集 §6.3）--------------
     rp = d.get("retry_policy", {})
     r.check(isinstance(rp, dict) and rp.get("_source") in VALID_SOURCE,

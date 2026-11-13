@@ -13,6 +13,11 @@ video / seedance 异步拿 task_id 后轮询）。
 >    **「不在列表」不等于下架**，故 `sync()` 不再自动 delisted；
 >    网关仍不做权限拦截（fail-open），本 key 无权限时由 PT 服务端报错并透传。
 > 2. PT **不提供**异步任务取消接口，故本网关不实现取消（HTTP 无 `/cancel`，MCP 不暴露取消工具）。
+> 3. **0.8.0**：Node 侧请用 `../node/` —— 零依赖核心包，读的是<b>同一份</b> `catalog.json`
+>    （`loadCatalog` / `selectCandidates` / `classifyError` / `retryDecision` / `reasoningParams`），
+>    另有 `account-client.js`。账户查询已迁到 `account_client.py`：裸 `pt_live_`（不带 Bearer）、
+>    数字 `key_id`、业务判断以响应体 `code` 为准。一键离线复核：
+>    `python recheck.py --live-view <models.json>`（0 花费）。
 
 > 关键前提纠偏：PT 底层是 OneAPI 透明路由，**所有视频/Seedance 模型本来就共用**
 > `POST /v1/videos` + `GET /v1/videos/{id}`，并不存在「各家独立接口」。本服务归一化的是

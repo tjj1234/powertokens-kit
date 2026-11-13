@@ -598,3 +598,5 @@ charged per measured token and keep `status=success` (filter by `logs.other.fini
 Chinese word for "pass-through" — the repo already has 6+ conflicting meanings for it.
 
  · offline validator: `python pt-gateway/validate_catalog.py`.
+
+**0.8.0 · Node.js consumers**: `node/` is a zero-dependency core that reads the same `pt-gateway/catalog.json` (`loadCatalog` / `selectCandidates` / `classifyError` / `retryDecision` / `reasoningParams`) plus a Node `account-client.js`; it never sends requests. Run `node --test node/test/core.test.js node/test/account-client.test.js`. See `node/README.md` and `docs/PT_项目资料总集_20261112.md` §14.

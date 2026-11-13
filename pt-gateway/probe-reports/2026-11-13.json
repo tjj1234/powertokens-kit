@@ -1,0 +1,170 @@
+{
+  "generated_at": "2026-11-13T10:41:59+00:00",
+  "mode": "offline",
+  "max_usd": 0.0,
+  "cost_usd_estimated": 0.0,
+  "requests_made": 0,
+  "confirmed": [
+    {
+      "model": "qwen3.8-flash",
+      "field": "capabilities.thinking",
+      "catalog": true,
+      "models_api": {
+        "reasoning_effort": true,
+        "reasoning": {
+          "supported": true,
+          "mandatory": false,
+          "default_enabled": true
+        }
+      },
+      "note": "官方声明支持；思考开关是否真生效仍需 live 实测"
+    },
+    {
+      "model": "seed-2-0-pro-260328",
+      "field": "capabilities.thinking",
+      "catalog": true,
+      "models_api": {
+        "reasoning_effort": true,
+        "reasoning": {
+          "supported": true,
+          "mandatory": false,
+          "default_enabled": true
+        }
+      },
+      "note": "官方声明支持；思考开关是否真生效仍需 live 实测"
+    },
+    {
+      "model": "deepseek-v4-pro",
+      "field": "capabilities.thinking",
+      "catalog": true,
+      "models_api": {
+        "reasoning_effort": true,
+        "reasoning": {
+          "supported": true,
+          "mandatory": false,
+          "default_enabled": true
+        }
+      },
+      "note": "官方声明支持；思考开关是否真生效仍需 live 实测"
+    },
+    {
+      "model": "MiniMax-M3",
+      "field": "capabilities.thinking",
+      "catalog": true,
+      "models_api": {
+        "reasoning_effort": true,
+        "reasoning": {
+          "supported": true,
+          "mandatory": false,
+          "default_enabled": true
+        }
+      },
+      "note": "官方声明支持；思考开关是否真生效仍需 live 实测"
+    },
+    {
+      "model": "glm-4.7",
+      "field": "capabilities.thinking",
+      "catalog": true,
+      "models_api": {
+        "reasoning_effort": true,
+        "reasoning": {
+          "supported": true,
+          "mandatory": false,
+          "default_enabled": true
+        }
+      },
+      "note": "官方声明支持；思考开关是否真生效仍需 live 实测"
+    },
+    {
+      "model": "glm-5.2",
+      "field": "capabilities.thinking",
+      "catalog": "conditional",
+      "models_api": {
+        "reasoning_effort": true,
+        "reasoning": {
+          "supported": true,
+          "mandatory": false,
+          "default_enabled": true
+        }
+      },
+      "note": "官方声明支持；思考开关是否真生效仍需 live 实测"
+    }
+  ],
+  "conflicts": [
+    {
+      "model": "qwen3.8-flash",
+      "field": "web_search_detail.how_to_enable",
+      "catalog": "enable_search:true",
+      "models_api": "supported_parameters 含 web_search_options",
+      "note": "两种写法不一致且都未经真机验证；works / returns_sources 仍 null，按 A1 目前不能作为搜索候选。需 live 实测后人工裁决（SSOT §14）。"
+    }
+  ],
+  "suggestions": [
+    {
+      "model": "qwen3.8-flash",
+      "field": "limits.max_context_tokens / max_output_tokens",
+      "current": null,
+      "suggested": null,
+      "note": "无官方来源（/v1/models 77 个模型 0 个上下限字段 carrier），保持 null；需 PT 提供或查官方模型文档，禁止从模型名推断。"
+    },
+    {
+      "model": "seed-2-0-pro-260328",
+      "field": "limits.max_context_tokens / max_output_tokens",
+      "current": null,
+      "suggested": null,
+      "note": "无官方来源（/v1/models 77 个模型 0 个上下限字段 carrier），保持 null；需 PT 提供或查官方模型文档，禁止从模型名推断。"
+    },
+    {
+      "model": "deepseek-v4-pro",
+      "field": "limits.max_context_tokens / max_output_tokens",
+      "current": null,
+      "suggested": null,
+      "note": "无官方来源（/v1/models 77 个模型 0 个上下限字段 carrier），保持 null；需 PT 提供或查官方模型文档，禁止从模型名推断。"
+    },
+    {
+      "model": "mimo-v2.6-pro",
+      "field": "limits.max_context_tokens / max_output_tokens",
+      "current": null,
+      "suggested": null,
+      "note": "无官方来源（/v1/models 77 个模型 0 个上下限字段 carrier），保持 null；需 PT 提供或查官方模型文档，禁止从模型名推断。"
+    },
+    {
+      "model": "MiniMax-M3",
+      "field": "limits.max_context_tokens / max_output_tokens",
+      "current": null,
+      "suggested": null,
+      "note": "无官方来源（/v1/models 77 个模型 0 个上下限字段 carrier），保持 null；需 PT 提供或查官方模型文档，禁止从模型名推断。"
+    },
+    {
+      "model": "glm-4.7",
+      "field": "limits.max_context_tokens / max_output_tokens",
+      "current": null,
+      "suggested": null,
+      "note": "无官方来源（/v1/models 77 个模型 0 个上下限字段 carrier），保持 null；需 PT 提供或查官方模型文档，禁止从模型名推断。"
+    },
+    {
+      "model": "glm-5.2",
+      "field": "limits.max_context_tokens / max_output_tokens",
+      "current": null,
+      "suggested": null,
+      "note": "无官方来源（/v1/models 77 个模型 0 个上下限字段 carrier），保持 null；需 PT 提供或查官方模型文档，禁止从模型名推断。"
+    }
+  ],
+  "not_in_key_view": [],
+  "new_models_to_review": [],
+  "live_results": {},
+  "notes": [
+    "报告不含任何凭证；估算花费仅供参考，准确费用以实际扣费为准。",
+    "探测结果不写回 catalog 正文；verified / official / documented 的值必须人工确认。"
+  ],
+  "live_view_model_count": 77,
+  "summary": {
+    "confirmed": 6,
+    "conflicts": 1,
+    "suggestions": 7,
+    "not_in_key_view": 0,
+    "new_models_to_review": 0,
+    "cost_usd_estimated": 0.0,
+    "requests_made": 0
+  }
+}

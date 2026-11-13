@@ -15,5 +15,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - name: Validate catalog (zero dependency)
+        run: python pt-gateway/validate_catalog.py
       - name: Run offline test suite (unit + contract, no live, 0 cost)
         run: python pt-gateway/tests/run_tests.py
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Run Node core tests (offline, 0 cost, zero npm dependencies)
+        run: node --test node/test/core.test.js node/test/account-client.test.js

@@ -675,5 +675,46 @@ class TestLiveFindingsV21(unittest.TestCase):
         self.assertEqual("verified", rp["request_id_observed"]["_source"])
 
 
+class TestCatalogV080(unittest.TestCase):
+    """0.8.0：补充需求 P0 —— 5 种用途 / limits 子键 / 无官方来源不编数值。"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.cat = json.loads(CATALOG_JSON.read_text(encoding="utf-8"))
+
+    def test_purposes_cover_five_uses(self):
+        self.assertEqual({"general", "agent", "search", "long_report", "vision"},
+                         set(self.cat["auto_policy"]["purposes"]))
+
+    def test_every_purpose_crosses_channels(self):
+        for use, cands in self.cat["auto_policy"]["purposes"].items():
+            channels = {self.cat["models"][c]["capabilities"]["channel"] for c in cands}
+            self.assertGreaterEqual(len(channels), 2, use)
+
+    def test_vision_candidates_actually_declare_vision(self):
+        for mid in self.cat["auto_policy"]["purposes"]["vision"]:
+            self.assertIs(True,
+                          self.cat["models"][mid]["capabilities"]["multimodal"]["vision"], mid)
+
+    def test_limits_subkeys_present_but_null_without_official_source(self):
+        probe = self.cat["models_api_contract"]["limits_probe"]
+        self.assertEqual(0, probe["limit_like_field_carriers"])
+        self.assertFalse(probe["has_max_context_tokens"])
+        for mid in ("glm-4.7", "deepseek-v4-pro", "qwen3.8-flash", "seed-2-0-pro-260328",
+                    "MiniMax-M3", "glm-5.2", "mimo-v2.6-pro"):
+            lim = self.cat["models"][mid]["limits"]
+            self.assertIn("max_context_tokens", lim, mid)
+            self.assertIn("max_output_tokens", lim, mid)
+            self.assertIsNone(lim["max_context_tokens"], mid)
+            self.assertIsNone(lim["max_output_tokens"], mid)
+
+    def test_no_verified_results_fabricated(self):
+        for e in self.cat["models"].values():
+            if "tool_calling" in e:
+                self.assertIsNone(e["tool_calling"].get("verified"))
+            if "web_search_detail" in e:
+                self.assertIsNone(e["web_search_detail"].get("works"))
+
+
 if __name__ == "__main__":
     unittest.main()

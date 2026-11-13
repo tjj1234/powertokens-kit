@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>PT 项目资料总集 · 完整版 v2.2 · 2026-11-13</title>
+<title>PT 项目资料总集 · 完整版 v2.3 · 2026-11-13</title>
 <style>
   :root{
     --bg:#f7f8fa; --card:#ffffff; --ink:#1f2937; --muted:#6b7280;
@@ -105,12 +105,13 @@
 <div class="wrap">
 
 <header>
-  <h1>PT 项目资料总集 <span class="badge">完整版 v2.2 · 已发布</span><span class="badge b">12/12 全答</span><span class="badge b">§13 已固化</span></h1>
+  <h1>PT 项目资料总集 <span class="badge">完整版 v2.3 · 已发布</span><span class="badge b">12/12 全答</span><span class="badge b">§13 已固化</span></h1>
   <div class="sub">2026-11-12 · 仓库 <code>tjj1234/powertokens-kit</code> ·
     <b>本版把 v1.0「开工前决策摘要」补全为全量资料</b>：逐条问答、问题→影响功能映射、PT 原表、冲突裁决、真机结果、落地清单、文档索引<br>
     主文档 <code>docs/PT_项目资料总集_20261112.md</code>（SSOT） ·
     <b>详细逐条版 <code>docs/PT_问题_答复_影响功能_全量对照_20261112.md</code></b> ·
     发布报告 <code>docs/PT_发布与测试报告_20261112.html</code><br>
+    <b>v2.3（2026-11-13 傍晚）</b>：收到《powertokens-kit catalog 补充需求》13 条，P0 已落地 —— Node 核心包 / 双版本账户客户端 / auto_policy 补 3 种用途 / limits 子键 / 一键复核脚本 / CI，逐条固化进 <a class="doc" href="PT_项目资料总集_20261112.md">SSOT §14</a> → 见本看板 <a href="#s12">§12</a>。三项阻塞（模板缺失、limits 无来源、7 主力需花钱实测）如实登记。<br>
     <b>v2.2（2026-11-13 下午）</b>：PT 丰富 <code>GET /v1/models</code> 后两批答复已固化进 <a class="doc" href="PT_项目资料总集_20261112.md">SSOT §13</a>，真机影子对账推翻 <b>FIXLIST F1</b> 并修正 <code>sync()</code> 下架语义 → 见本看板 <a href="#s11">§11</a></div>
 </header>
 
@@ -118,7 +119,7 @@
   <div class="kpi g"><div class="n">12 / 12</div><div class="l">发给 PT 的 10 必问 + 2 条件项全答</div></div>
   <div class="kpi"><div class="n">Q8 + R11 + S3</div><div class="l">22 个编号问题全部闭环</div></div>
   <div class="kpi v"><div class="n">3 条</div><div class="l">真机硬结论推翻/收紧书面口径</div></div>
-  <div class="kpi t"><div class="n">265 / 265</div><div class="l">离线测试 PASS · 校验器 137 项（0.7.3）</div></div>
+  <div class="kpi t"><div class="n">286 / 286</div><div class="l">离线测试 PASS · 校验器 160 项 · Node 26/26（0.8.0）</div></div>
   <div class="kpi g"><div class="n">8 + 5</div><div class="l">errors 订正 8 处 · 新增字段组 5 组</div></div>
   <div class="kpi a"><div class="n">C1 已裁决</div><div class="l">2026-11-13 真机：账户域裸值鉴权</div></div>
   <div class="kpi r"><div class="n">F1 作废</div><div class="l">可见视图 ≠ 全量清单 · sync() 已修</div></div>
@@ -154,6 +155,7 @@
   <a href="#s3">3 逐批答复</a><a href="#s4">4 问题→影响功能</a><a href="#s5">5 D4 正式答复</a>
   <a href="#s6">6 冲突裁决</a><a href="#s7">7 真机 T0–T8</a><a href="#s8">8 落地清单</a>
   <a href="#s9">9 文档索引</a><a href="#s10">10 未决项</a><a href="#s11">11 /v1/models 上线</a>
+  <a href="#s12">12 补充需求 0.8.0</a>
 </nav>
 
 <section id="s0">
@@ -410,7 +412,7 @@
   <div class="grid2">
     <div class="box b"><h3><a class="doc" href="PT_项目资料总集_20261112.md">PT_项目资料总集_20261112.md</a> · SSOT</h3><div class="sm">事实与口径<b>唯一入口</b>。§2 事实卡 · §3 冲突 9 处 · §4 编号对账 · §6 开工清单 · §10 执行回写。<b>改代码前先看这份。</b></div></div>
     <div class="box v"><h3><a class="doc" href="PT_问题_答复_影响功能_全量对照_20261112.md">PT_问题_答复_影响功能_全量对照_20261112.md</a> · 本轮新增</h3><div class="sm"><b>详细逐条版</b>：Q/R/S 与 10+2 逐条问答、<b>§3 问题→影响功能总映射</b>、§4 PT 原表（9 行矩阵 / 8 行对比表 / Q8 七行 / 12 条口述）、§8 文档全量索引、§10 补漏清单。</div></div>
-    <div class="box t"><h3>本文件 · 完整版看板 v2.2</h3><div class="sm">11 节 · 六批时间线 · 22 项编号对账 · 影响功能筛选 · D4 逐条 · 冲突裁决 · T0–T9 · 落地清单 · 文档索引 · <b>§11 /v1/models 上线与 F1 作废</b>。<b>v1.0 为开工前决策摘要，保留在 git 历史。</b></div></div>
+    <div class="box t"><h3>本文件 · 完整版看板 v2.3</h3><div class="sm">11 节 · 六批时间线 · 22 项编号对账 · 影响功能筛选 · D4 逐条 · 冲突裁决 · T0–T9 · 落地清单 · 文档索引 · <b>§11 /v1/models 上线与 F1 作废</b>。<b>v1.0 为开工前决策摘要，保留在 git 历史。</b></div></div>
     <div class="box g"><h3><a class="doc" href="PT_发布与测试报告_20261112.html">PT_发布与测试报告_20261112.html</a></h3><div class="sm">G1→G6 时间线、T0–T8 逐项、三条真机裁决、改动清单与验收、发布边界、遗留项。</div></div>
   </div>
   <h3>9.2 审计轨迹与逐批看板</h3>
@@ -428,7 +430,7 @@
   <div class="grid3">
     <div class="box"><h3>remake 调研 6 份</h3><div class="sm"><a class="doc" href="OpenMontage_调研报告.md">OpenMontage</a> · <a class="doc" href="ViralStudio_remake_调研报告.md">ViralStudio</a> · <a class="doc" href="remake_第三方工具_调研报告.md">第三方工具</a> · <a class="doc" href="remake_全免费方案_调研报告.md">全免费方案</a> · <a class="doc" href="remake_PT网站方案_调研报告.md">PT 网站方案</a> · <a class="doc" href="五类能力_7家供应商调研报告.md">五类能力 7 家供应商</a></div></div>
     <div class="box"><h3>工程双语 4 份</h3><div class="sm"><a class="doc" href="pitfall-archive.md">pitfall-archive.md</a> / <a class="doc" href="pitfall-archive.zh-CN.md">.zh-CN.md</a>（A.01–A.21 踩坑档案）<br><a class="doc" href="publish.md">publish.md</a> / <a class="doc" href="publish.zh-CN.md">.zh-CN.md</a></div></div>
-    <div class="box"><h3>测试报告（此前漏登记）</h3><div class="sm"><code>pt-gateway/tests/reports/</code> 下 <b>40 个文件</b>：19 组 <code>.md</code> + <code>.json</code>，另有 <code>latest.md/json</code>。最新：2026-11-12 18:52（本轮复跑），<b>260/260 全 PASS</b>、校验器 133 项全 PASS。每次改动的自证证据。</div></div>
+    <div class="box"><h3>测试报告（此前漏登记）</h3><div class="sm"><code>pt-gateway/tests/reports/</code> 下多组 <code>.md</code> + <code>.json</code>，另有 <code>latest.md/json</code>；<b>以 latest 为准</b>，每次改动的自证证据。</div></div>
   </div>
   <h3>9.4 PT 官方附件 D1–D9b（本地，未入库）</h3>
   <div class="note">
@@ -540,11 +542,60 @@
   凭证只在内存 / 本机临时文件，用完删除，未入库、输出脱敏。影子对账产物只用于本章与 <code>models_api_contract.observed</code>，不是运行时数据。</div>
 </section>
 
+
+<section id="s12">
+  <h2 class="v">12. 补充需求落地（0.8.0）· Node 核心包与三项如实登记的阻塞 <span class="tag t-ok" style="margin-left:8px">2026-11-13 傍晚</span></h2>
+  <div class="h2sub">来源：<code>Documents/powertokens-kit catalog 补充需求.md</code>（外部附件不入库）· 事实全文见
+    <a class="doc" href="PT_项目资料总集_20261112.md">SSOT §14</a> · 工程实现见 <code>node/README.md</code></div>
+
+  <div class="good"><b>复核结论</b>：需求 2（版本/校验/CI）、需求 4（errors）、需求 8（capability_gaps）、
+  currency / retry_policy / charging / models_api_contract <b>在 0.7.3 已完成</b>；真正要动的是 §0 的 P0 清单。
+  本轮把「catalog 能当事实来源」推进到「kit 能被 Node 侧直接消费」，但<b>还没做 DSH 插件外壳</b>（需求 §6，P2）。</div>
+
+  <h3>12.1 本轮交付（0.8.0）</h3>
+  <table>
+    <tr><th>层</th><th>内容</th><th>验收</th></tr>
+    <tr><td><b>Node 核心包</b></td><td><code>node/index.js</code>：<code>loadCatalog</code> / <code>selectCandidates</code> / <code>classifyError</code> / <code>retryDecision</code> / <code>reasoningParams</code>，零依赖不发请求</td><td><span class="tag t-ok">✅ 26/26</span></td></tr>
+    <tr><td><b>账户客户端</b></td><td>Python <code>account_client.py</code> + Node <code>account-client.js</code>：裸 <code>pt_live_</code>、数字 <code>key_id</code>、以响应体 <code>code</code> 为准、不保存凭证</td><td><span class="tag t-ok">✅ 双版本</span></td></tr>
+    <tr><td><b>兼容层修复</b></td><td><code>account_query</code> 委托新客户端；修掉 <code>mcp.py</code> 自调用<b>无限递归</b>的既有 bug；<code>/account/logs</code> 改按 ID 精查</td><td><span class="tag t-ok">✅ 已修</span></td></tr>
+    <tr><td><b>catalog</b></td><td><code>auto_policy.purposes</code> 2 → <b>5 种用途</b>；7 主力 <code>limits</code> 补 2 个子键；新增 <code>limits_probe</code>；86 个模型能力档案 0 改动</td><td><span class="tag t-ok">✅ 160 项</span></td></tr>
+    <tr><td><b>复核脚本 / CI</b></td><td><code>recheck.py</code> 离线对账 + <code>--live --max-usd</code> 预算硬上限；CI 加校验器与 Node 单测</td><td><span class="tag t-ok">✅ 0 花费</span></td></tr>
+  </table>
+
+  <h3>12.2 0 花费影子对账：为什么 <code>limits</code> 只能填 null</h3>
+  <div class="box t"><div class="sm">真机 <code>GET /v1/models</code>：HTTP 200 / <b>77 个模型</b> / 只读 0 花费。
+  字段并集 <code>id, object, created, owned_by, name, supported_endpoint_types, architecture,
+  supported_parameters(56), reasoning(25), pricing(13)</code> —— 带 context / max_output / token / length
+  类字段的模型 <b>0 个</b>。需求 1 的完成标准「7 个主力 P0 字段都有值且来源 official/documented/verified」
+  <b>因此无法满足</b>：按 A3 不猜值，只补键名、值保持 <code>null</code> + <code>_source: inferred</code>。
+  7 主力中 6 个带 <code>reasoning_effort</code> 且 <code>default_enabled=true</code>；
+  只有 <code>qwen3.8-flash</code> 带 <code>web_search_options</code>，与 catalog 的
+  <code>tools:[{type:web_search}]</code> 写法冲突，两者都未实测，故<b>不改 how_to_enable</b>。</div></div>
+
+  <h3>12.3 三项阻塞（不冒充完成）</h3>
+  <table>
+    <tr><th>#</th><th>阻塞</th><th>为什么没做</th></tr>
+    <tr><td>B1</td><td>配套字段模板全文缺失</td><td>本机只有需求正文；其余子键形状不能猜</td></tr>
+    <tr><td>B2</td><td><code>limits</code> 数值无官方来源</td><td>见 12.2；需 PT 给上限或官方模型文档</td></tr>
+    <tr><td>B3</td><td>7 主力 <code>verified</code> / <code>works</code> / <code>returns_sources</code> 仍 null</td><td>要真机调用会花钱，沿用「产生费用前先确认额度」边界；<b>目前没有一个模型能走 PT 搜索</b></td></tr>
+  </table>
+  <div class="note">另有 §5 三项待 PT 确认（用 API Key 反查数字 <code>key_id</code>、按 Key/时间分页列消费记录、
+  关闭思考时 <code>reasoning_effort</code> 取值）与 §0 P1 的 catalog ↔ Key 可见列表对账（6 新模型未入 catalog、
+  15 个不在本视图只能标 <code>not_in_key_view</code>）。</div>
+
+  <h3>12.4 验收与边界</h3>
+  <div class="good"><b>全绿</b>：<code>validate_catalog.py</code> <b>160 项 PASS</b> ·
+  <code>run_tests.py</code> <b>286/286 PASS</b> · <code>node --test</code> <b>26/26 PASS</b>（退出码全 0）。
+  唯一线上调用是一次免费只读 <code>GET /v1/models</code>（77 模型、花费 0）；
+  未跑 <code>--live</code>、未跑 <code>sync()</code> 写注册表、未调计费端点；
+  <code>pt_video.py</code> 生成链路 <b>0 行改动</b>；临时快照只含模型元数据，无凭证。</div>
+</section>
+
 <div class="foot">
-  PT 项目资料总集看板 <b>v2.2 完整版</b> · 2026-11-12 建 / 11-13 账户域实测 / 11-13 下午 <code>/v1/models</code> 上线回写 ·
+  PT 项目资料总集看板 <b>v2.3 完整版</b> · 2026-11-12 建 / 11-13 账户域实测 / 11-13 下午 <code>/v1/models</code> 上线回写 ·
   v1.0 为开工前决策摘要版（7 节 / 264 行），保留于 git 历史<br>
   SSOT <code>docs/PT_项目资料总集_20261112.md</code> · 详细逐条版 <code>docs/PT_问题_答复_影响功能_全量对照_20261112.md</code><br>
-  自证（0.7.3）：<code>validate_catalog.py</code> <b>137 项 PASS</b> · <code>run_tests.py</code> <b>265/265 PASS</b> · 已 push <code>origin/main</code>，CLEAN<br>
+  自证（0.8.0）：<code>validate_catalog.py</code> <b>160 项 PASS</b> · <code>run_tests.py</code> <b>286/286 PASS</b> · <code>node --test</code> <b>26/26 PASS</b> · 0 花费只读取证<br>
   未含任何 Key / 令牌 / 签名值 · 所有响应示例已脱敏
 </div>
 

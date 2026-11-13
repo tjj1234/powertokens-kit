@@ -32,7 +32,8 @@ except ImportError:
     raise
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from pt_gateway import TaskGateway, ApiError  # noqa: E402
+from pt_gateway import (TaskGateway, ApiError,  # noqa: E402
+                        account_query as _core_account_query)
 
 GW = TaskGateway()
 mcp = FastMCP("pt-gateway")
@@ -123,15 +124,19 @@ def task_status(task_id: str, wait: bool = False, timeout_s: int = 600) -> str:
 
 
 @mcp.tool()
-def account_query(action: str, start_date: str = "", end_date: str = "") -> str:
-    """账户 / 计费只读查询（与生成接口不同域，用裸 API key 鉴权）。action=balance|usage|logs|agreement。
+def account_query(action: str, start_date: str = "", end_date: str = "",
+                  record_id: str = "") -> str:
+    """账户 / 计费只读查询（2026-11-13 实测口径）。action=balance|usage|logs|agreement。
 
-    usage 可带 start_date/end_date(YYYY-MM-DD) 限定统计周期。返回 PT 原始 JSON（含 code/data）：
-    balance 给当前 Key 余额（credits）；usage 给按模型类型汇总的消耗；logs 给消费记录明细；
-    agreement 给资产库协议签署状态。只读，不扣费。
-    注意：若返回 401/403，可能该域要的是网页登录令牌而非 API Key（与生成接口的 Bearer 不同）。
+    凭证来自部署环境 PT_ACCESS_TOKEN（个人访问令牌 pt_live_，裸值、不带 Bearer）
+    与 PT_KEY_ID（数字）；**不是**生成接口的模型 API Key。只读，不扣费。
+    usage 需 start_date/end_date(YYYY-MM-DD)；logs 只能按 ID 精确查单条，
+    record_id 填 request_id（也可在 record_id 前加前缀由服务端 id_kind 决定）。
+    返回 PT 原始 JSON（含 code/data）；业务判断以响应体 code 为准（HTTP 200 也可能 code=500）。
     """
-    return _wrap(lambda: account_query(action, start_date=start_date or None, end_date=end_date or None))
+    return _wrap(lambda: _core_account_query(
+        action, start_date=start_date or None, end_date=end_date or None,
+        record_id=record_id or None))
 
 
 if __name__ == "__main__":

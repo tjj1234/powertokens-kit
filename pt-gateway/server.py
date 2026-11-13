@@ -114,7 +114,7 @@ class Handler(BaseHTTPRequestHandler):
                 "kind": kind, "count": len(models), "models": models,
                 "last_synced": REGISTRY.data.get("last_synced"),
             })
-        # ---- 账户 / 计费只读查询（与生成接口不同域，裸 key 鉴权）----
+        # ---- 账户 / 计费只读查询（0.8.0：裸 pt_live_ 令牌 + 数字 key_id，见 account_client.py）----
         if self.path.startswith("/account/balance"):
             try:
                 return self._send(200, account_query("balance"))
@@ -130,8 +130,15 @@ class Handler(BaseHTTPRequestHandler):
             except ApiError as e:
                 return self._send(502, {"error": str(e.message), "status": e.status})
         if self.path.startswith("/account/logs"):
+            from urllib.parse import urlparse, parse_qs
+            qs = parse_qs(urlparse(self.path).query)
+            rid = (qs.get("request_id") or [None])[0]
+            tid = (qs.get("task_id") or [None])[0]
+            cid = (qs.get("consume_id") or [None])[0]
+            id_kind = "request_id" if rid else ("task_id" if tid else "consume_id")
+            rec = rid or tid or cid
             try:
-                return self._send(200, account_query("logs"))
+                return self._send(200, account_query("logs", record_id=rec, id_kind=id_kind))
             except ApiError as e:
                 return self._send(502, {"error": str(e.message), "status": e.status})
         if self.path.startswith("/account/agreement"):

@@ -19,6 +19,122 @@
       "architecture": ["modality", "input_modalities", "output_modalities"],
       "optional": ["supported_parameters", "reasoning", "pricing"]
     },
+    "limits_probe": {
+      "_source": "models_api",
+      "_checked_at": "2026-11-13",
+      "date": "2026-11-13",
+      "endpoint": "GET https://api.powertokens.ai/v1/models",
+      "http": 200,
+      "cost_usd": 0,
+      "model_count": 77,
+      "field_union": [
+        "id",
+        "object",
+        "created",
+        "owned_by",
+        "name",
+        "supported_endpoint_types",
+        "architecture",
+        "supported_parameters",
+        "reasoning",
+        "pricing"
+      ],
+      "limit_like_field_carriers": 0,
+      "has_max_context_tokens": false,
+      "has_max_output_tokens": false,
+      "main_models": {
+        "glm-4.7": {
+          "endpoint_types": [
+            "anthropic",
+            "openai"
+          ],
+          "reasoning_effort": true,
+          "reasoning": {
+            "supported": true,
+            "mandatory": false,
+            "default_enabled": true
+          },
+          "web_search_options": false
+        },
+        "deepseek-v4-pro": {
+          "endpoint_types": [
+            "anthropic",
+            "openai"
+          ],
+          "reasoning_effort": true,
+          "reasoning": {
+            "supported": true,
+            "mandatory": false,
+            "default_enabled": true
+          },
+          "web_search_options": false
+        },
+        "qwen3.8-flash": {
+          "endpoint_types": [
+            "anthropic",
+            "openai",
+            "openai-response"
+          ],
+          "reasoning_effort": true,
+          "reasoning": {
+            "supported": true,
+            "mandatory": false,
+            "default_enabled": true
+          },
+          "web_search_options": true
+        },
+        "seed-2-0-pro-260328": {
+          "endpoint_types": [
+            "anthropic",
+            "openai",
+            "openai-response"
+          ],
+          "reasoning_effort": true,
+          "reasoning": {
+            "supported": true,
+            "mandatory": false,
+            "default_enabled": true
+          },
+          "web_search_options": false
+        },
+        "MiniMax-M3": {
+          "endpoint_types": [
+            "anthropic",
+            "openai",
+            "openai-response"
+          ],
+          "reasoning_effort": true,
+          "reasoning": {
+            "supported": true,
+            "mandatory": false,
+            "default_enabled": true
+          },
+          "web_search_options": false
+        },
+        "glm-5.2": {
+          "endpoint_types": [
+            "anthropic",
+            "openai"
+          ],
+          "reasoning_effort": true,
+          "reasoning": {
+            "supported": true,
+            "mandatory": false,
+            "default_enabled": true
+          },
+          "web_search_options": false
+        },
+        "mimo-v2.6-pro": {
+          "endpoint_types": [
+            "openai"
+          ],
+          "reasoning_effort": false,
+          "reasoning": null,
+          "web_search_options": false
+        }
+      },
+      "notes": "0 花费只读探测结论：7 个主力模型全部在本 Key 可见视图内；其中 6 个带 reasoning_effort 且 reasoning.default_enabled=true（不传参也会开思考），mimo-v2.6-pro 无 reasoning 字段。只有 qwen3.8-flash 带 web_search_options，而 catalog 里 glm-4.7 的 how_to_enable 仍是 tools:[{type:web_search}]，两者写法冲突且都未经真机验证，故本轮不改写 how_to_enable，登记为待实测项（SSOT §14）。/v1/models 完全没有上下文/输出上限字段，所以 limits 的两个子键只能保持 null，不能从该接口补值。"
+    },
     "capability_rules": {
       "generation_vs_understanding": "output_modalities 含 image/video/audio → 生成类，input_modalities 是素材输入；output 仅 text 且 input 含 image/video/audio/file → 理解类。判生成类看 output，判理解类看 input，不另加字段",
       "thinking": "reasoning.supported + supported_parameters 含 reasoning_effort；mandatory=false, default_enabled=true 表示不传参网关也会开思考，调用方须显式传 reasoning_effort 关闭（具体取值待与 relay 层对齐）",
@@ -817,9 +933,11 @@
         }
       },
       "limits": {
+        "max_context_tokens": null,
+        "max_output_tokens": null,
         "_source": "inferred",
-        "_checked_at": "2026-11-12",
-        "notes": "上下文/输出等上下限子字段的形状见新模板，全文未落地；按决策锁定稿 §4「字段结构一律不猜」，本轮只落结构占位与来源标注，不擅自补 max_context_tokens 等子键。待模板全文核对后一次补齐。"
+        "_checked_at": "2026-11-13",
+        "notes": "【0.8.0 结构补齐】键名按《powertokens-kit catalog 补充需求》§0 P0 指定（模板第 2 节）。数值一律 null：2026-11-13 真机 GET /v1/models（77 个模型）字段并集只有 id/object/created/owned_by/name/supported_endpoint_types/architecture/supported_parameters/reasoning/pricing，无任何上下文或输出上限字段（0 个 carrier），PT 2.0.0 文档亦未提供；按 A3「不知道填 null，不猜」处理。待 PT 给出上限或官方模型文档到位后补值并把 _source 升为 official/documented/verified。结构补齐不等于需求 1 完成，见 models_api_contract.limits_probe 与 SSOT §14。"
       },
       "tool_calling": {
         "verified": null,
@@ -1115,9 +1233,11 @@
         }
       },
       "limits": {
+        "max_context_tokens": null,
+        "max_output_tokens": null,
         "_source": "inferred",
-        "_checked_at": "2026-11-12",
-        "notes": "上下文/输出等上下限子字段的形状见新模板，全文未落地；按决策锁定稿 §4「字段结构一律不猜」，本轮只落结构占位与来源标注，不擅自补 max_context_tokens 等子键。待模板全文核对后一次补齐。"
+        "_checked_at": "2026-11-13",
+        "notes": "【0.8.0 结构补齐】键名按《powertokens-kit catalog 补充需求》§0 P0 指定（模板第 2 节）。数值一律 null：2026-11-13 真机 GET /v1/models（77 个模型）字段并集只有 id/object/created/owned_by/name/supported_endpoint_types/architecture/supported_parameters/reasoning/pricing，无任何上下文或输出上限字段（0 个 carrier），PT 2.0.0 文档亦未提供；按 A3「不知道填 null，不猜」处理。待 PT 给出上限或官方模型文档到位后补值并把 _source 升为 official/documented/verified。结构补齐不等于需求 1 完成，见 models_api_contract.limits_probe 与 SSOT §14。"
       },
       "tool_calling": {
         "verified": null,
@@ -1195,9 +1315,11 @@
         }
       },
       "limits": {
+        "max_context_tokens": null,
+        "max_output_tokens": null,
         "_source": "inferred",
-        "_checked_at": "2026-11-12",
-        "notes": "上下文/输出等上下限子字段的形状见新模板，全文未落地；按决策锁定稿 §4「字段结构一律不猜」，本轮只落结构占位与来源标注，不擅自补 max_context_tokens 等子键。待模板全文核对后一次补齐。"
+        "_checked_at": "2026-11-13",
+        "notes": "【0.8.0 结构补齐】键名按《powertokens-kit catalog 补充需求》§0 P0 指定（模板第 2 节）。数值一律 null：2026-11-13 真机 GET /v1/models（77 个模型）字段并集只有 id/object/created/owned_by/name/supported_endpoint_types/architecture/supported_parameters/reasoning/pricing，无任何上下文或输出上限字段（0 个 carrier），PT 2.0.0 文档亦未提供；按 A3「不知道填 null，不猜」处理。待 PT 给出上限或官方模型文档到位后补值并把 _source 升为 official/documented/verified。结构补齐不等于需求 1 完成，见 models_api_contract.limits_probe 与 SSOT §14。"
       },
       "tool_calling": {
         "verified": null,
@@ -1268,9 +1390,11 @@
         }
       },
       "limits": {
+        "max_context_tokens": null,
+        "max_output_tokens": null,
         "_source": "inferred",
-        "_checked_at": "2026-11-12",
-        "notes": "上下文/输出等上下限子字段的形状见新模板，全文未落地；按决策锁定稿 §4「字段结构一律不猜」，本轮只落结构占位与来源标注，不擅自补 max_context_tokens 等子键。待模板全文核对后一次补齐。"
+        "_checked_at": "2026-11-13",
+        "notes": "【0.8.0 结构补齐】键名按《powertokens-kit catalog 补充需求》§0 P0 指定（模板第 2 节）。数值一律 null：2026-11-13 真机 GET /v1/models（77 个模型）字段并集只有 id/object/created/owned_by/name/supported_endpoint_types/architecture/supported_parameters/reasoning/pricing，无任何上下文或输出上限字段（0 个 carrier），PT 2.0.0 文档亦未提供；按 A3「不知道填 null，不猜」处理。待 PT 给出上限或官方模型文档到位后补值并把 _source 升为 official/documented/verified。结构补齐不等于需求 1 完成，见 models_api_contract.limits_probe 与 SSOT §14。"
       },
       "tool_calling": {
         "verified": null,
@@ -1417,9 +1541,11 @@
         }
       },
       "limits": {
+        "max_context_tokens": null,
+        "max_output_tokens": null,
         "_source": "inferred",
-        "_checked_at": "2026-11-12",
-        "notes": "上下文/输出等上下限子字段的形状见新模板，全文未落地；按决策锁定稿 §4「字段结构一律不猜」，本轮只落结构占位与来源标注，不擅自补 max_context_tokens 等子键。待模板全文核对后一次补齐。"
+        "_checked_at": "2026-11-13",
+        "notes": "【0.8.0 结构补齐】键名按《powertokens-kit catalog 补充需求》§0 P0 指定（模板第 2 节）。数值一律 null：2026-11-13 真机 GET /v1/models（77 个模型）字段并集只有 id/object/created/owned_by/name/supported_endpoint_types/architecture/supported_parameters/reasoning/pricing，无任何上下文或输出上限字段（0 个 carrier），PT 2.0.0 文档亦未提供；按 A3「不知道填 null，不猜」处理。待 PT 给出上限或官方模型文档到位后补值并把 _source 升为 official/documented/verified。结构补齐不等于需求 1 完成，见 models_api_contract.limits_probe 与 SSOT §14。"
       },
       "tool_calling": {
         "verified": null,
@@ -1516,9 +1642,11 @@
         }
       },
       "limits": {
+        "max_context_tokens": null,
+        "max_output_tokens": null,
         "_source": "inferred",
-        "_checked_at": "2026-11-12",
-        "notes": "上下文/输出等上下限子字段的形状见新模板，全文未落地；按决策锁定稿 §4「字段结构一律不猜」，本轮只落结构占位与来源标注，不擅自补 max_context_tokens 等子键。待模板全文核对后一次补齐。"
+        "_checked_at": "2026-11-13",
+        "notes": "【0.8.0 结构补齐】键名按《powertokens-kit catalog 补充需求》§0 P0 指定（模板第 2 节）。数值一律 null：2026-11-13 真机 GET /v1/models（77 个模型）字段并集只有 id/object/created/owned_by/name/supported_endpoint_types/architecture/supported_parameters/reasoning/pricing，无任何上下文或输出上限字段（0 个 carrier），PT 2.0.0 文档亦未提供；按 A3「不知道填 null，不猜」处理。待 PT 给出上限或官方模型文档到位后补值并把 _source 升为 official/documented/verified。结构补齐不等于需求 1 完成，见 models_api_contract.limits_probe 与 SSOT §14。"
       },
       "tool_calling": {
         "verified": null,
@@ -1679,9 +1807,11 @@
         }
       },
       "limits": {
+        "max_context_tokens": null,
+        "max_output_tokens": null,
         "_source": "inferred",
-        "_checked_at": "2026-11-12",
-        "notes": "上下文/输出等上下限子字段的形状见新模板，全文未落地；按决策锁定稿 §4「字段结构一律不猜」，本轮只落结构占位与来源标注，不擅自补 max_context_tokens 等子键。待模板全文核对后一次补齐。"
+        "_checked_at": "2026-11-13",
+        "notes": "【0.8.0 结构补齐】键名按《powertokens-kit catalog 补充需求》§0 P0 指定（模板第 2 节）。数值一律 null：2026-11-13 真机 GET /v1/models（77 个模型）字段并集只有 id/object/created/owned_by/name/supported_endpoint_types/architecture/supported_parameters/reasoning/pricing，无任何上下文或输出上限字段（0 个 carrier），PT 2.0.0 文档亦未提供；按 A3「不知道填 null，不猜」处理。待 PT 给出上限或官方模型文档到位后补值并把 _source 升为 official/documented/verified。结构补齐不等于需求 1 完成，见 models_api_contract.limits_probe 与 SSOT §14。"
       },
       "tool_calling": {
         "verified": null,
@@ -2075,6 +2205,11 @@
     "_source": "product",
     "_checked_at": "2026-11-12",
     "purposes": {
+      "general": [
+        "qwen3.8-flash",
+        "glm-4.7",
+        "deepseek-v4-pro"
+      ],
       "agent": [
         "glm-4.7",
         "deepseek-v4-pro",
@@ -2084,6 +2219,16 @@
         "glm-4.7",
         "qwen3.8-flash",
         "seed-2-0-pro-260328"
+      ],
+      "long_report": [
+        "glm-5.2",
+        "MiniMax-M3",
+        "deepseek-v4-pro"
+      ],
+      "vision": [
+        "qwen3.8-flash",
+        "seed-2-0-pro-260328",
+        "MiniMax-M3"
       ]
     },
     "skip_rules": [
@@ -2092,7 +2237,7 @@
       "搜索用途且 works 或 returns_sources 为 false",
       "Key 无权使用该模型"
     ],
-    "notes": "A1：purposes 为按用途的有序候选列表，决定候选与顺序；routing.recommended 为无序标签，仅在 auto_policy 未覆盖的用途时兜底。第一阶段不要求 tool_calling.verified=true，列进 purposes 即为候选；null 不触发跳过（只有显式 false 才跳过）。用途键集合与列表元素形态待模板全文核对——本轮只落决策锁定稿明确出现的 agent / search 两种用途，未擅自扩展。"
+    "notes": "A1：purposes 为按用途的有序候选列表，决定候选与顺序；routing.recommended 为无序标签，仅在 auto_policy 未覆盖的用途时兜底。第一阶段不要求 tool_calling.verified=true，列进 purposes 即为候选；null 不触发跳过（只有显式 false 才跳过）。【0.8.0 补用途 2026-11-13】按《powertokens-kit catalog 补充需求》§0 P0 补齐 general / long_report / vision，与既有 agent / search 共 5 种；每用途 >= 2 候选且跨 >= 2 渠道。vision 三个候选均取自 capabilities.multimodal.vision === true 的模型。long_report 是产品侧候选顺序，**不宣称上下文长度**（limits 仍为 null，见 limits_probe）。列进 purposes 只代表产品认可为候选，不代表已实测；A1 跳过规则不变。配套字段模板全文仍未到位，本轮仅按需求正文已明确的键名/语义落地。"
   },
   "errors": {
     "rate_limited": {

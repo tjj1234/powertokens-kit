@@ -10,6 +10,11 @@ Consolidates **all** of PowerTokens' generation capabilities (image / video / se
 >    "Not in the list" does **not** mean off-board, so `sync()` no longer auto-delists.
 >    The gateway still does no permission gating (fail-open): PT's server errors are passed through transparently.
 > 2. PT **provides no** async task-cancel endpoint, so this gateway implements no cancel (no `/cancel` over HTTP, no cancel tool exposed over MCP).
+> 3. **0.8.0**: for Node.js consumers see `../node/` — a zero-dependency core reading the SAME
+>    `catalog.json` (`loadCatalog` / `selectCandidates` / `classifyError` / `retryDecision` /
+>    `reasoningParams`), plus `account-client.js`. Account queries moved to `account_client.py`:
+>    bare `pt_live_` (no Bearer), numeric `key_id`, response-body `code` is authoritative.
+>    Offline re-check: `python recheck.py --live-view <models.json>` (0 cost).
 
 > Key premise correction: PT's substrate is OneAPI transparent routing — **all** video / Seedance models already share
 > `POST /v1/videos` + `GET /v1/videos/{id}`; there is no "separate interface per vendor". What this service normalizes is

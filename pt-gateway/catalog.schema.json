@@ -108,7 +108,7 @@
         },
         "purposes": {
           "type": "object",
-          "description": "key = 用途名；value = 有序模型 ID 列表（本轮仅落 agent / search 两种用途）",
+          "description": "key = 用途名；value = 有序模型 ID 列表，>= 2 个且跨渠道。0.8.0 起覆盖 general / agent / search / long_report / vision 五种用途",
           "additionalProperties": {
             "type": "array",
             "minItems": 2,
@@ -192,17 +192,43 @@
     "models_api_contract": {
       "type": "object",
       "description": "GET /v1/models 官方结构化字段契约与影子对账观测（2026-11-13）。_source 恒为 models_api；记录字段口径、能力判定规则、视图范围与实测统计。不得当作计费单价或下架判定的真相源。",
-      "required": ["_source", "endpoint", "scope", "capability_rules"],
+      "required": [
+        "_source",
+        "endpoint",
+        "scope",
+        "capability_rules"
+      ],
       "properties": {
-        "_source": {"$ref": "#/definitions/source"},
-        "_checked_at": {"type": ["string", "null"]},
-        "endpoint": {"type": "string"},
-        "scope": {"type": "string"},
-        "compatibility": {"type": "string"},
-        "fields": {"type": "object"},
-        "capability_rules": {"type": "object"},
-        "not_a_truth_source_for": {"type": "array"},
-        "observed": {"type": "object"}
+        "_source": {
+          "$ref": "#/definitions/source"
+        },
+        "_checked_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "endpoint": {
+          "type": "string"
+        },
+        "scope": {
+          "type": "string"
+        },
+        "compatibility": {
+          "type": "string"
+        },
+        "fields": {
+          "type": "object"
+        },
+        "capability_rules": {
+          "type": "object"
+        },
+        "not_a_truth_source_for": {
+          "type": "array"
+        },
+        "observed": {
+          "type": "object"
+        }
       }
     }
   },
@@ -248,7 +274,7 @@
     },
     "p0Group": {
       "type": "object",
-      "description": "通用 P0 组；每组带 _source / _checked_at。limits 的子字段形状待模板全文核对，本轮不擅自补子键。",
+      "description": "通用 P0 组；每组带 _source / _checked_at。limits 的 max_context_tokens / max_output_tokens 子键形状来自补充需求 §0，值允许 null（无官方来源时不编数值）。",
       "required": [
         "_source",
         "_checked_at"
@@ -262,6 +288,20 @@
         },
         "notes": {
           "type": "string"
+        },
+        "max_context_tokens": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "上下文窗口上限（token）；无官方来源时为 null"
+        },
+        "max_output_tokens": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "单次最大输出（token）；无官方来源时为 null"
         }
       }
     },

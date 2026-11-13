@@ -6,6 +6,39 @@
 
 ---
 
+## 0.8.0 — 2026-11-13 · Node 核心包 / 账户客户端 / catalog 补充需求 P0
+
+**范围**：按《powertokens-kit catalog 补充需求》§0 的 P0 清单落地，逐条固化进 SSOT §14。
+
+- **新增 Node 核心包 `node/`**（零依赖、不发请求，与 Python 读同一份 `catalog.json`）：
+  `loadCatalog` / `selectCandidates`（`auto_policy` 4 条跳过规则）/ `classifyError` /
+  `retryDecision`（`retry_policy`）/ `reasoningParams`；关闭思考的取值未定，返回
+  `needs_confirmation=true` 而不猜字符串。`node --test` **26/26 PASS**。
+- **账户客户端按实测结论重写**：新增 `pt-gateway/account_client.py` 与 `node/account-client.js`，
+  裸 `pt_live_`（不带 Bearer）、数字 `key_id`、业务判断以响应体 `code` 为准、
+  `logs/query` 只按 ID 精查、`estimate` 拦截 chat、credits 原样、不保存凭证；
+  `account_query` 改为兼容委托层，`pt_video.py` 生成链路 0 行改动。
+  顺手修掉 `mcp.py` 中 `account_query` 自调用导致无限递归的既有 bug。
+- **catalog 数据**：`auto_policy.purposes` 补 `general` / `long_report` / `vision`（共 5 种，
+  每用途 ≥2 候选且跨渠道，vision 候选均校验 `vision===true`）；7 主力模型 `limits` 补
+  `max_context_tokens` / `max_output_tokens` 子键；新增 `models_api_contract.limits_probe`。
+  **86 个模型能力档案与价格一条未改，schema 保持 2。**
+- **一键复核 `pt-gateway/recheck.py`**：默认离线 0 花费影子对账，报告写
+  `probe-reports/日期.json`，不覆盖 `verified` / `official` / `documented`；
+  `--live` 必须显式给 `--max-usd > 0`。本轮只跑离线（0 花费）。
+- **CI**：新增 `validate_catalog.py` 与 `node --test` 两步，仍不跑 live、不上传凭证。
+- **文档**：SSOT §14、看板 v2.3、详细版 v1.3、`node/README.md`、双语 README 补链。
+
+**验收**：`validate_catalog.py` **160 项全 PASS**、`run_tests.py` **286/286 PASS**、
+`node --test` **26/26 PASS**，退出码全 0。唯一线上调用是一次免费只读
+`GET /v1/models`（77 模型，0 花费）。
+
+**未完成（如实登记，见 SSOT §14.5）**：① 配套字段模板全文缺失；② `limits` 数值无官方来源
+（`/v1/models` 77 个模型 0 个上下限字段 carrier），只能保持 `null`；③ 7 主力模型
+`tool_calling.verified` / `works` / `returns_sources` 需真机调用，本轮按安全边界未跑 live。
+
+---
+
 ## 0.7.3 — 2026-11-13 · `/v1/models` 上线：F1 口径作废与字段契约落地
 
 **范围**：PT 丰富 `GET /v1/models` 后，两批书面答复（6 问 + 6 答）固化进 SSOT §13；

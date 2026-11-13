@@ -772,31 +772,45 @@ def _cmd_probe_cap(model, persist=False, sweep_all=False):
     print(json.dumps(res, ensure_ascii=False, indent=2))
 
 
-# ---------- 账户 / 计费只读查询（与资产库同域，裸 key 鉴权；复用引擎 _account_call）----------
-def account_query(action, key=None, start_date=None, end_date=None):
+# ---------- 账户 / 计费只读查询（2026-11-13 真机实测口径；兼容层）----------
+def account_query(action, key=None, start_date=None, end_date=None,
+                  record_id=None, id_kind="request_id"):
     """账户 / 计费只读查询。action ∈ balance | usage | logs | agreement。
 
-    这些接口在 powertokens.ai/api 域（与生成接口 api.powertokens.ai 不同域），
-    鉴权用裸 key（与资产上传一致），不是 Bearer。返回 PT 原始 JSON（含 code/data）。
-    失败抛 ApiError（401=缺 Key；若返回 401/403 可能该域要网页登录令牌而非 API Key）。
+    0.8.0 起委托 `account_client.AccountClient`，不再复用 pt_video._account_call：
+      - 凭证是**个人访问令牌 pt_live_**（裸值，不带 Bearer），不是模型 API Key；
+        由调用方通过 PT_ACCESS_TOKEN / PT_KEY_ID 环境变量传入，客户端不落盘。
+      - balance / usage 必须带数字 key_id；usage 还要 start_date + end_date。
+      - logs 只能按 request_id / task_id / consume_id 精确查单条，不是列表。
+    旧的 `key` 参数保留仅为签名兼容：若传了值，会当作 pt_live_ 令牌使用
+    （调用方需自行保证凭证类型正确）。本函数返回 PT 原始 JSON 以兼容既有
+    HTTP / MCP 调用方；需要统一输出 {ok, code, data, error...} 请直接用 AccountClient。
+    失败抛 ApiError（与 server.py 既有契约一致）。
     """
-    k = key or resolve_key()
-    if not k:
-        raise ApiError(401, "缺少 API Key：设置环境变量 POWERTOKENS_API_KEY 或 config.json")
+    try:
+        from account_client import AccountClient
+    except ImportError:                                  # pragma: no cover - package 导入回退
+        from .account_client import AccountClient       # type: ignore
+
+    client = AccountClient.from_env()
+    if key and not client.token:
+        client.token = key
     if action == "balance":
-        return pt_video._account_call("GET", pt_video.ACCOUNT_BALANCE, k)
-    if action == "logs":
-        return pt_video._account_call("GET", pt_video.ACCOUNT_LOGS, k)
-    if action == "agreement":
-        return pt_video._account_call("GET", pt_video.ACCOUNT_AGREEMENT, k)
-    if action == "usage":
-        params = {}
-        if start_date:
-            params["start_date"] = start_date
-        if end_date:
-            params["end_date"] = end_date
-        return pt_video._account_call("GET", pt_video.ACCOUNT_USAGE, k, params=params)
-    raise ApiError(0, f"unknown account action: {action}")
+        res = client.get_balance()
+    elif action == "usage":
+        res = client.list_usage_records(start_date, end_date)
+    elif action == "logs":
+        kwargs = {id_kind: record_id} if record_id else {}
+        res = client.get_usage_record(**kwargs)
+    elif action == "agreement":
+        res = client.get_agreement_status()
+    else:
+        raise ApiError(0, f"unknown account action: {action}")
+    if not res["ok"]:
+        err = res.get("error") or {}
+        raise ApiError(err.get("http_status") or 400,
+                       "[%s] %s" % (err.get("category"), err.get("message")))
+    return res.get("raw") or {}
 
 
 if __name__ == "__main__":
