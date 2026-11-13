@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>PT 项目资料总集 · 完整版 v2.0 · 2026-11-12</title>
+<title>PT 项目资料总集 · 完整版 v2.2 · 2026-11-13</title>
 <style>
   :root{
     --bg:#f7f8fa; --card:#ffffff; --ink:#1f2937; --muted:#6b7280;
@@ -105,23 +105,24 @@
 <div class="wrap">
 
 <header>
-  <h1>PT 项目资料总集 <span class="badge">完整版 v2.0 · 已发布</span><span class="badge b">12/12 全答</span></h1>
+  <h1>PT 项目资料总集 <span class="badge">完整版 v2.2 · 已发布</span><span class="badge b">12/12 全答</span><span class="badge b">§13 已固化</span></h1>
   <div class="sub">2026-11-12 · 仓库 <code>tjj1234/powertokens-kit</code> ·
     <b>本版把 v1.0「开工前决策摘要」补全为全量资料</b>：逐条问答、问题→影响功能映射、PT 原表、冲突裁决、真机结果、落地清单、文档索引<br>
     主文档 <code>docs/PT_项目资料总集_20261112.md</code>（SSOT） ·
     <b>详细逐条版 <code>docs/PT_问题_答复_影响功能_全量对照_20261112.md</code></b> ·
-    发布报告 <code>docs/PT_发布与测试报告_20261112.html</code></div>
+    发布报告 <code>docs/PT_发布与测试报告_20261112.html</code><br>
+    <b>v2.2（2026-11-13 下午）</b>：PT 丰富 <code>GET /v1/models</code> 后两批答复已固化进 <a class="doc" href="PT_项目资料总集_20261112.md">SSOT §13</a>，真机影子对账推翻 <b>FIXLIST F1</b> 并修正 <code>sync()</code> 下架语义 → 见本看板 <a href="#s11">§11</a></div>
 </header>
 
 <div class="kpis">
   <div class="kpi g"><div class="n">12 / 12</div><div class="l">发给 PT 的 10 必问 + 2 条件项全答</div></div>
   <div class="kpi"><div class="n">Q8 + R11 + S3</div><div class="l">22 个编号问题全部闭环</div></div>
   <div class="kpi v"><div class="n">3 条</div><div class="l">真机硬结论推翻/收紧书面口径</div></div>
-  <div class="kpi t"><div class="n">260 / 260</div><div class="l">离线测试 PASS · 校验器 133 项</div></div>
+  <div class="kpi t"><div class="n">265 / 265</div><div class="l">离线测试 PASS · 校验器 137 项（0.7.3）</div></div>
   <div class="kpi g"><div class="n">8 + 5</div><div class="l">errors 订正 8 处 · 新增字段组 5 组</div></div>
   <div class="kpi a"><div class="n">C1 已裁决</div><div class="l">2026-11-13 真机：账户域裸值鉴权</div></div>
-  <div class="kpi r"><div class="n">0 行</div><div class="l">生成链路功能代码改动</div></div>
-  <div class="kpi b"><div class="n">3 批</div><div class="l">G1–G6 / 0.7.1 / 0.7.2 已 push · CLEAN</div></div>
+  <div class="kpi r"><div class="n">F1 作废</div><div class="l">可见视图 ≠ 全量清单 · sync() 已修</div></div>
+  <div class="kpi b"><div class="n">4 批</div><div class="l">G1–G6 / 0.7.1 / 0.7.2 / 0.7.3 已 push</div></div>
 </div>
 
 <div class="good" style="margin:14px 0">
@@ -134,11 +135,25 @@
   C4 视频侧与 R1 异步因最便宜视频需 1000 credits、余额仅 80 credits，<b>如实保留未裁决</b>。
 </div>
 
+<div class="good" style="margin:14px 0;border-left-color:#8b5cf6">
+  <b>v2.2 · 2026-11-13 下午：<code>/v1/models</code> 结构化字段上线</b>：PT 给出返回样例（89 条）与六能力判定口径，
+  经我方 6 问 + PT 6 条书面答复闭合；随后用两枚 Key 各拉一次真实接口做<b>影子对账（免费只读、0 花费）</b>：
+  线上返回 <b>77 个模型</b>，<code>supported_parameters</code> 56 / <code>reasoning</code> 25 / <code>pricing</code> 13。
+  <b>最大影响是 F1 作废</b> —— 真实响应是「按 Key 限额 → 分组启用 → 定价规则与名单双重过滤」的<b>可见视图</b>，
+  「不在列表」≠ 下架。证据：77 ⊂ 89 样例、catalog 15 个模型不在本视图（含 10 个 chat），
+  而 <code>kling-v2-1-master</code> 同日 <code>estimate</code> 仍可计价 1400 credits。
+  旧 <code>sync()</code> 会把这些「本 Key 暂时看不到」的可用模型永久误踢，属静默故障，已改为只标
+  <code>not_in_key_view</code>、下架须显式确认。<b>本轮动了代码与 catalog 数据</b>（前两轮是纯文档）：
+  <code>_source</code> 8→9 值、新增 <code>models_api_contract</code>，86 个模型能力档案一条未改。
+  事实全文见 <a class="doc" href="PT_项目资料总集_20261112.md">SSOT §13</a>，工程展开见
+  <code>pt-gateway/FIXLIST.md</code> §9，本看板 <a href="#s11">§11</a> 为速览。
+</div>
+
 <nav>
   <a href="#s0">0 补漏说明</a><a href="#s1">1 六批时间线</a><a href="#s2">2 编号全对账</a>
   <a href="#s3">3 逐批答复</a><a href="#s4">4 问题→影响功能</a><a href="#s5">5 D4 正式答复</a>
   <a href="#s6">6 冲突裁决</a><a href="#s7">7 真机 T0–T8</a><a href="#s8">8 落地清单</a>
-  <a href="#s9">9 文档索引</a><a href="#s10">10 未决项</a>
+  <a href="#s9">9 文档索引</a><a href="#s10">10 未决项</a><a href="#s11">11 /v1/models 上线</a>
 </nav>
 
 <section id="s0">
@@ -395,7 +410,7 @@
   <div class="grid2">
     <div class="box b"><h3><a class="doc" href="PT_项目资料总集_20261112.md">PT_项目资料总集_20261112.md</a> · SSOT</h3><div class="sm">事实与口径<b>唯一入口</b>。§2 事实卡 · §3 冲突 9 处 · §4 编号对账 · §6 开工清单 · §10 执行回写。<b>改代码前先看这份。</b></div></div>
     <div class="box v"><h3><a class="doc" href="PT_问题_答复_影响功能_全量对照_20261112.md">PT_问题_答复_影响功能_全量对照_20261112.md</a> · 本轮新增</h3><div class="sm"><b>详细逐条版</b>：Q/R/S 与 10+2 逐条问答、<b>§3 问题→影响功能总映射</b>、§4 PT 原表（9 行矩阵 / 8 行对比表 / Q8 七行 / 12 条口述）、§8 文档全量索引、§10 补漏清单。</div></div>
-    <div class="box t"><h3>本文件 · 完整版看板 v2.0</h3><div class="sm">10 节 · 六批时间线 · 22 项编号对账 · 影响功能筛选 · D4 逐条 · 冲突裁决 · T0–T8 · 落地清单 · 文档索引。<b>v1.0 为开工前决策摘要，保留在 git 历史。</b></div></div>
+    <div class="box t"><h3>本文件 · 完整版看板 v2.2</h3><div class="sm">11 节 · 六批时间线 · 22 项编号对账 · 影响功能筛选 · D4 逐条 · 冲突裁决 · T0–T9 · 落地清单 · 文档索引 · <b>§11 /v1/models 上线与 F1 作废</b>。<b>v1.0 为开工前决策摘要，保留在 git 历史。</b></div></div>
     <div class="box g"><h3><a class="doc" href="PT_发布与测试报告_20261112.html">PT_发布与测试报告_20261112.html</a></h3><div class="sm">G1→G6 时间线、T0–T8 逐项、三条真机裁决、改动清单与验收、发布边界、遗留项。</div></div>
   </div>
   <h3>9.2 审计轨迹与逐批看板</h3>
@@ -431,6 +446,7 @@
     <tr><td>最终事实口径</td><td><a class="doc" href="PT_项目资料总集_20261112.md">SSOT §2</a></td><td>本看板 §2 / §6</td></tr>
     <tr><td>真机测出什么</td><td><a class="doc" href="PT_发布与测试报告_20261112.html">发布报告</a> / SSOT §10.2</td><td>本看板 §7</td></tr>
     <tr><td>最终改了哪些字段</td><td>SSOT §10.1 / 本看板 §8</td><td><code>CHANGELOG.md</code> 0.7.0</td></tr>
+    <tr><td>官方 <code>/v1/models</code> 字段契约</td><td><b>SSOT §13</b> / <code>catalog.json:models_api_contract</code></td><td>本看板 §11 · <code>pt-gateway/FIXLIST.md</code> §9</td></tr>
     <tr><td>测试跑没跑、结果如何</td><td><code>tests/reports/latest.md</code></td><td>git log</td></tr>
   </table>
 </section>
@@ -448,16 +464,87 @@
     <tr><td><b>N3 / B4 / B5</b></td><td>账户客户端改造（<b>改为只换凭证源，不用加 Bearer</b>）+ 分页 / 时区 / 二次解析</td><td><span class="tag t-blue">🔄 后置</span></td><td>SSOT §12.2 已缩小改造范围；logs 按 ID 精查（§12.5 N1）</td></tr>
     <tr><td><b>P2 pricing</b></td><td>catalog 价格字段；<code>limits</code> 子字段形状</td><td><span class="tag t-void">🔄 P2</span></td><td>需模板全文</td></tr>
     <tr><td><b>flaky</b></td><td><code>test_contract_http</code> 回环服务偶发断连</td><td><span class="tag t-void">🔄 既有</span></td><td>与本轮改动无关</td></tr>
-    <tr><td><b>本轮文档</b></td><td>看板 v2.1 + SSOT §12 + 详细版 v1.1 + CHANGELOG 0.7.2，<b>已提交并推送 <code>origin/main</code></b></td><td><span class="tag t-ok">✅ 已完成</span></td><td>纯文档改动；commit 号以 <code>git log -1 --oneline</code> 为准</td></tr>
+    <tr><td><b>U1–U6</b></td><td><code>dola-seedream</code> 输出模态冲突 / 5 个 vision 归属 / 20 个 <code>web_search=conditional</code> / <code>reasoning_effort</code> 关闭取值 / <code>thinking_param</code> 收敛 / 无定价规则模型是否入列</td><td><span class="tag t-part">🔬 本轮新增</span></td><td>详见 <a href="#s11">§11 未决表</a> 与 SSOT §13.8</td></tr>
+    <tr><td><b>本轮落地</b></td><td>看板 v2.2 + SSOT §13 + 详细版 v1.2 + CHANGELOG 0.7.3 + <b>代码/catalog 修正</b>，已提交并推送 <code>origin/main</code></td><td><span class="tag t-ok">✅ 已完成</span></td><td>137 项 / 265-265 全绿；commit 号以 <code>git log -1 --oneline</code> 为准</td></tr>
   </table></div>
-  <div class="good"><b>结论</b>：向 PT 提问这条线已收口（12/12）；G1–G6 全部完成并发布；2026-11-13 又用真实凭证裁掉 C1、验成 T6，并登记 6 条书面→实测偏差。剩下的是「需额度的实测（C4 视频侧 / R1 异步）」与「按决策后置的功能」，<b>都不是资料缺口</b>。本轮补齐的是资料组织与事实裁决，不是新猜测。</div>
+  <div class="good"><b>结论</b>：向 PT 提问这条线已收口（12/12）；G1–G6 全部完成并发布；2026-11-13 上午用真实凭证裁掉 C1、验成 T6，下午又抓到 <code>/v1/models</code> 上线并作废 F1（见 <a href="#s11">§11</a>）。剩下的是「需额度的实测（C4 视频侧 / R1 异步）」「官方字段待裁决项 U1–U6」与「按决策后置的功能」，<b>都不是资料缺口</b>。</div>
+</section>
+
+<section id="s11">
+  <h2 class="v">11. <code>/v1/models</code> 上线：两批答复、影子对账与 F1 作废 <span class="tag t-ok" style="margin-left:8px">2026-11-13 · 0.7.3</span></h2>
+  <div class="h2sub">事实全文 <a class="doc" href="PT_项目资料总集_20261112.md">SSOT §13</a> · 工程展开 <code>pt-gateway/FIXLIST.md</code> §9 · 字段契约 <code>catalog.json:models_api_contract</code></div>
+
+  <div class="grid3">
+    <div class="box a"><h3>① 上线了什么</h3><div class="sm">
+      每个模型新增 <code>supported_endpoint_types</code> / <code>architecture{modality,input_modalities,output_modalities}</code>，
+      可选 <code>supported_parameters</code> / <code>reasoning</code> / <code>pricing</code>（均 <code>omitempty</code>）。
+      真机 77 个模型覆盖 <b>56 / 25 / 13</b>；样例（89 条）里 <code>supported_parameters</code> 是 <b>0</b>。
+    </div></div>
+    <div class="box b"><h3>② 两批书面答复</h3><div class="sm">
+      我方 <b>6 问</b>（样例字段、模态语义、pricing 口径、89 是否全量、兼容性、reasoning 对应）→
+      PT <b>6 答</b>全部闭合。最关键：生成类看 <code>output_modalities</code>、理解类看 <code>input_modalities</code>；
+      <code>pricing</code> 其余字段只匹配 OpenRouter ID、<b>不是计费真相源</b>（撤回价格对账设想）。
+    </div></div>
+    <div class="box v"><h3>③ F1 作废</h3><div class="sm">
+      真实响应是 <b>Key/分组可见视图</b>，不是平台全量清单。「不在列表」至少有三种解释：
+      本 Key 限额 / 分组未启用 / 无定价规则或未列名单。<b>不恢复已删的双层架构与 fail-closed</b>——服务端返回的是单个已过滤列表。
+    </div></div>
+  </div>
+
+  <h3>11.1 T9 影子对账：证据 → 结论</h3>
+  <div class="scroll"><table>
+    <tr><th style="width:22%">证据</th><th style="width:44%">实测</th><th>结论</th></tr>
+    <tr><td>双 Key 各拉一次</td><td>两枚生成域 Key 均 HTTP 200 / <b>77 个</b>，差集 <code>only_a=0, only_b=0</code></td><td>同账号同分组视图一致；<b>不能</b>据此证伪 PT 第 4 条（分组是账号级配置）</td></tr>
+    <tr><td>77 vs 89 样例</td><td><code>only_live=0</code>、<code>only_sample=12</code> → <b>live 是样例子集</b></td><td>列表是视图而非全量；样例是跨分组文档片段，不能当契约全文</td></tr>
+    <tr><td>77 vs catalog 86</td><td><code>only_live=6</code>、<code>only_catalog=15</code>（含 <b>10 个 chat</b>）、<code>both=71</code></td><td>15 个 catalog 模型本视图不可见</td></tr>
+    <tr><td>可计价却不在列表</td><td><code>kling-v2-1-master</code> 不在 live / 不在样例，同日账户域 <code>estimate</code> 仍算出 <b>1400 credits</b></td><td><b>「不在列表」≠ 下架</b>，旧逻辑存在真实误踢</td></tr>
+    <tr><td>误踢链路</td><td>旧 <code>sync()</code> → <code>delisted=true, enabled=false</code> → <code>enabled_async()</code> 排除 → <code>auto_select()</code> 选不到 → <code>auto_policy.skip_rules</code> 踢候选</td><td><b>静默故障</b>，本轮修复</td></tr>
+  </table></div>
+  <div class="note"><b>判读克制</b>：证伪 F1 的是「77 ⊂ 89」+「可计价却不可见」，不是「同账号内不同 Key 一定不同」。PT 的过滤发生在服务端单列表，客户端不需要双层架构。</div>
+
+  <h3>11.2 字段覆盖与六能力验证（77 个模型）</h3>
+  <div class="scroll"><table>
+    <tr><th style="width:20%">项</th><th style="width:46%">实测</th><th>与 catalog 的关系</th></tr>
+    <tr><td>必有字段</td><td><code>id / object / created / owned_by / name / supported_endpoint_types / architecture</code>（77/77）</td><td><code>list_key_models()</code> 只取 <code>data[].id</code> → <b>L0 零影响</b></td></tr>
+    <tr><td><code>supported_parameters</code></td><td>56 个；键含 <code>max_tokens / temperature / … / tools</code>，<code>reasoning</code> 与 <code>reasoning_effort</code> 各 25、<code>web_search_options</code> 6</td><td>截图六能力判定可用；字段可整体缺席，解析需兜底</td></tr>
+    <tr><td><code>reasoning</code></td><td>25 个全为 <code>{supported:true, mandatory:false, default_enabled:true}</code></td><td>不传参也开思考，<b>Agent 成本/延迟要按默认开估</b></td></tr>
+    <tr><td><code>pricing.web_search</code></td><td>6 个 qwen3.x 全为 <code>"0"</code>（免费），与 <code>web_search_options</code> 完全同一组</td><td>catalog 26 个 <code>conditional</code> 只确认 6 个，其余 20 个不能判 false</td></tr>
+    <tr><td>生成 / 理解区分</td><td>image 输入 27 = 理解类 16（<code>output=["text"]</code>）+ 生成类 11（<b>11/11 命中</b>）</td><td>PT 规则可用，固化进 <code>models_api_contract.capability_rules</code></td></tr>
+    <tr><td>OCR / 文档</td><td><code>input_modalities</code> 含 <code>file</code> 仅 1 个 <code>deepseek-flash</code></td><td>无专用 OCR，仍按「未实测」口径，未改 <code>capability_gaps.ocr</code></td></tr>
+    <tr><td>单点冲突</td><td><code>dola-seedream-5-0-pro-260628</code> 上线后仍是 <code>output:["text"]</code> + <code>endpoint:["openai"]</code>，但 catalog 是 <code>kind=image</code></td><td><span class="tag t-part">⚠️ 不是样例笔误</span> 需回问 PT</td></tr>
+  </table></div>
+
+  <h3>11.3 本轮落地（0.7.3 · 动了代码与 catalog）</h3>
+  <div class="scroll"><table>
+    <tr><th style="width:18%">类别</th><th style="width:46%">改动</th><th>说明</th></tr>
+    <tr><td>文档口径</td><td><code>FIXLIST.md</code> 新增 §9 并作废 F1、双语 README 共 20 处、<code>pt_gateway.py</code> / <code>mcp.py</code> / <code>pt_video.py</code> 注释</td><td>合计约 28 处；<code>pt_video.py</code> 原「反映 Key 额度」反而是对的，PT 答复站这边</td></tr>
+    <tr><td>代码</td><td><code>sync()</code> 新增 <code>not_in_key_view</code> / <code>confirmed_delisted</code>，不再自动 <code>delisted</code>；新增 <code>mark_delisted(ids, reason)</code> 作唯一显式下架入口</td><td>下架须跨 Key 复核或 PT 公告；<code>fail-open</code> 决策不变</td></tr>
+    <tr><td>数据</td><td><code>catalog.json</code> 新增顶层 <code>models_api_contract</code>（<code>_source=models_api</code>）、<code>note</code> 订正、<code>updated</code> → 2026-11-13</td><td><b>86 个模型 <code>capabilities</code> 一条未改</b>，不批量回填</td></tr>
+    <tr><td>A5 决策变更</td><td><code>_source</code> 8 → <b>9 值</b>；三道守门员同步：schema / validator / <code>test_unit_catalog.py</code></td><td>validator +3 断言、单测 +1 用例</td></tr>
+    <tr><td>测试</td><td><code>test_unit_registry.py</code> 旧「消失即下架」改新语义 + 5 条回归；<code>test_unit_gateway.py</code> +2 断言</td><td><b>137 项 / 265-265 PASS</b>，退出码 0</td></tr>
+    <tr><td>资料</td><td>SSOT §13、看板 v2.2、详细版 v1.2、CHANGELOG 0.7.3</td><td>两批答复逐条固化，历史原文不改写</td></tr>
+  </table></div>
+
+  <h3>11.4 未决项</h3>
+  <div class="scroll"><table>
+    <tr><th style="width:8%">#</th><th style="width:56%">项</th><th>前置条件</th></tr>
+    <tr><td>U1</td><td><code>dola-seedream-5-0-pro-260628</code> 输出模态 / endpoint 与 <code>kind=image</code> 冲突</td><td>回问 PT</td></tr>
+    <tr><td>U2</td><td>5 个 MiniMax / <code>qwen3.7-max</code> 的 <code>vision</code> 归属</td><td>真机抽样或 PT 确认</td></tr>
+    <tr><td>U3</td><td>20 个 <code>web_search=conditional</code> 是否真支持</td><td>真机抽样</td></tr>
+    <tr><td>U4 / U5</td><td><code>reasoning_effort</code> 关闭取值、<code>thinking_param</code> 7 种写法收敛</td><td>PT / relay 侧答复；catalog 不写死</td></tr>
+    <tr><td>U6</td><td>「可调用但无定价规则」是否会被 <code>HasPricingRuleCandidateForModel</code> 挡在列表外</td><td>回问 PT</td></tr>
+    <tr><td>U7 / U8</td><td>C4 视频侧 / R1 异步（需 ≥1000 credits，当前 80）；账户客户端 B4/B5/N3</td><td>额度 / 按既有决策后置</td></tr>
+  </table></div>
+
+  <div class="good"><b>边界</b>：两枚 Key 只用于各一次免费只读 <code>GET /v1/models</code>，<b>未跑 <code>sync()</code> 写注册表、未调任何计费端点，花费 0</b>；
+  凭证只在内存 / 本机临时文件，用完删除，未入库、输出脱敏。影子对账产物只用于本章与 <code>models_api_contract.observed</code>，不是运行时数据。</div>
 </section>
 
 <div class="foot">
-  PT 项目资料总集看板 <b>v2.1 完整版</b> · 2026-11-12 建 / 2026-11-13 账户域实测回写 ·
+  PT 项目资料总集看板 <b>v2.2 完整版</b> · 2026-11-12 建 / 11-13 账户域实测 / 11-13 下午 <code>/v1/models</code> 上线回写 ·
   v1.0 为开工前决策摘要版（7 节 / 264 行），保留于 git 历史<br>
   SSOT <code>docs/PT_项目资料总集_20261112.md</code> · 详细逐条版 <code>docs/PT_问题_答复_影响功能_全量对照_20261112.md</code><br>
-  自证：<code>validate_catalog.py</code> 133 项 PASS · <code>run_tests.py</code> 260/260 PASS · commit <code>4ce26f4</code> 已 push<br>
+  自证（0.7.3）：<code>validate_catalog.py</code> <b>137 项 PASS</b> · <code>run_tests.py</code> <b>265/265 PASS</b> · 已 push <code>origin/main</code>，CLEAN<br>
   未含任何 Key / 令牌 / 签名值 · 所有响应示例已脱敏
 </div>
 

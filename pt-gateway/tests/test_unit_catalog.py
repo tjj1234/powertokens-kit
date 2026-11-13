@@ -265,10 +265,11 @@ class TestChatCapabilitiesIntegrity(unittest.TestCase):
     # 取值域：已支持 / 不支持 / 需显式传参且依赖上游白名单 / 未知
     CAP_VALUES = (True, False, "conditional", None)
     VALID_CHANNELS = ("ali", "byteplus", "zhipu", "deepseek", "minimax", "mimo")
-    # A5：catalog v2 统一 8 值。product 仅用于顶层 auto_policy；
+    # A5：catalog v2 统一 9 值（2026-11-13 增 models_api）。product 仅用于顶层 auto_policy；
     # documented / inferred / configured / verified(unmapped) 的语义见 catalog.schema.json 与 README §21.1。
     VALID_SOURCE = ("official", "documented", "verified", "official+verified",
-                    "inferred", "configured", "verified(unmapped)", "product")
+                    "inferred", "configured", "verified(unmapped)", "product",
+                    "models_api")
     # 官方 §4 未列入清单、因此不推断（vision 允许保持 None）的模型白名单
     MM_UNKNOWN_ALLOWED = {"qwen3-coder-plus"}
 
@@ -367,8 +368,8 @@ class TestCatalogV2Integrity(unittest.TestCase):
     ERROR_KEYS = {"rate_limited", "upstream_error", "timeout", "auth_invalid",
                   "insufficient_balance", "model_unavailable", "param_unsupported",
                   "content_filtered", "context_too_long"}
-    SOURCE_8 = {"official", "documented", "verified", "official+verified",
-                "inferred", "configured", "verified(unmapped)", "product"}
+    SOURCE_9 = {"official", "documented", "verified", "official+verified",
+                "inferred", "configured", "verified(unmapped)", "product", "models_api"}
     V2_SECTIONS = ("currency", "auto_policy", "errors", "capability_gaps")
 
     @classmethod
@@ -389,10 +390,23 @@ class TestCatalogV2Integrity(unittest.TestCase):
         for sec in self.V2_SECTIONS:
             self.assertIsInstance(self.data.get(sec), dict, "缺顶层节 %s" % sec)
 
-    def test_source_enum_is_exactly_eight_values(self):
+    def test_source_enum_is_exactly_nine_values(self):
         enum = set(self.schema["definitions"]["source"]["enum"])
-        self.assertEqual(self.SOURCE_8, enum)
-        self.assertEqual(self.SOURCE_8, set(TestChatCapabilitiesIntegrity.VALID_SOURCE))
+        self.assertEqual(self.SOURCE_9, enum)
+        self.assertEqual(self.SOURCE_9, set(TestChatCapabilitiesIntegrity.VALID_SOURCE))
+
+    def test_models_api_contract_is_declared(self):
+        """2026-11-13：官方 /v1/models 字段契约落地，防止 F1 口径被改回「全量清单」。"""
+        c = self.data.get("models_api_contract")
+        self.assertIsInstance(c, dict)
+        self.assertEqual("models_api", c.get("_source"))
+        self.assertIn("本 Key / 分组可见", c.get("scope", ""))
+        self.assertIn("不在列表不等于下架", c.get("scope", ""))
+        self.assertIn("output_modalities",
+                      c["capability_rules"]["generation_vs_understanding"])
+        self.assertEqual(77, c["observed"]["model_count"])
+        self.assertTrue(c["observed"]["same_view_across_keys"])
+        self.assertEqual(9, len(self.schema["definitions"]["source"]["enum"]))
 
     def test_kinds_still_five(self):
         """B1：kinds 只保留当前可调用的 5 类，缺口走 capability_gaps。"""
@@ -446,9 +460,9 @@ class TestCatalogV2Integrity(unittest.TestCase):
             self.assertIn(v.get("agent_action"),
                           ("retry", "switch_model", "stop", "compress_context"), k)
             self.assertGreaterEqual(len(v.get("examples", [])), 1, k)
-            self.assertIn(v.get("_source"), self.SOURCE_8, k)
+            self.assertIn(v.get("_source"), self.SOURCE_9, k)
             for ex in v["examples"]:
-                self.assertIn(ex.get("_source"), self.SOURCE_8, k)
+                self.assertIn(ex.get("_source"), self.SOURCE_9, k)
 
     def test_generation_domain_status_semantics_present(self):
         """A.04：401/402/403 是生成域语义，账户域状态码表（无 402）不得混入。"""
@@ -502,7 +516,7 @@ class TestCatalogV2Integrity(unittest.TestCase):
         """Q6 官方答案：1 USD = 1000 credits；3 是 quota_per_unit，非换算率。"""
         cur = self.data["currency"]
         self.assertEqual(1000, cur.get("credits_per_usd"))
-        self.assertIn(cur.get("_source"), self.SOURCE_8)
+        self.assertIn(cur.get("_source"), self.SOURCE_9)
 
 
 
@@ -511,8 +525,8 @@ class TestCatalogV21Integrity(unittest.TestCase):
 
     依据 docs/PT_项目资料总集_20261112.md §6.3 与 §2。0 联网、0 花费。
     """
-    SOURCE_8 = {"official", "documented", "verified", "official+verified",
-                "inferred", "configured", "verified(unmapped)", "product"}
+    SOURCE_9 = {"official", "documented", "verified", "official+verified",
+                "inferred", "configured", "verified(unmapped)", "product", "models_api"}
 
     @classmethod
     def setUpClass(cls):
@@ -528,7 +542,7 @@ class TestCatalogV21Integrity(unittest.TestCase):
     def test_retry_policy_present_and_well_formed(self):
         rp = self.data.get("retry_policy")
         self.assertIsInstance(rp, dict)
-        self.assertIn(rp.get("_source"), self.SOURCE_8)
+        self.assertIn(rp.get("_source"), self.SOURCE_9)
         self.assertNotEqual("product", rp.get("_source"))
         self.assertEqual("no_single_dedicated_signal", rp.get("signal"))
         self.assertEqual("X-Oneapi-Request-Id", rp.get("request_id_header"))
@@ -552,7 +566,7 @@ class TestCatalogV21Integrity(unittest.TestCase):
         """C6：异步失败全额退 / 同步流中途按量扣费，不能一律 false。"""
         ch = self.data.get("charging")
         self.assertIsInstance(ch, dict)
-        self.assertIn(ch.get("_source"), self.SOURCE_8)
+        self.assertIn(ch.get("_source"), self.SOURCE_9)
         a, s = ch["async_task"], ch["sync_chat_stream"]
         self.assertIs(False, a.get("charged_on_failure"))
         self.assertIs(False, a.get("charged_on_timeout"))
@@ -596,7 +610,7 @@ class TestCatalogV21Integrity(unittest.TestCase):
         def walk(n, p):
             if isinstance(n, dict):
                 for k, v in n.items():
-                    if k == "_source" and v not in self.SOURCE_8:
+                    if k == "_source" and v not in self.SOURCE_9:
                         bad.append("%s=%r" % (p, v))
                     if k == "_source" and v == "product":
                         bad.append("product@" + p)

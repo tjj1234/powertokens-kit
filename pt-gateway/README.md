@@ -4,9 +4,11 @@
 
 Consolidates **all** of PowerTokens' generation capabilities (image / video / seedance / audio / chat, including a capability profile for every model) into one unified interface: an agent calls `list_capabilities` to get every model's abilities **without consulting docs**; it calls `media_generate` as a single entry point and the gateway routes by kind automatically (image / audio / chat return synchronously, video / seedance return a task_id and then poll).
 
-> Two confirmed platform facts (2026-10-30):
-> 1. `GET /v1/models` returns PT's **full** model list (identical for every key), not a "this-key permission view";
->    so the gateway does no permission gating — when this key lacks permission, PT's server errors and is passed through transparently.
+> Platform facts (fact 1 corrected 2026-11-13, see FIXLIST §9):
+> 1. `GET /v1/models` returns the **per-Key / per-group visible view**, NOT PT's full catalogue —
+>    filtered by key model quota → group-enabled models → HasPricingRuleCandidateForModel + IsModelNameListed.
+>    "Not in the list" does **not** mean off-board, so `sync()` no longer auto-delists.
+>    The gateway still does no permission gating (fail-open): PT's server errors are passed through transparently.
 > 2. PT **provides no** async task-cancel endpoint, so this gateway implements no cancel (no `/cancel` over HTTP, no cancel tool exposed over MCP).
 
 > Key premise correction: PT's substrate is OneAPI transparent routing — **all** video / Seedance models already share
@@ -44,7 +46,7 @@ Caller (any agent / web page / script)
 │   ├─ wait(tid,timeout)  → reuse engine poll_task to poll to terminal → normalize             │
 │   └─ chat/audio        → sync direct return (POST /v1/chat/completions, POST /v1/audio/speech)│
 │  ModelRegistry (registry.json)                                                                  │
-│   └─ sync(key): GET /v1/models (PT full list) → diff on/off-board; no permission gating     │
+│   └─ sync(key): GET /v1/models (Key/group view) → mark not_in_key_view, no auto-delist   │
 └───────────────────────────────┬──────────────────────────────────────────────────────────┘
                                  │  Bearer <POWERTOKENS_API_KEY>
                                  ▼
@@ -146,8 +148,10 @@ Response (`wait=true`): normalized status (see §3).
 
 ### POST /sync
 Refresh the registry by pulling `GET /v1/models` with the current Key.
+`not_in_key_view` lists models absent from **this** Key/group view — they stay `enabled`.
+`removed` is only populated when off-board was explicitly confirmed via `mark_delisted()` / `confirmed_delisted`.
 ```json
-{ "added": ["new-model-id"], "removed": ["delisted-model-id"], "total_enabled": 9, "last_synced": "2026-10-29T..." }
+{ "added": ["new-model-id"], "removed": [], "not_in_key_view": ["hidden-model-id"], "total_not_in_key_view": 1, "total_enabled": 9, "last_synced": "2026-10-29T..." }
 ```
 
 ### GET /models?kind=video|seedance
@@ -212,12 +216,15 @@ schema:
 
 Sync strategy (`ModelRegistry.sync`):
 
-- **Model-list source of truth**: `GET /v1/models` returns PT's **full** model list (identical for every key, confirmed 2026-10-30).
-  - Present in the list → `in_models=true`, `enabled=true`, `delisted=false`; newly appearing ones get `is_new=true`.
-  - No longer present → `delisted=true`, `enabled=false` (treated as off-board).
+- **Model-list source of truth**: `GET /v1/models` returns the **per-Key / per-group visible view**
+  (NOT PT's full catalogue; corrected 2026-11-13 after PT's written answer + two-key live probe, see FIXLIST §9).
+  - Present → `in_models=true`, `enabled=true`, `not_in_key_view=false`; new ones get `is_new=true`.
+  - No longer present → `in_models=false`, `not_in_key_view=true`, **stays `enabled`** (fail-open).
+  - Confirmed off-board only → `mark_delisted(ids, reason)` or `sync(confirmed_delisted=[...])` sets `delisted=true` / `enabled=false`.
 - **No permission gating (fail-open)**: the gateway does not decide "can this key call model X" on the client side.
   If this key lacks permission for a model, **PT's server errors** and the gateway passes it through verbatim.
-  (An earlier version did fail-closed gating based on the mistaken premise that `/v1/models` is a permission view; that was rolled back.)
+  (An earlier version did fail-closed gating based on a permission-view assumption; that was rolled back and is **not** restored —
+  the server returns a single already-filtered list, so no client-side two-layer architecture is needed.)
 - **Lazy auto-repull**: `auto_sync_if_stale()` best-effort re-pulls before `/models`, `/generate`, etc. calls when the registry is empty or older than `max_age` (default 3600s, aligned with PT's 1-hour cache); on failure it does not raise, falling back to the existing / built-in list. You can also explicitly `POST /sync` to force a refresh.
 
 ---
@@ -286,14 +293,14 @@ or a front-end to call uniformly, avoiding every integrator re-implementing poll
 
 ## 8. Manual Trigger Switch + Scheduled Sync (auto-update at no extra cost)
 
-The registry's "auto-discover newly on-boarded / auto-off-board delisted" is backstopped by the §4 diff. **But it only lazy-repulls when someone calls**;
+The registry's "auto-discover newly visible models" is backstopped by the §4 diff (off-board now needs explicit confirmation). **But it only lazy-repulls when someone calls**;
 if the service sits idle for a long time, the registry will not freshen on its own. Hence two explicit triggers are provided:
 
 ### 8.1 Manual trigger switch (two ways, pick one)
 
 1. **Run straight from the terminal (no service needed)** — `pt_gateway.py` ships a `sync` subcommand:
    ```bash
-   python pt_gateway.py sync        # pull /v1/models to refresh registry.json, print {added,removed,total_enabled,last_synced}
+    python pt_gateway.py sync        # pull /v1/models; print {added,removed,not_in_key_view,total_enabled,last_synced}
    python pt_gateway.py selfcheck   # state-normalization self-check (default, no Key needed)
    ```
    This command writes the **same** `~/.config/pt-gateway/registry.json` as the HTTP service, so a manual refresh is immediately visible to the service.
@@ -325,14 +332,15 @@ python pt-gateway/pt_gateway.py sync
 ## 9. Unified Media Capability Catalog (catalog.json) — the key to "agents don't look things up"
 
 `catalog.json` (shipped with the repo, path overridable with `PT_GATEWAY_CATALOG`) is a **human-observed, fixed capability profile**:
-PT's `GET /v1/models` returns only model IDs, **not** resolution/duration/mode/price fields — this catalog structures them,
+PT's `GET /v1/models` now returns structured fields (`architecture`, `supported_parameters`, `reasoning`, `pricing`, 2026-11-13) —
+but **not** resolution/duration/mode or billing-grade unit prices (see FIXLIST §9) — this catalog structures them,
 and `list_capabilities` returns everything at once, so agents no longer read docs.
 
 **Division of labor (relationship to ModelRegistry)**:
 
 | | Maintained by | Manages what |
 |---|---|---|
-| ModelRegistry (registry.json) | **automatic**: sync() pulls /v1/models and diffs | on/off-board (enabled/delisted), is_new |
+| ModelRegistry (registry.json) | **automatic**: sync() pulls /v1/models and diffs | visibility (in_models / not_in_key_view), explicit off-board (enabled/delisted), is_new |
 | Catalog (catalog.json) | **human**: add an entry after measurement/screenshot observation | capability fields (execution/resolution/duration/mode/price/prerequisites) |
 
 The two are **merged** in `list_capabilities`: the catalog says "what it can do", the registry says "whether it's still on-board now".
@@ -367,7 +375,9 @@ otherwise it can only guess blindly and waste tokens. Now every `kind=chat` entr
 }
 ```
 
-**Source layering (key)**: PT's `GET /v1/models` **returns no capability fields**, so these never come from the API automatically.
+**Source layering (key)**: as of 2026-11-13 `/v1/models` **does** expose capability signals
+(`architecture`, `reasoning`, `supported_parameters`), but the `capabilities` below are still human-curated /
+official-doc based — **no bulk backfill yet** (shadow reconciliation + per-model adjudication first, see FIXLIST §9).
 - `web_search` / `thinking`: **authoritative official data**, from PT's "Model Capability Summary — websearch & thinking"
   (based on the gateway channel-adapter code + each channel's OpenAPI docs, as of 2026-11-02). Value meanings:
   - `true`: the channel has an explicit param entry (e.g. DeepSeek `thinking`, MiniMax `reasoning_split`)

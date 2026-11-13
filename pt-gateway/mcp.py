@@ -13,8 +13,8 @@ PT Gateway 统一媒体 MCP server（FastMCP 薄壳）。
       task_status        —— 查任务状态（wait=true 时轮询到终态）
   - 本壳不实现任何逻辑，全部转发给 pt_gateway.TaskGateway（单一真相源）。
   - 不提供取消：PT 无异步任务取消接口（2026-10-30 与官方确认），故 MCP 也不暴露取消工具。
-  - 权限：不做客户端拦截。/v1/models 是 PT 全量清单；若本 key 对某模型无权限，
-    由 PT 服务端报错，网关原样透传（fail-open）。
+  - 权限：不做客户端拦截。/v1/models 是本 Key / 分组可见视图（非平台全量清单）；
+    若本 key 对某模型无权限，由 PT 服务端报错，网关原样透传（fail-open，决策不变）。
 
 运行：
   python mcp.py                   # stdio（agent 客户端自动拉起）
@@ -90,7 +90,8 @@ def media_generate(kind: str = "", model: str = "auto", prompt: str = "",
                或只用 prompt 作单轮；system 角色设定、temperature（<0 表示不传）、max_tokens
     model 填 "auto"（默认，自动选）或具体模型 ID（先 list_capabilities 看候选）。
     wait=true 时阻塞轮询到终态（仅异步 kind 生效），timeout_s 为上限秒数。
-    权限：不做客户端拦截；本 key 无权限时由 PT 服务端报错并透传。
+    权限：不做客户端拦截；/v1/models 只是可见视图，列表外模型也可能可调用；
+    本 key 无权限时由 PT 服务端报错并透传。
     """
     return _wrap(lambda: GW.media_generate(
         kind=kind or None, model=model or "auto", prompt=prompt,

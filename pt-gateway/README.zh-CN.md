@@ -7,9 +7,11 @@
 调 `media_generate` 一个入口即可生成，网关按 kind 自动路由（image / audio / chat 同步直返，
 video / seedance 异步拿 task_id 后轮询）。
 
-> 两个已确认的平台事实（2026-10-30）：
-> 1. `GET /v1/models` 返回 PT **全量**模型清单（所有 key 相同），不是「本 key 权限视图」；
->    因此网关不做权限拦截，本 key 无权限时由 PT 服务端报错并透传。
+> 平台事实（第 1 条已于 **2026-11-13 更正**，见 `FIXLIST.md` §9）：
+> 1. `GET /v1/models` 返回**本 Key / 分组的可见视图**，不是 PT 全量清单 —— 按「Key 模型限额 →
+>    分组启用模型 → `HasPricingRuleCandidateForModel` + `IsModelNameListed` 双重过滤」生成。
+>    **「不在列表」不等于下架**，故 `sync()` 不再自动 delisted；
+>    网关仍不做权限拦截（fail-open），本 key 无权限时由 PT 服务端报错并透传。
 > 2. PT **不提供**异步任务取消接口，故本网关不实现取消（HTTP 无 `/cancel`，MCP 不暴露取消工具）。
 
 > 关键前提纠偏：PT 底层是 OneAPI 透明路由，**所有视频/Seedance 模型本来就共用**
@@ -31,7 +33,7 @@ video / seedance 异步拿 task_id 后轮询）。
 │   ├─ wait(tid,timeout)  → 复用引擎 poll_task 轮询到终态 → 归一化                            │
 │   └─ chat/audio        → 同步直返（POST /v1/chat/completions、POST /v1/audio/speech）        │
 │  ModelRegistry (registry.json)                                                                  │
-│   └─ sync(key): GET /v1/models（PT 全量清单）→ diff 出上下架；不做权限拦截                   │
+│   └─ sync(key): GET /v1/models（可见视图）→ 只标 not_in_key_view，不自动下架                │
 └───────────────────────────────┬──────────────────────────────────────────────────────────┘
                                  │  Bearer <POWERTOKENS_API_KEY>
                                  ▼
@@ -133,8 +135,10 @@ video / seedance 异步拿 task_id 后轮询）。
 
 ### POST /sync
 用当前 Key 拉 `GET /v1/models` 刷新注册表。
+`not_in_key_view` 是「**本次** Key / 分组视图里没看到」的模型，**仍保持 `enabled`**；
+`removed` 仅在通过 `mark_delisted()` / `confirmed_delisted` 显式确认下架后才非空。
 ```json
-{ "added": ["new-model-id"], "removed": ["delisted-model-id"], "total_enabled": 9, "last_synced": "2026-10-29T..." }
+{ "added": ["new-model-id"], "removed": [], "not_in_key_view": ["hidden-model-id"], "total_not_in_key_view": 1, "total_enabled": 9, "last_synced": "2026-10-29T..." }
 ```
 
 ### GET /models?kind=video|seedance
@@ -199,12 +203,14 @@ schema：
 
 同步策略（`ModelRegistry.sync`）：
 
-- **模型清单真相源**：`GET /v1/models` 返回 PT **全量**模型（所有 key 相同，2026-10-30 确认）。
-  - 出现在列表 → `in_models=true`、`enabled=true`、`delisted=false`；新出现的打 `is_new=true`。
-  - 不再出现 → `delisted=true`、`enabled=false`（即视为下架）。
+- **模型清单真相源**：`GET /v1/models` 返回**本 Key / 分组可见视图**（非平台全量清单；
+  2026-11-13 依 PT 书面答复 + 双 Key 真机实测更正，见 `FIXLIST.md` §9）。
+  - 出现在列表 → `in_models=true`、`enabled=true`、`not_in_key_view=false`；新出现打 `is_new=true`。
+  - 不再出现 → `in_models=false`、`not_in_key_view=true`，**保持 `enabled`**（fail-open）。
+  - 仅显式确认下架 → `mark_delisted(ids, reason)` 或 `sync(confirmed_delisted=[...])` 才置 `delisted=true` / `enabled=false`。
 - **不做权限拦截（fail-open）**：网关不在客户端判断「本 key 能否调某模型」。
   若本 key 对某模型无权限，由 **PT 服务端报错**，网关原样透传。
-  （早期版本做过 fails-closed 门禁，前提是把 `/v1/models` 误当权限视图；已撤销。）
+  （早期版本做过 fails-closed 门禁，已撤销且**不恢复**：服务端返回单个已过滤列表，客户端不需要双层架构。）
 - **惰性自动重拉**：`auto_sync_if_stale()` 在注册表为空或超过 `max_age`（默认 3600s，
   对齐 PT 的 1 小时缓存）时，于 `/models`、`/generate` 等调用前 best-effort 重拉；失败不抛，
   回退到现有/内置列表。也可显式 `POST /sync` 强制刷新。
@@ -275,14 +281,14 @@ print(gw.wait(tid))
 
 ## 8. 手动触发开关 + 定时同步（自动更新不产生额外负担）
 
-注册表的「自动发现新上架 / 自动下线已下架」由 §4 的 diff 兜底。**但它只在有人调用时才惰性重拉**；
+注册表的「自动发现新可见模型」由 §4 的 diff 兜底（下架改为需显式确认）。**但它只在有人调用时才惰性重拉**；
 若服务长期空闲，注册表不会自己变新鲜。因此提供两种显式触发方式：
 
 ### 8.1 手动触发开关（两种方式，任选）
 
 1. **终端直跑（不用起服务）** —— `pt_gateway.py` 自带 `sync` 子命令：
    ```bash
-   python pt_gateway.py sync        # 拉 /v1/models 刷新 registry.json，打印 {added,removed,total_enabled,last_synced}
+    python pt_gateway.py sync        # 拉 /v1/models；打印 {added,removed,not_in_key_view,total_enabled,last_synced}
    python pt_gateway.py selfcheck   # 状态归一化自检（默认，无需 Key）
    ```
    这条命令和 HTTP 服务**写入同一个** `~/.config/pt-gateway/registry.json`，所以手动刷新后服务立即可见。
@@ -314,14 +320,15 @@ python pt-gateway/pt_gateway.py sync
 ## 9. 统一媒体能力目录（catalog.json）——agent「不用查」的关键
 
 `catalog.json`（随仓库分发，可用 `PT_GATEWAY_CATALOG` 覆盖路径）是**人工观测固化的能力档案**：
-PT 的 `GET /v1/models` 只返回模型 ID，**不给**分辨率/时长/模式/单价这些字段——本目录把它们
-结构化存下来，`list_capabilities` 一次给全，agent 从此不再翻文档。
+PT 的 `GET /v1/models` 自 2026-11-13 起会返回 `architecture` / `supported_parameters` /
+`reasoning` / `pricing` 等结构化字段，但仍**不给**分辨率/时长/模式，也不给可作计费依据的单价
+（见 `FIXLIST.md` §9）——本目录把它们结构化存下来，`list_capabilities` 一次给全，agent 不再翻文档。
 
 **分工（和 ModelRegistry 的关系）**：
 
 | | 谁维护 | 管什么 |
 |---|---|---|
-| ModelRegistry（registry.json） | **自动**：sync() 拉 /v1/models 做 diff | 上下架（enabled/delisted）、is_new |
+| ModelRegistry（registry.json） | **自动**：sync() 拉 /v1/models 做 diff | 可见性（in_models / not_in_key_view）、显式下架（enabled/delisted）、is_new |
 | Catalog（catalog.json） | **人工**：实测/截图观测后补一条 | 能力字段（execution/分辨率/时长/模式/单价/前置） |
 
 两者在 `list_capabilities` 里**合并输出**：目录给「能干什么」，注册表给「现在还上不上架」。
@@ -356,7 +363,9 @@ schema：顶层 `kinds`（每类型的 execution/端点/前置要求/能力观�
 }
 ```
 
-**来源分层（关键）**：PT 的 `GET /v1/models` **不返回任何能力字段**，所以这些不会从 API 自动来。
+**来源分层（关键）**：2026-11-13 起 `/v1/models` **确实会返回能力信号**
+（`architecture` / `reasoning` / `supported_parameters`），但下方 `capabilities` 仍是人工 + 官方文档口径，
+**尚未批量回填**（先影子对账、再逐模型裁决，见 `FIXLIST.md` §9）。
 - `web_search` / `thinking`：**官方权威数据**，来自 PT《模型能力汇总-websearch与思考模式》
   （依据网关渠道适配器代码 + 各渠道 OpenAPI 文档，截至 2026-11-02）。取值含义：
   - `true`：渠道有明确参数入口（如 DeepSeek `thinking`、MiniMax `reasoning_split`）

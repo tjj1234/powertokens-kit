@@ -19,16 +19,18 @@ PT Task Gateway —— 跨模型统一的异步任务接口（独立模块，零
 
 本模块职责（复用 pt_video.py 的 REST 原语，不直接依赖 CLI 子命令）：
   - Catalog：统一媒体能力目录（catalog.json）——每模型的 kind/execution/分辨率/时长/模式/单价，
-    agent 用 list_capabilities 读取后**无需再翻文档查能力**；上下架由 ModelRegistry 自动维护。
+    agent 用 list_capabilities 读取后**无需再翻文档查能力**；可见性由 ModelRegistry 维护
+    （2026-11-13 起「不在列表」不再自动判下架）。
   - TaskState：把各厂商状态动词归一化为 QUEUED/RUNNING/SUCCEEDED/FAILED/CANCELLED/UNKNOWN。
   - ModelAdapter：按 kind 构造提交体（Seedance 走 media-text + asset://；video 走顶层 prompt），并统一抽取结果 URL。
   - TaskGateway：media_generate（统一媒体生成入口，按 kind 路由：
       image / audio / chat 同步直返；video / seedance 异步拿 task_id 后轮询）
     + submit / get_status / wait。不提供 cancel（PT 无取消接口）。
-    权限不做客户端拦截：/v1/models 是 PT 全量清单，本 key 无权限时由服务端报错并透传。
-  - ModelRegistry：拉 GET /v1/models（PT **全量**模型清单，所有 key 相同）做 diff——
-    新出现的模型自动 enable 并打 is_new；不再出现的自动 delisted；
-    带 last_synced，超过 1 小时（对齐 PT 缓存）下次调用惰性自动重拉。
+    权限不做客户端拦截：本 key 无权限时由服务端报错并透传（fail-open，2026-10-30 决策不变）。
+  - ModelRegistry：拉 GET /v1/models（**本 Key / 分组可见视图**，非平台全量清单）做 diff——
+    新出现的模型自动 enable 并打 is_new；不再出现的只标 not_in_key_view，
+    **不再自动 delisted**（2026-11-13 PT 答复 + 双 Key 实测，见 docs/PT_项目资料总集 §13）；
+    确认下架需显式 mark_delisted()；带 last_synced，超 1 小时惰性重拉。
 
 依赖：Python 3.9+ 标准库；引擎 REST 原语来自同仓的 pt_video.py（import 时把仓库根加入 sys.path）。
 """
@@ -76,9 +78,12 @@ AUDIO_ENDPOINT = "/v1/audio/speech"          # TTS（同步，OpenAI 兼容）
 DEFAULT_VOICE = "alloy"                      # TTS 音色必填；OpenAI 标准音色实测可用
 CHAT_ENDPOINT = "/v1/chat/completions"        # 文本对话（同步，OpenAI 兼容）
 
-# 模型清单真相源：GET /v1/models（PT 全量模型，所有 key 返回相同；需 key）
-# 注：2026-10-30 用户确认 /v1/models 是全量清单而非 key 权限视图，
-#     故不再做客户端权限拦截（fail-open），权限问题交给 PT 服务端报错。
+# 模型清单真相源：GET /v1/models（本 Key / 分组可见视图；需 key）
+# 注：2026-10-30 起不做客户端权限拦截（fail-open），权限问题交给 PT 服务端报错——此决策不变。
+# 2026-11-13 修正：PT 书面答复 + 双 Key 真机实测确认列表按「Key 模型限额 → 分组启用模型
+#     → HasPricingRuleCandidateForModel + IsModelNameListed 双重过滤」生成，是子集视图；
+#     「不在列表」≠ 下架（真下架 / 本 key 限额或分组未启用 / 无定价规则或未列名单）。
+#     故 sync() 不再自动 delisted，见 SSOT §13。FIXLIST F1 原「全量、所有 key 相同」已作废。
 
 
 _CATALOG_CACHE = None  # 目录缓存：sync 时逐模型判定 kind，避免重复读 catalog.json
@@ -321,8 +326,8 @@ class TaskGateway:
     def _resolve_model(self, kind, model):
         """model=auto 时按 注册表 → 目录候选 的顺序选模型；返回具体模型 ID。
 
-        注（2026-10-30）：不做客户端权限过滤。/v1/models 是全量清单，
-        若某模型本 key 实际无权限，交给 PT 服务端报错（fail-open）。
+        注（2026-10-30，2026-11-13 复核仍成立）：不做客户端权限过滤。
+        /v1/models 是可见视图，列表之外的模型也可能可调用，交给 PT 服务端报错（fail-open）。
         """
         if model and model != "auto":
             return model
@@ -351,7 +356,8 @@ class TaskGateway:
         - chat      -> 同步 POST /v1/chat/completions，返回 {execution:"sync", text}
         model=auto 时按注册表 -> 目录候选的顺序自动选模型。
 
-        权限：不做客户端拦截（2026-10-30 决策）。/v1/models 是 PT 全量模型清单，
+        权限：不做客户端拦截（2026-10-30 决策，2026-11-13 复核不变）。
+        /v1/models 只是本 Key / 分组可见视图，不在列表不等于不可用；
         若本 key 对某模型实际无权限，由 PT 服务端报错，网关原样透传。
         """
         # 1) 解析 kind（不需要 Key；显式 kind 优先，否则从 model 反推）
@@ -516,8 +522,10 @@ class TaskGateway:
             r = reg.get(mid)
             entry["registry_enabled"] = bool(r.get("enabled")) if r else None
             entry["delisted"] = bool(r.get("delisted")) if r else None
-            # in_models：是否出现在最近一次 /v1/models 全量同步里（未同步过则为 None）
+            # in_models：是否出现在最近一次 /v1/models 可见视图同步里（未同步过则为 None）
             entry["in_models"] = bool(r.get("in_models")) if r else None
+            # not_in_key_view：本 Key / 分组本次未见，但**不代表下架**（未同步过则为 None）
+            entry["not_in_key_view"] = bool(r.get("not_in_key_view")) if r else None
         return cap
 
     def submit(self, model, prompt="", duration=5, resolution="720p", ratio="16:9",
@@ -565,8 +573,10 @@ class TaskGateway:
 class ModelRegistry:
     """拉 /v1/models 做 diff，持久化到 registry.json。
 
-    - 新上架的异步模型：自动 enabled=True 并打 is_new=True
-    - 下架（不再出现在 live 列表）：自动 enabled=False, delisted=True
+    - 新出现在可见视图的模型：自动 enabled=True 并打 is_new=True
+    - 不在本次 Key / 分组可见视图：只标 not_in_key_view=True，**保持 enabled**（fail-open）
+      —— 2026-11-13 修正：列表是子集视图，「不在列表」不等于下架（见 SSOT §13）
+    - 确认下架：显式 mark_delisted() 或 sync(confirmed_delisted=[...]) 才置 delisted/停用
     - last_synced 时间戳；is_stale() 用于调用方惰性自动重拉（默认 1 小时，对齐 PT 缓存）
     """
 
@@ -602,51 +612,83 @@ class ModelRegistry:
             dt = dt.replace(tzinfo=timezone.utc)
         return (datetime.now(timezone.utc) - dt).total_seconds() > max_age
 
-    def sync(self, key, max_age=3600):
-        """用 GET /v1/models（PT **全量**模型清单）刷新注册表。
+    def sync(self, key, max_age=3600, confirmed_delisted=None):
+        """用 GET /v1/models（**本 Key / 分组可见视图**）刷新注册表。
 
-        2026-10-30 语义修正（用户确认）：/v1/models 返回的是 PT 全量模型，
-        所有 key 拿到的列表相同，它**不是**「本 key 权限视图」。因此：
-          - 出现在列表里的模型 → in_models=True, delisted=False, enabled=True
-          - 不再出现的模型   → delisted=True（视为下架）, enabled=False
-          - 不做权限判定：本 key 能否调用某模型由 PT 服务端报错，网关不拦截（fail-open）。
+        2026-11-13 语义修正（PT 书面答复 + 双 Key 真机实测，见 SSOT §13）：
+        /v1/models 不是平台全量清单，而是按「Key 模型限额 → 分组启用模型 →
+        HasPricingRuleCandidateForModel + IsModelNameListed 双重过滤」生成的**子集视图**。
+        「不在列表」无法区分：真下架 / 本 key 限额或分组未启用 / 无定价规则或未列名单。
+        因此不再由单次响应推断下架（FIXLIST F1 旧「全量、所有 key 相同」口径已作废）：
+          - 出现在列表 → enabled=True, in_models=True, not_in_key_view=False, delisted=False
+          - 不在列表   → in_models=False, not_in_key_view=True，
+                          **保持 enabled、不自动 delisted**（沿用 fail-open）
+          - 仅 confirmed_delisted 显式给出的 ID（或先调用 mark_delisted()）才停用
+        `removed` 保留为兼容键，只统计本轮显式确认下架的条目。
         """
         now = datetime.now(timezone.utc).isoformat(timespec="seconds")
         present = {}
         for mid in list_key_models(key, "all"):
             present[mid] = _kind_of(mid)
+        confirmed = set(confirmed_delisted or ())
         models = self.data["models"]
-        added, removed = [], []
+        added, removed, not_in_view = [], [], []
         for mid, kind in present.items():
             if mid not in models:
                 models[mid] = {"kind": kind, "enabled": True, "delisted": False,
-                               "in_models": True, "first_seen": now,
-                               "last_seen": now, "is_new": True}
+                               "in_models": True, "not_in_key_view": False,
+                               "first_seen": now, "last_seen": now, "is_new": True}
                 added.append(mid)
             else:
                 m = models[mid]
-                m["enabled"] = True
+                m["enabled"] = True      # 曾显式确认下架、如今重新可见 → 自动恢复
                 m["delisted"] = False
                 m["in_models"] = True
+                m["not_in_key_view"] = False
                 m["last_seen"] = now
                 m["is_new"] = False
                 m["kind"] = kind
         for mid, m in models.items():
-            if mid not in present:
-                m["in_models"] = False
-                if not m.get("delisted"):
-                    m["delisted"] = True
-                    m["enabled"] = False
-                    m["last_seen"] = now
-                    removed.append(mid)
+            if mid in present:
+                continue
+            m["in_models"] = False
+            m["not_in_key_view"] = True
+            not_in_view.append(mid)
+            if mid in confirmed and not m.get("delisted"):
+                m["delisted"] = True
+                m["enabled"] = False
+                m["last_seen"] = now
+                removed.append(mid)
         self.data["last_synced"] = now
         self.save()
         return {
             "added": added, "removed": removed,
+            "not_in_key_view": not_in_view,
+            "total_not_in_key_view": len(not_in_view),
             "total_enabled": sum(1 for m in models.values() if m.get("enabled")),
             "total_models": len(models),
             "last_synced": now,
         }
+
+    def mark_delisted(self, mids, reason=None):
+        """显式确认下架（PT 公告 / 跨 Key 复核后调用），sync() 不会自动调用它。
+
+        2026-11-13 起「不在 /v1/models 列表」不足以判定下架，必须走这个入口，
+        避免把本 Key 暂时看不到的可用模型永久移除（静默故障）。
+        """
+        now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        changed = []
+        for mid in mids:
+            m = self.data["models"].get(mid)
+            if m is None:
+                continue
+            m["delisted"] = True
+            m["enabled"] = False
+            m["delisted_reason"] = reason
+            m["delisted_at"] = now
+            changed.append(mid)
+        self.save()
+        return changed
 
     def enabled_async(self, kind=None):
         """注册表里 enabled 且未下架的模型（可按 kind 过滤）。"""
@@ -762,7 +804,7 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="PT Gateway 核心模块（自检 / 注册表同步 / 能力目录 / 能力探测）")
     ap.add_argument("cmd", nargs="?", default="selfcheck",
                     choices=["selfcheck", "sync", "capabilities", "probe-cap"],
-                    help="selfcheck=自检（默认）；sync=拉 /v1/models 全量刷新注册表；"
+                    help="selfcheck=自检（默认）；sync=拉 /v1/models 可见视图刷新注册表；"
                          "capabilities=打印能力目录（可带 kind）；"
                          "probe-cap=真机探测某 chat 模型的视觉能力")
     ap.add_argument("kind_arg", nargs="?", default=None,

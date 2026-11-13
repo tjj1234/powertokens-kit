@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""unit：ModelRegistry 的上下架 diff / 过期判定 / auto 选模。
+"""unit：ModelRegistry 的可见性 diff / 过期判定 / auto 选模。
 
-注册表是"模型上下架不用改代码"的实现基础：/v1/models 里新出现的自动 enabled，
-消失的自动 delisted。逻辑错了的表现是"模型明明还在却选不到"，属于静默故障，
-所以 diff 语义必须逐条钉死（含"下架后又回来了"这种恢复路径）。
+2026-11-13 语义修正（PT 答复 + 双 Key 实测，见 SSOT §13）：
+/v1/models 是「本 Key / 分组可见视图」，不是平台全量清单。
+「不在列表」可能是真下架，也可能只是本 key 限额 / 分组未启用 / 无定价规则；
+旧逻辑一律 delisted 会把可用模型永久误踢（静默故障）。
+现在：不在列表只标 not_in_key_view=True 并保持 enabled（fail-open），
+只有 sync(confirmed_delisted=[...]) 或 mark_delisted() 才真正停用。
 """
 import os
 import sys
@@ -40,12 +43,14 @@ class TestSyncDiff(RegistryTestBase):
         d = reg.sync("KEY")
         self.assertEqual(sorted(["wan3.0-video", "seedream-5-0-260128"]), sorted(d["added"]))
         self.assertEqual([], d["removed"])
+        self.assertEqual([], d["not_in_key_view"])
         self.assertEqual(2, d["total_models"])
         e = reg.data["models"]["wan3.0-video"]
         self.assertTrue(e["enabled"])
         self.assertTrue(e["is_new"])
         self.assertTrue(e["in_models"])
         self.assertFalse(e["delisted"])
+        self.assertFalse(e["not_in_key_view"])
 
     def test_second_sync_clears_is_new(self):
         reg = self.registry(["wan3.0-video"])
@@ -54,40 +59,92 @@ class TestSyncDiff(RegistryTestBase):
         self.assertEqual([], d["added"])
         self.assertFalse(reg.data["models"]["wan3.0-video"]["is_new"])
 
-    def test_disappeared_model_is_delisted(self):
+    def test_disappeared_model_is_not_delisted(self):
+        """核心回归：不在可见视图 ≠ 下架，不能永久误踢可用模型。"""
         reg = self.registry(["wan3.0-video", "kling-video-1"])
         reg.sync("KEY")
-        self.live_models = ["wan3.0-video"]          # kling 下架
+        self.live_models = ["wan3.0-video"]          # kling 本 key 本次不可见
         d = reg.sync("KEY")
+        self.assertEqual([], d["removed"])
+        self.assertEqual(["kling-video-1"], d["not_in_key_view"])
+        self.assertEqual(1, d["total_not_in_key_view"])
+        e = reg.data["models"]["kling-video-1"]
+        self.assertFalse(e["delisted"], "不该自动判下架")
+        self.assertTrue(e["enabled"], "fail-open：仍保留为候选")
+        self.assertFalse(e["in_models"])
+        self.assertTrue(e["not_in_key_view"])
+        self.assertTrue(reg.data["models"]["wan3.0-video"]["enabled"])
+
+    def test_confirmed_delisted_marks_delisted(self):
+        """只有显式确认（跨 Key 复核 / PT 公告）才真正停用。"""
+        reg = self.registry(["wan3.0-video", "kling-video-1"])
+        reg.sync("KEY")
+        self.live_models = ["wan3.0-video"]
+        d = reg.sync("KEY", confirmed_delisted=["kling-video-1"])
         self.assertEqual(["kling-video-1"], d["removed"])
         e = reg.data["models"]["kling-video-1"]
         self.assertTrue(e["delisted"])
         self.assertFalse(e["enabled"])
-        self.assertFalse(e["in_models"])
-        self.assertTrue(reg.data["models"]["wan3.0-video"]["enabled"])
+        self.assertTrue(e["not_in_key_view"])
 
-    def test_delisted_model_comes_back(self):
-        """下架后又上架：必须能自动恢复 enabled，否则模型永不可用。"""
+    def test_mark_delisted_persists(self):
+        reg = self.registry(["wan3.0-video", "kling-video-1"])
+        reg.sync("KEY")
+        self.assertEqual(["kling-video-1"],
+                         reg.mark_delisted(["kling-video-1"], reason="PT 公告下架"))
+        self.assertEqual([], reg.mark_delisted(["not-tracked"]))
+        reloaded = pt_gateway.ModelRegistry(path=str(self.reg_path)).load()
+        e = reloaded.data["models"]["kling-video-1"]
+        self.assertTrue(e["delisted"])
+        self.assertFalse(e["enabled"])
+        self.assertEqual("PT 公告下架", e["delisted_reason"])
+
+    def test_not_in_key_view_model_comes_back(self):
+        """重新出现在视图里：必须清掉标记并保持可用。"""
         reg = self.registry(["wan3.0-video"])
         reg.sync("KEY")
-        self.live_models = []                        # 全部下架
+        self.live_models = []                        # 本 key 暂时看不到
         reg.sync("KEY")
-        self.live_models = ["wan3.0-video"]          # 又回来了
+        self.assertTrue(reg.data["models"]["wan3.0-video"]["not_in_key_view"])
+        self.live_models = ["wan3.0-video"]          # 又可见了
         d = reg.sync("KEY")
-        # 注意：条目一直存在（只是被标 delisted），所以不算 added（added 仅指首次出现）
-        self.assertEqual([], d["added"])
+        self.assertEqual([], d["added"])             # 条目一直在，不算新增
+        self.assertEqual([], d["not_in_key_view"])
         e = reg.data["models"]["wan3.0-video"]
         self.assertTrue(e["enabled"])
         self.assertFalse(e["delisted"])
+        self.assertFalse(e["not_in_key_view"])
         self.assertTrue(e["in_models"])
 
-    def test_removed_only_reported_once(self):
+    def test_explicitly_delisted_model_recovers_when_visible(self):
+        """显式下架过的模型若重新出现，视为恢复（与旧行为一致）。"""
+        reg = self.registry(["wan3.0-video"])
+        reg.sync("KEY")
+        self.live_models = []
+        reg.sync("KEY", confirmed_delisted=["wan3.0-video"])
+        self.assertTrue(reg.data["models"]["wan3.0-video"]["delisted"])
+        self.live_models = ["wan3.0-video"]
+        reg.sync("KEY")
+        e = reg.data["models"]["wan3.0-video"]
+        self.assertTrue(e["enabled"])
+        self.assertFalse(e["delisted"])
+
+    def test_removed_empty_without_confirmation(self):
         reg = self.registry(["wan3.0-video"])
         reg.sync("KEY")
         self.live_models = []
         reg.sync("KEY")
         d = reg.sync("KEY")
-        self.assertEqual([], d["removed"], "已经标记 delisted 的不该重复上报")
+        self.assertEqual([], d["removed"], "没有显式确认就不该产生 removed")
+
+    def test_not_in_key_view_is_an_observation_not_an_event(self):
+        """not_in_key_view 是当前状态观测，每次 sync 都如实上报。"""
+        reg = self.registry(["wan3.0-video"])
+        reg.sync("KEY")
+        self.live_models = []
+        reg.sync("KEY")
+        d = reg.sync("KEY")
+        self.assertEqual(["wan3.0-video"], d["not_in_key_view"])
 
     def test_last_synced_and_counts(self):
         reg = self.registry(["wan3.0-video", "seedream-5-0-260128"])
@@ -108,13 +165,16 @@ class TestSyncDiff(RegistryTestBase):
         reloaded = pt_gateway.ModelRegistry(path=str(self.reg_path)).load()
         self.assertIn("wan3.0-video", reloaded.data["models"])
 
-    def test_empty_live_list_delists_everything(self):
+    def test_empty_live_list_keeps_enabled(self):
+        """空列表通常是拉取失败 / 分组配置变化，不应把全部模型停用。"""
         reg = self.registry(["wan3.0-video"])
         reg.sync("KEY")
         self.live_models = []
         d = reg.sync("KEY")
-        self.assertEqual(0, d["total_enabled"])
+        self.assertEqual(1, d["total_enabled"])
         self.assertEqual(1, d["total_models"])
+        self.assertEqual(1, d["total_not_in_key_view"])
+        self.assertEqual([], d["removed"])
 
 
 class TestStale(RegistryTestBase):

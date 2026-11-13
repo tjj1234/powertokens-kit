@@ -271,7 +271,7 @@ class TestSeedanceRouting(GatewayRoutingTestBase):
 
 
 class TestFailOpen(GatewayRoutingTestBase):
-    """架构决策：/v1/models 是全量清单，不是权限视图 -> 不做客户端拦截。"""
+    """架构决策：/v1/models 只是可见视图，不做客户端拦截（fail-open，2026-11-13 复核不变）。"""
 
     def test_no_client_side_permission_gate(self):
         """模型不在注册表里也必须放行，由服务端说了算。"""
@@ -330,6 +330,7 @@ class TestListCapabilities(GatewayRoutingTestBase):
         self.assertTrue(e["registry_enabled"])
         self.assertFalse(e["delisted"])
         self.assertTrue(e["in_models"])
+        self.assertFalse(e["not_in_key_view"])
 
     def test_untracked_model_flags_are_none(self):
         """没同步过的模型状态应为 None，而不是 False（避免被误判为下架）。"""
@@ -338,6 +339,7 @@ class TestListCapabilities(GatewayRoutingTestBase):
         any_chat = next(iter(cap["models"].values()))
         self.assertIsNone(any_chat["registry_enabled"])
         self.assertIsNone(any_chat["in_models"])
+        self.assertIsNone(any_chat["not_in_key_view"])
 
     def test_filter_returns_only_requested_kind(self):
         cap = self.gw().list_capabilities("audio")

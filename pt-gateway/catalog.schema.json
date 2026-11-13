@@ -188,11 +188,27 @@
     },
     "charging": {
       "$ref": "#/definitions/charging"
+    },
+    "models_api_contract": {
+      "type": "object",
+      "description": "GET /v1/models 官方结构化字段契约与影子对账观测（2026-11-13）。_source 恒为 models_api；记录字段口径、能力判定规则、视图范围与实测统计。不得当作计费单价或下架判定的真相源。",
+      "required": ["_source", "endpoint", "scope", "capability_rules"],
+      "properties": {
+        "_source": {"$ref": "#/definitions/source"},
+        "_checked_at": {"type": ["string", "null"]},
+        "endpoint": {"type": "string"},
+        "scope": {"type": "string"},
+        "compatibility": {"type": "string"},
+        "fields": {"type": "object"},
+        "capability_rules": {"type": "object"},
+        "not_a_truth_source_for": {"type": "array"},
+        "observed": {"type": "object"}
+      }
     }
   },
   "definitions": {
     "source": {
-      "description": "_source 八值枚举（A5）：人工确认的 verified > official / documented > 自动探测 > inferred；configured 等同 inferred；verified(unmapped) 当作已知；product 仅用于 auto_policy。",
+      "description": "_source 九值枚举（A5，2026-11-13 增 models_api）：人工确认的 verified > official / documented > 自动探测 > inferred；configured 等同 inferred；verified(unmapped) 当作已知；product 仅用于 auto_policy；models_api 表示来自 GET /v1/models 官方结构化字段的 Key/分组视图快照。",
       "enum": [
         "official",
         "documented",
@@ -201,7 +217,8 @@
         "inferred",
         "configured",
         "verified(unmapped)",
-        "product"
+        "product",
+        "models_api"
       ]
     },
     "checkedAt": {

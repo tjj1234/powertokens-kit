@@ -1,7 +1,9 @@
 # PT Gateway —— 待修正 / 待决策清单（FIXLIST）
 
 > 记录 pt-gateway 开发讨论中暴露的「说错 / 待修正 / 架构决策」事项。
-> 最近一轮大改：**2026-10-30（第二轮）** —— `/v1/models` 语义澄清、取消接口删除、爬虫删除、chat 打通。
+> 最近一轮大改：**2026-11-13（第三轮）** —— **F1 口径作废**（`/v1/models` 是 Key/分组可见视图）、
+> `sync()` 下架语义修正、`_source` 扩 9 值、`/v1/models` 结构化字段上线。见 **§9**。
+> 上一轮：2026-10-30（第二轮）—— `/v1/models` 语义澄清、取消接口删除、爬虫删除、chat 打通。
 > 标记：`[已定]` = 已拍板并实施；`[待办]` = 还需动作；`[已废弃]` = 方案作废（保留以溯源）。
 
 ---
@@ -10,14 +12,16 @@
 
 | # | 事实 | 影响 |
 |---|---|---|
-| F1 | `GET /v1/models` 返回 PT **全量**模型清单，**所有 key 相同** | 它不是「本 key 权限视图」→ 不能用于权限拦截；下架判定可直接用它（不再出现即下架） |
+| F1 | ~~`GET /v1/models` 返回 PT **全量**模型清单，**所有 key 相同**~~ → **已作废 2026-11-13**：真实响应按「Key 模型限额 → 分组启用模型 → `HasPricingRuleCandidateForModel` + `IsModelNameListed` 双重过滤」生成，是**本 Key / 分组可见视图** | 「不在列表」≠ 下架 → `sync()` 改为只标 `not_in_key_view`，保持 `enabled`；确认下架须显式 `mark_delisted()`。**详见 §9** |
 | F2 | PT **不提供**异步任务取消接口 | 网关不实现 cancel；HTTP 无 `/cancel`，MCP 不暴露取消工具 |
 | F3 | 提交 / 查询统一：`POST /v1/videos` + `GET /v1/videos/{id}` | 只需归一化请求体构造与结果字段位置，即可跨模型 |
 | F4 | audio 走 `POST /v1/audio/speech`（同步，OpenAI 兼容）；chat 走 `POST /v1/chat/completions`（同步） | 这两类不进 `/v1/videos` |
 | F5 | TTS 的 `voice` **必填**（缺则报 `voice is required`）；OpenAI 标准音色 `alloy/echo/fable/onyx/nova/shimmer` 实测全部可用 | 音色名用 OpenAI 的，不是 MiniMax 原生 voice_id |
 
-> F1 修正了更早的误判：曾以为「不同 key 的 `/v1/models` 列表不同」——
-> 由此设计的双层架构、公开层爬虫、fail-closed 门禁全部作废（见 §2.1 / §2.2 / §3）。
+> **历史备注（保留溯源，2026-11-13 重新标注）**：更早曾以为「不同 key 的 `/v1/models` 列表不同」，
+> 由此设计了双层架构 / 公开层爬虫 / fail-closed 门禁；2026-10-30 依据「全量清单」把它们全部作废。
+> **2026-11-13 PT 答复证明「按 Key / 分组过滤」这一半其实是对的**，但结论不变：服务端返回的是
+> **单个已过滤列表**，不需要客户端双层架构，也不恢复 fail-closed。真正要改的是「不在列表即下架」。
 
 ---
 
@@ -25,10 +29,11 @@
 
 ### 2.1 模型清单与权限判定 [已定]
 
-- **真相源**：`GET /v1/models`（全量，所有 key 相同）。`ModelRegistry.sync()` 据此 diff：
-  出现 → `in_models=true`、`enabled=true`、新出现打 `is_new`；
-  不再出现 → `delisted=true`、`enabled=false`（即视为下架）。
-- **权限**：**fail-open，不做客户端拦截**（用户拍板）。本 key 对某模型无权限时，
+- **真相源**：`GET /v1/models`（**本 Key / 分组可见视图**，非平台全量清单）。`sync()` 据此 diff：
+  出现 → `in_models=true`、`enabled=true`、`not_in_key_view=false`、新出现打 `is_new`；
+  不再出现 → `in_models=false`、`not_in_key_view=true`，**保持 enabled、不自动 delisted**。
+- **确认下架**：`mark_delisted(ids, reason)` 或 `sync(confirmed_delisted=[...])`（需跨 Key 复核 / PT 公告）。
+- **权限**：**fail-open，不做客户端拦截**（用户拍板，2026-11-13 复核不变）。本 key 对某模型无权限时，
   **由 PT 服务端报错**，网关原样透传。
 - **已废弃并删除**：双层（公开层 + key 层）架构、`key_permitted` 字段、
   `_key_permitted_models()` / `_enforce_key_permission()` 门禁、`auto_select(permitted=...)` 权限过滤。
@@ -37,7 +42,10 @@
 
 - 原方案依赖公开层爬虫产出的 `catalog.public.json`。爬虫已按用户决定**彻底删除**，enrich 失去数据源。
 - `enrich_catalog()` / `enrich_with_llm()` / CLI `enrich` / `public` 已一并删除。
-- 能力档案仍由人工维护的 `catalog.json` 提供（`/v1/models` 只给模型 ID，不给分辨率 / 时长 / 模式 / 单价）。
+- 能力档案仍由人工维护的 `catalog.json` 提供。
+  **⚠️ 括号里那句是 2026-10-30 的时点说明，2026-11-13 起已过时**：新接口会返回
+  `architecture` / `supported_parameters` / `reasoning` / `pricing` 等结构化字段（见 §9）；
+  但仍**不给**可作计费依据的单价、以及分辨率 / 时长 / 模式，所以人工能力档案继续保留。
 
 ### 2.3 音频请求体 / 响应字段 [已解决：2026-10-30 真机实测]
 
@@ -77,7 +85,7 @@
 
 | 文件 / 概念 | 结局 |
 |---|---|
-| `catalog_crawler.py` | 已删除（F1 后无需再爬官网取全量清单） |
+| `catalog_crawler.py` | 已删除（无需再爬官网取清单；2026-11-13 复核：服务端返回单个已过滤列表，仍不需要客户端双层） |
 | `catalog.public.json` | 已删除 |
 | 公开层 / 双层架构 | 已废弃，改为单层 `/v1/models` |
 | fail-closed 权限门禁 | 已撤销，改 fail-open |
@@ -204,3 +212,65 @@
 关键结论：五种 kind 全链路 + 错误路径 + 防泄漏，在 minimal / standard / full 三档下均通过；
 `wan3.0-video`（主推模型，720p）在 standard / full 档验证可正常出片。
 
+---
+
+## 9. 2026-11-13 第三轮：`/v1/models` 接口丰富与 F1 口径作废
+
+**触发**：PT 上线 `GET /v1/models` 结构化字段，并就我方 6 条提问给出两批书面答复
+（完整固化见 `docs/PT_项目资料总集_20261112.md` §13）。同日用真 Key 做双 Key 影子对账。
+
+### 9.1 PT 书面答复（6 + 6 条，结论）
+
+| # | PT 答复 | 项目结论 |
+|---|---|---|
+| 1 | `supported_parameters` 会加 | 上线实测 **56/77** 有，含 `reasoning_effort`(25) / `web_search_options`(6) / `reasoning`(25)；`omitempty` 需兜底 |
+| 2 | `input_modalities` 对生成类是**素材输入**；判生成看 `output_modalities` + `supported_endpoint_types`，不另加字段 | 判定规则可用；实测 27 个 image 输入 = 理解类 16 + 生成类 11，**11/11 命中** |
+| 3 | `pricing.web_search:"0"` 是免费；图片/视频有意省略 pricing；其余字段只是匹配 OpenRouter 模型 ID | 6 个 qwen3.x 搜索免费确认；**撤回「用 pricing 对账单价」设想** |
+| 4 | 89 条样例是文档片段；真实响应按 Key / 分组过滤（限额 → 分组启用 → 双重过滤） | **F1 作废**；样例 89 ⊃ 实测 77，catalog 86 中 15 个不在本视图 |
+| 5 | 只增不改、扩展字段 `omitempty`、`success`/`object:"list"` 非本次新增、无分页 | 老客户端零影响；`pt_video.list_key_models()` 只取 `data[].id`，不受影响 |
+| 6 | `reasoning` 是硬编码能力声明；开关收敛到 `reasoning_effort`；`default_enabled=true` 表示不传参也开思考 | 实测 25/25 全为 `(mandatory=false, default_enabled=true)`；关闭取值待与 relay 层对齐，catalog 不写死 |
+
+### 9.2 F1 作废的证据链（2026-11-13 真机，全程 0 花费）
+
+| 证据 | 数据 |
+|---|---|
+| 双 Key 同账号/分组 | 两枚 Key 各拉一次，均 HTTP 200、**77/77 完全一致**（`only_a=0, only_b=0`） |
+| 视图是子集 | 77 个全部落在 89 条文档样例内（`only_live=0`），样例另有 **12 个本视图不可见** |
+| 「不在列表」≠ 下架 | catalog 86 个里 **15 个不在本视图**；其中 `kling-v2-1-master` 同日 `estimate` 仍可计价 1400 credits |
+| 误踢面 | 若按旧逻辑跑 `sync()`，这 15 个（含 10 个 chat）会被 `delisted=true, enabled=false` 永久移除 |
+| 新模型 | live 有 6 个 catalog 未收录：`kling-image-o1` / `kling-v2-5-turbo` / `kling-v3-omni` / `mimo-v2.6-pro-ultraspeed` / `qwen3-tts-flash` / `wan2.7-image` |
+
+> SSOT §2.2 早在 2026-11-12 就记过「列表按分组可用 + 命中定价规则 + status=2 三重过滤」，
+> 与本次 PT 答复一致 —— **F1 是 2026-10-30 的误判，本次纠正回来**。
+> **不恢复已删的双层架构**：服务端返回的是单个已过滤列表，客户端不需要双层，也不恢复 fail-closed。
+
+### 9.3 本轮代码改动
+
+| 文件 | 改动 |
+|---|---|
+| `pt_gateway.py` | `ModelRegistry.sync()` 新增 `not_in_key_view` 状态与 `confirmed_delisted` 参数；不再自动 `delisted`；新增 `mark_delisted()`；`list_capabilities()` 透出新字段；全量注释订正 |
+| `catalog.json` | `note` F1 口径订正；`updated` → `2026-11-13`；新增顶层 `models_api_contract`（`_source=models_api`，字段契约 + 能力判定规则 + 影子对账观测） |
+| `catalog.schema.json` / `validate_catalog.py` / `tests/test_unit_catalog.py` | `_source` **8 → 9 值**（新增 `models_api`），三道守门员同步，新增契约断言 |
+| `tests/test_unit_registry.py` | 旧「消失即下架」断言改为「只标 `not_in_key_view`、保持 enabled」；新增显式下架 / 恢复 / 空列表等 5 条回归 |
+| `mcp.py` / `pt_video.py` / 双语 README / 测试注释 | 口径订正 |
+
+**保持不变**：fail-open 不做客户端拦截；取消接口仍不实现；86 个模型条目的 `capabilities` **一条未改**
+（影子对账只出报告，官方字段待逐条裁决后再讨论批量回填）。
+
+### 9.4 未决 / 后置
+
+1. `dola-seedream-5-0-pro-260628`：真实接口给 `output_modalities:["text"]` + `endpoint:["openai"]`，
+   按 PT 规则会被判成「理解类」，但 catalog 是 `kind=image`（名字带 seedream 显然是图像生成）。
+   **上线后数据依然如此，不是样例笔误**，需回问 PT。
+2. **vision 冲突**：catalog 28 个 `vision=true` vs live 理解类 16 个，重合 14。排除「本视图不可见」的 9 个后，
+   真正待裁决 5 个：`MiniMax-M2.5` / `M2.5-highspeed` / `M2.7` / `M2.7-highspeed` / `qwen3.7-max`。
+3. **web_search**：官方只给 6 个 qwen3.x 有 `web_search_options`，catalog 有 26 个 `conditional`；
+   不能因「官方没写」就判 false，需真机抽样。
+4. `reasoning_effort` 关闭取值 PT 自己说「待与 relay 层对齐」，catalog 不写死。
+5. `thinking_param` 7 种写法尚未收敛（PT 第 6 条）。
+6. 视频侧 C4 / R1 异步仍缺 ≥1000 credits 额度；80 credits 不够（见 SSOT §12.6）。
+
+### 9.5 验收
+
+`validate_catalog.py` **137 项全 PASS**；`tests/run_tests.py` **265/265 PASS**（离线，0 花费）。
+详见 `CHANGELOG.md` 0.7.3 与 SSOT §13。

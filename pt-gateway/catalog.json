@@ -1,13 +1,51 @@
 {
   "schema": 2,
-  "updated": "2026-11-12",
+  "updated": "2026-11-13",
   "note": [
     "PT 统一媒体能力目录：agent 通过 list_capabilities 读取，无需再翻文档查模型能力。",
     "execution: sync=一次调用直接返回结果; async=提交拿 task_id 后轮询 task_status。",
     "价格字段 price_usd_5s_720p 基于 5s/720p 探测（PT 预扣单价）；n/a 表示 PT 未公开，以仪表盘为准。",
-    "模型上下架由 ModelRegistry.sync() 维护：GET /v1/models 返回 PT **全量**模型清单（所有 key 相同），不再出现的模型即视为下架；本目录只维护能力档案（分辨率/时长/模式等 API 不给的字段）。",
+    "模型可见性由 ModelRegistry.sync() 维护：GET /v1/models 返回本 Key / 分组的可见模型视图（按 Key 限额、分组启用、定价规则与名单双重过滤），不是平台全量清单（PT 2026-11-13 答复 + 双 Key 实测）。不在列表只标 not_in_key_view，不再自动判下架；确认下架须显式 mark_delisted()。本目录只维护能力档案（分辨率/时长/模式等人工标注字段）。",
     "音频类（TTS）端点：PT 侧统一为 OpenAI 兼容 POST /v1/audio/speech（同步返回 data.audio url）；请求体 {model, input, voice}，voice 必填（OpenAI 标准音色实测可用）。注：此前假设的 /ali/api/v1/services/aigc/... 实测 404/500，已废弃；各模型的上游厂商提示见 upstream_endpoint 字段，实际调用一律走 /v1/audio/speech。"
   ],
+  "models_api_contract": {
+    "_source": "models_api",
+    "_checked_at": "2026-11-13",
+    "endpoint": "GET https://api.powertokens.ai/v1/models",
+    "scope": "本 Key / 分组可见模型视图，按「Key 模型限额 → 分组启用模型 → HasPricingRuleCandidateForModel + IsModelNameListed 双重过滤」生成；不是平台全量清单，不在列表不等于下架",
+    "compatibility": "只增不改：OpenAI 原生字段 id/object/created/owned_by 语义不变；扩展字段 omitempty 纯增量；object=list / success=true 是网关外层包裹，非本次新增；无分页，全量返回",
+    "fields": {
+      "always": ["id", "object", "created", "owned_by", "name", "supported_endpoint_types", "architecture"],
+      "architecture": ["modality", "input_modalities", "output_modalities"],
+      "optional": ["supported_parameters", "reasoning", "pricing"]
+    },
+    "capability_rules": {
+      "generation_vs_understanding": "output_modalities 含 image/video/audio → 生成类，input_modalities 是素材输入；output 仅 text 且 input 含 image/video/audio/file → 理解类。判生成类看 output，判理解类看 input，不另加字段",
+      "thinking": "reasoning.supported + supported_parameters 含 reasoning_effort；mandatory=false, default_enabled=true 表示不传参网关也会开思考，调用方须显式传 reasoning_effort 关闭（具体取值待与 relay 层对齐）",
+      "web_search": "supported_parameters 含 web_search_options 表示支持；pricing.web_search=\"0\" 表示免费，不是未配置",
+      "ocr": "input_modalities 含 file 表示可喂文档；PT 无专用 OCR 模型"
+    },
+    "not_a_truth_source_for": [
+      "PT 计费单价：pricing 其余字段只是匹配 OpenRouter 模型 ID，图片/视频模型有意省略",
+      "模型是否下架：列表是可见视图，缺失有多种解释，需 mark_delisted() 显式确认",
+      "模型能力档案（分辨率 / 时长 / 模式）：仍由 catalog.models 人工维护"
+    ],
+    "observed": {
+      "date": "2026-11-13",
+      "model_count": 77,
+      "keys_compared": 2,
+      "same_view_across_keys": true,
+      "document_sample_count": 89,
+      "catalog_model_count": 86,
+      "supported_parameters_models": 56,
+      "reasoning_models": 25,
+      "reasoning_effort_models": 25,
+      "default_enabled_true": 25,
+      "web_search_options_models": 6,
+      "pricing_models": 13,
+      "notes": "两枚 Key 同账号 / 分组，视图完全一致（77/77）；77 个全部落在 89 条文档样例内，样例另有 12 个本视图不可见；catalog 有 15 个不在本视图（含 kling-v2-1-master，同日 estimate 仍可计价 1400 credits），另有 6 个 live 新模型未入 catalog。全程 0 花费。"
+    }
+  },
   "kinds": {
     "image": {
       "execution": "sync",

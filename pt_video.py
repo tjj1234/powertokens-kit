@@ -427,7 +427,13 @@ class ApiError(Exception):
 
 
 def list_key_models(key, kind="all"):
-    """拉取该 Key 真实可用的模型列表（/v1/models 反映 Key 额度），按 kind 过滤并排序。"""
+    """拉取该 Key / 分组可见的模型视图（/v1/models 反映 Key 限额与分组过滤）。
+
+    2026-11-13 PT 书面答复确认此口径正确：列表按「Key 模型限额 → 分组启用模型 →
+    HasPricingRuleCandidateForModel + IsModelNameListed 双重过滤」生成，是子集视图；
+    **不在列表不等于模型下架或不可调用**（FIXLIST F1 旧「全量清单」口径已作废）。
+    按 kind 过滤并排序。
+    """
     try:
         data = _api_call("GET", "/v1/models", key, timeout=15)
     except ApiError as e:

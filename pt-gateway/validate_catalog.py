@@ -9,7 +9,7 @@
 设计约束（docs/catalog_v2_决策锁定_20261112.md）：
   - 零外部依赖，只用标准库；退出码 0 = OK / 1 = FAIL
   - A3：null = 不知道，[] = 确认没有，false = 确认不支持
-  - A5：_source 八值；product 仅用于 auto_policy
+  - A5：_source 九值（2026-11-13 增 models_api）；product 仅用于 auto_policy
   - A4：web_search_detail 只在 conditional 模型上；未实测值不得为 true
   - B1：kinds 恒为 5 类；capability_gaps 不得混入 kinds
   - 「只加字段」：原有 kinds/chat/capability_schema 里的 _source 是一段说明文字，
@@ -21,7 +21,7 @@ from pathlib import Path
 
 VALID_SOURCE = {
     "official", "documented", "verified", "official+verified",
-    "inferred", "configured", "verified(unmapped)", "product",
+    "inferred", "configured", "verified(unmapped)", "product", "models_api",
 }
 KNOWN_KINDS = {"image", "video", "seedance", "audio", "chat"}
 MAIN = ["glm-4.7", "deepseek-v4-pro", "qwen3.8-flash", "seed-2-0-pro-260328",
@@ -101,9 +101,16 @@ def main():
         if isinstance(caps, dict) and "_source" in caps:
             if caps["_source"] not in VALID_SOURCE:
                 bad.append("%s/capabilities = %r" % (mid, caps["_source"]))
-    r.check(not bad, "新增节点 _source 全在 8 值枚举内（A5）", "; ".join(bad[:5]))
+    r.check(not bad, "新增节点 _source 全在 9 值枚举内（A5）", "; ".join(bad[:5]))
     r.check(d.get("auto_policy", {}).get("_source") == "product",
             "auto_policy._source == product")
+    mac = d.get("models_api_contract", {})
+    r.check(isinstance(mac, dict) and mac.get("_source") == "models_api",
+            "models_api_contract._source == models_api")
+    r.check("不在列表不等于下架" in mac.get("scope", ""),
+            "models_api_contract.scope 声明「不在列表不等于下架」")
+    r.check(mac.get("observed", {}).get("model_count") == 77,
+            "models_api_contract.observed 记录 77 个可见模型")
     # product 只能出现在 auto_policy
     stray = []
     def find_product(node, path):
@@ -233,7 +240,7 @@ def main():
         scan_sources(d.get(name, {}), r, name, bad21)
     for name in ("interface_variants", "result_persistence"):
         scan_sources(sd.get(name, {}), r, "kinds.seedance/" + name, bad21)
-    r.check(not bad21, "新增节点 _source 全在 8 值枚举内（v2.1）", "; ".join(bad21[:5]))
+    r.check(not bad21, "新增节点 _source 全在 9 值枚举内（v2.1）", "; ".join(bad21[:5]))
 
     # --- 真机实测结论（2026-11-12，P0 优先于书面材料）-----------------------
     rpv_obs = sd.get("result_persistence", {}).get("image_sync_observed", {})

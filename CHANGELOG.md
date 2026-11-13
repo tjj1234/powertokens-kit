@@ -6,6 +6,35 @@
 
 ---
 
+## 0.7.3 — 2026-11-13 · `/v1/models` 上线：F1 口径作废与字段契约落地
+
+**范围**：PT 丰富 `GET /v1/models` 后，两批书面答复（6 问 + 6 答）固化进 SSOT §13；
+双 Key 影子对账（免费只读、0 花费）证实「列表是 Key/分组可见视图」，据此修正 `ModelRegistry.sync()` 的下架语义，
+并把官方字段契约与观测写入 `catalog.json`。**本轮动了代码与 catalog 数据**（前两轮是纯文档）。
+
+- **F1 作废**：`FIXLIST.md` F1「`/v1/models` 全量、所有 key 相同」不再成立。真实响应按
+  「Key 模型限额 → 分组启用模型 → `HasPricingRuleCandidateForModel` + `IsModelNameListed` 双重过滤」生成。
+  证据：双 Key 各 77 个且完全一致；77 ⊂ 89 文档样例；catalog 15 个不在本视图，
+  其中 `kling-v2-1-master` 同日 `estimate` 仍可计价 1400 credits。
+  **不恢复已删的双层架构 / fail-closed**（服务端返回单个已过滤列表）。
+- **代码**：`sync()` 新增 `not_in_key_view` 状态与 `confirmed_delisted` 参数，不再自动 `delisted`；
+  新增 `mark_delisted(ids, reason)` 作为唯一显式下架入口；`list_capabilities()` 透出新字段。
+  旧逻辑会把「本 Key 暂时看不到的可用模型」永久误踢（含 10 个 chat），属静默故障。
+- **数据**：`catalog.json` 新增顶层 `models_api_contract`（`_source=models_api`，含字段口径、六能力判定规则、
+  影子对账观测），`note` 订正、`updated` → `2026-11-13`；**86 个模型的 `capabilities` 一条未改**（不批量回填）。
+- **A5 决策变更**：`_source` 8 → **9 值**（新增 `models_api`）。三道守门员同步：
+  `catalog.schema.json`（枚举 + 新节点声明）、`validate_catalog.py`（+3 断言）、`tests/test_unit_catalog.py`（+1 用例）。
+- **测试**：`tests/test_unit_registry.py` 旧「消失即下架」断言改为新语义，新增 5 条回归；
+  `test_unit_gateway.py` +2 字段断言。
+- **文档**：`FIXLIST.md` 新增 §9（两批答复 / 证据链 / 落地 / 未决）；双语 README 共 20 处口径订正；
+  `mcp.py` / `pt_video.py` / `pt_gateway.py` 注释；SSOT 新增 §13；看板升级 v2.2；详细版 v1.2。
+- **验收**：`validate_catalog.py` **137 项全 PASS**（133 → 137）、`run_tests.py` **265/265 PASS**（260 → 265），
+  两个退出码 0；全程 0 花费、凭证未入库、输出脱敏。
+- **未决**：`dola-seedream-5-0-pro-260628` 输出模态冲突、5 个 vision 归属、20 个 `web_search=conditional`、
+  `reasoning_effort` 关闭取值、`thinking_param` 收敛、C4 视频侧 / R1 异步（需 ≥1000 credits）。见 SSOT §13.8。
+
+---
+
 ## 0.7.2 — 2026-11-13 · 账户域真机实测回写（纯文档）
 
 **范围**：用户提供 `pt_live_` + 数字 `key_id` 后，零成本跑完账户域只读端点与不计费 estimate；
