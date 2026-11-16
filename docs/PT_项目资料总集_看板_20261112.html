@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>PT 项目资料总集 · 完整版 v2.3 · 2026-11-13</title>
+<title>PT 项目资料总集 · 完整版 v2.4 · 2026-11-16</title>
 <style>
   :root{
     --bg:#f7f8fa; --card:#ffffff; --ink:#1f2937; --muted:#6b7280;
@@ -105,12 +105,13 @@
 <div class="wrap">
 
 <header>
-  <h1>PT 项目资料总集 <span class="badge">完整版 v2.3 · 已发布</span><span class="badge b">12/12 全答</span><span class="badge b">§13 已固化</span></h1>
+  <h1>PT 项目资料总集 <span class="badge">完整版 v2.4 · 已发布</span><span class="badge b">12/12 全答</span><span class="badge b">§15 已固化</span><span class="badge b">C4/R1 已裁决</span></h1>
   <div class="sub">2026-11-12 · 仓库 <code>tjj1234/powertokens-kit</code> ·
     <b>本版把 v1.0「开工前决策摘要」补全为全量资料</b>：逐条问答、问题→影响功能映射、PT 原表、冲突裁决、真机结果、落地清单、文档索引<br>
     主文档 <code>docs/PT_项目资料总集_20261112.md</code>（SSOT） ·
     <b>详细逐条版 <code>docs/PT_问题_答复_影响功能_全量对照_20261112.md</code></b> ·
     发布报告 <code>docs/PT_发布与测试报告_20261112.html</code><br>
+  <b>v2.4（2026-11-16 上午）</b>：用户批准单次 1.5 USD，用账户 B 跑一次 5 秒 <code>wan3.0-video</code> 真生成，实扣 <b>500 credits（＄0.5）</b>。<b>C4 视频侧</b>产物落 PT 自有 R2 公共桶（无签名、公开可读、<code>immutable</code> 1y），<b>R1 异步</b> request_id 只在 <code>X-Oneapi-Request-Id</code>；另登记单价三方冲突与 usage 日汇总延迟。见 <a href="#s13">§13</a> 与 SSOT §15。
     <b>v2.3（2026-11-13 傍晚）</b>：收到《powertokens-kit catalog 补充需求》13 条，P0 已落地 —— Node 核心包 / 双版本账户客户端 / auto_policy 补 3 种用途 / limits 子键 / 一键复核脚本 / CI，逐条固化进 <a class="doc" href="PT_项目资料总集_20261112.md">SSOT §14</a> → 见本看板 <a href="#s12">§12</a>。三项阻塞（模板缺失、limits 无来源、7 主力需花钱实测）如实登记。<br>
     <b>v2.2（2026-11-13 下午）</b>：PT 丰富 <code>GET /v1/models</code> 后两批答复已固化进 <a class="doc" href="PT_项目资料总集_20261112.md">SSOT §13</a>，真机影子对账推翻 <b>FIXLIST F1</b> 并修正 <code>sync()</code> 下架语义 → 见本看板 <a href="#s11">§11</a></div>
 </header>
@@ -118,12 +119,13 @@
 <div class="kpis">
   <div class="kpi g"><div class="n">12 / 12</div><div class="l">发给 PT 的 10 必问 + 2 条件项全答</div></div>
   <div class="kpi"><div class="n">Q8 + R11 + S3</div><div class="l">22 个编号问题全部闭环</div></div>
-  <div class="kpi v"><div class="n">3 条</div><div class="l">真机硬结论推翻/收紧书面口径</div></div>
-  <div class="kpi t"><div class="n">286 / 286</div><div class="l">离线测试 PASS · 校验器 160 项 · Node 26/26（0.8.0）</div></div>
+  <div class="kpi v"><div class="n">6 条</div><div class="l">真机硬结论推翻/收紧书面口径（+C4 视频侧/R1 异步/单价）</div></div>
+  <div class="kpi t"><div class="n">287 / 287</div><div class="l">离线测试 PASS · 校验器 169 项 · Node 26/26（0.8.1）</div></div>
   <div class="kpi g"><div class="n">8 + 5</div><div class="l">errors 订正 8 处 · 新增字段组 5 组</div></div>
   <div class="kpi a"><div class="n">C1 已裁决</div><div class="l">2026-11-13 真机：账户域裸值鉴权</div></div>
   <div class="kpi r"><div class="n">F1 作废</div><div class="l">可见视图 ≠ 全量清单 · sync() 已修</div></div>
-  <div class="kpi b"><div class="n">4 批</div><div class="l">G1–G6 / 0.7.1 / 0.7.2 / 0.7.3 已 push</div></div>
+  <div class="kpi b"><div class="n">6 批</div><div class="l">G1–G6 / 0.7.1–0.7.3 / 0.8.0 / 0.8.1 已 push</div></div>
+  <div class="kpi g"><div class="n">0.5 USD</div><div class="l">付费真机实扣 500 credits · 预算上限 1.5 USD</div></div>
 </div>
 
 <div class="good" style="margin:14px 0">
@@ -155,7 +157,7 @@
   <a href="#s3">3 逐批答复</a><a href="#s4">4 问题→影响功能</a><a href="#s5">5 D4 正式答复</a>
   <a href="#s6">6 冲突裁决</a><a href="#s7">7 真机 T0–T8</a><a href="#s8">8 落地清单</a>
   <a href="#s9">9 文档索引</a><a href="#s10">10 未决项</a><a href="#s11">11 /v1/models 上线</a>
-  <a href="#s12">12 补充需求 0.8.0</a>
+  <a href="#s12">12 补充需求 0.8.0</a><a href="#s13">13 付费真机实测</a>
 </nav>
 
 <section id="s0">
@@ -412,7 +414,7 @@
   <div class="grid2">
     <div class="box b"><h3><a class="doc" href="PT_项目资料总集_20261112.md">PT_项目资料总集_20261112.md</a> · SSOT</h3><div class="sm">事实与口径<b>唯一入口</b>。§2 事实卡 · §3 冲突 9 处 · §4 编号对账 · §6 开工清单 · §10 执行回写。<b>改代码前先看这份。</b></div></div>
     <div class="box v"><h3><a class="doc" href="PT_问题_答复_影响功能_全量对照_20261112.md">PT_问题_答复_影响功能_全量对照_20261112.md</a> · 本轮新增</h3><div class="sm"><b>详细逐条版</b>：Q/R/S 与 10+2 逐条问答、<b>§3 问题→影响功能总映射</b>、§4 PT 原表（9 行矩阵 / 8 行对比表 / Q8 七行 / 12 条口述）、§8 文档全量索引、§10 补漏清单。</div></div>
-    <div class="box t"><h3>本文件 · 完整版看板 v2.3</h3><div class="sm">11 节 · 六批时间线 · 22 项编号对账 · 影响功能筛选 · D4 逐条 · 冲突裁决 · T0–T9 · 落地清单 · 文档索引 · <b>§11 /v1/models 上线与 F1 作废</b>。<b>v1.0 为开工前决策摘要，保留在 git 历史。</b></div></div>
+    <div class="box t"><h3>本文件 · 完整版看板 v2.4</h3><div class="sm">11 节 · 六批时间线 · 22 项编号对账 · 影响功能筛选 · D4 逐条 · 冲突裁决 · T0–T9 · 落地清单 · 文档索引 · <b>§11 /v1/models 上线与 F1 作废</b>。<b>v1.0 为开工前决策摘要，保留在 git 历史。</b></div></div>
     <div class="box g"><h3><a class="doc" href="PT_发布与测试报告_20261112.html">PT_发布与测试报告_20261112.html</a></h3><div class="sm">G1→G6 时间线、T0–T8 逐项、三条真机裁决、改动清单与验收、发布边界、遗留项。</div></div>
   </div>
   <h3>9.2 审计轨迹与逐批看板</h3>
@@ -458,8 +460,8 @@
   <div class="scroll"><table>
     <tr><th style="width:12%">项</th><th style="width:46%">内容</th><th style="width:18%">归属</th><th style="width:24%">前置条件</th></tr>
     <tr><td><b>C1</b></td><td><s>账户域鉴权头定稿（Bearer vs 裸值）</s> → <b>裸值，不带 Bearer</b></td><td><span class="tag t-ok">✅ 已裁决</span></td><td>SSOT §12.2（2026-11-13 真机）</td></tr>
-    <tr><td><b>C4 视频侧</b></td><td>视频标准接口是否 PT 自有永久地址</td><td><span class="tag t-part">🔬 待实测</span></td><td>余额 80 credits，最便宜视频需 1000 credits</td></tr>
-    <tr><td><b>R1 异步</b></td><td>异步视频提交响应的 <code>request_id</code> 字段名</td><td><span class="tag t-part">🔬 待实测</span></td><td>同上（需一次真实视频提交）</td></tr>
+    <tr><td><b>C4 视频侧</b></td><td><s>视频标准接口是否 PT 自有永久地址</s> → <b>PT 自有 R2 公共桶、无签名、公开可读</b>；14 天保留期仍待复测</td><td><span class="tag t-ok">✅ 主体已裁决</span></td><td>SSOT §15.2（2026-11-16 真机，实扣 500 credits）</td></tr>
+    <tr><td><b>R1 异步</b></td><td><s>异步视频提交响应的 request_id 字段名</s> → <b>只在 X-Oneapi-Request-Id；body.id 是 task_id</b></td><td><span class="tag t-ok">✅ 已裁决</span></td><td>SSOT §15.3 · 日志三键实测均可查</td></tr>
     <tr><td><b>T6</b></td><td><s>estimate 整包请求体形态</s> → 整包被接受、不计费</td><td><span class="tag t-ok">✅ 已验证</span></td><td>SSOT §12.3（80→80 credits）</td></tr>
     <tr><td><b>T7 / T8</b></td><td>账户只读命令 / 协议状态真查</td><td><span class="tag t-ok">✅ 已真查</span></td><td>SSOT §12.3；账户客户端改造仍后置</td></tr>
     <tr><td><b>N2</b></td><td>真接供应商兼容接口</td><td><span class="tag t-blue">🔄 按决策后置</span></td><td>需 PT 给对齐文档；会带来 24h 转存义务</td></tr>
@@ -467,7 +469,7 @@
     <tr><td><b>P2 pricing</b></td><td>catalog 价格字段；<code>limits</code> 子字段形状</td><td><span class="tag t-void">🔄 P2</span></td><td>需模板全文</td></tr>
     <tr><td><b>flaky</b></td><td><code>test_contract_http</code> 回环服务偶发断连</td><td><span class="tag t-void">🔄 既有</span></td><td>与本轮改动无关</td></tr>
     <tr><td><b>U1–U6</b></td><td><code>dola-seedream</code> 输出模态冲突 / 5 个 vision 归属 / 20 个 <code>web_search=conditional</code> / <code>reasoning_effort</code> 关闭取值 / <code>thinking_param</code> 收敛 / 无定价规则模型是否入列</td><td><span class="tag t-part">🔬 本轮新增</span></td><td>详见 <a href="#s11">§11 未决表</a> 与 SSOT §13.8</td></tr>
-    <tr><td><b>本轮落地</b></td><td>看板 v2.2 + SSOT §13 + 详细版 v1.2 + CHANGELOG 0.7.3 + <b>代码/catalog 修正</b>，已提交并推送 <code>origin/main</code></td><td><span class="tag t-ok">✅ 已完成</span></td><td>137 项 / 265-265 全绿；commit 号以 <code>git log -1 --oneline</code> 为准</td></tr>
+    <tr><td><b>本轮落地</b></td><td>看板 v2.4 + SSOT §15 + 详细版 v1.4 + CHANGELOG 0.8.1 + <b>catalog 观测节与三道守门员</b>，已提交并推送 <code>origin/main</code></td><td><span class="tag t-ok">✅ 已完成</span></td><td>169 项 / 287-287 / Node 26-26 全绿；commit 号以 <code>git log -1 --oneline</code> 为准</td></tr>
   </table></div>
   <div class="good"><b>结论</b>：向 PT 提问这条线已收口（12/12）；G1–G6 全部完成并发布；2026-11-13 上午用真实凭证裁掉 C1、验成 T6，下午又抓到 <code>/v1/models</code> 上线并作废 F1（见 <a href="#s11">§11</a>）。剩下的是「需额度的实测（C4 视频侧 / R1 异步）」「官方字段待裁决项 U1–U6」与「按决策后置的功能」，<b>都不是资料缺口</b>。</div>
 </section>
@@ -591,11 +593,71 @@
   <code>pt_video.py</code> 生成链路 <b>0 行改动</b>；临时快照只含模型元数据，无凭证。</div>
 </section>
 
+<section id="s13">
+  <h2 class="g">13. 付费真机实测 · C4 视频侧 / R1 异步定案 <span class="tag t-ok" style="margin-left:8px">2026-11-16 · 0.8.1</span></h2>
+  <div class="h2sub">事实全文 <a class="doc" href="PT_项目资料总集_20261112.md">SSOT §15</a> · 观测数据 <code>catalog.json:live_billing_observations</code> · 详细版 v1.4</div>
+
+  <div class="box t"><h3>13.1 测试条件 · 实际花费 0.5 USD（上限 1.5）</h3>
+    <div class="sm">账户 B（<b>未签资产库协议</b>）· <code>POST /v1/videos</code> · <code>wan3.0-video</code> · 5s / 720P ·
+    提交 <b>1 次</b>、无重试 · 余额 <b>49450 → 48950</b>，实扣 <b>500 credits = ＄0.5</b> ·
+    状态 <code>queued → in_progress(30) → completed(100)</code>，耗时 108s · 产物 9,307,787 bytes（Range 探测，未下载整片）。<br>
+    <b>未签协议账户可正常跑普通文生视频</b> → 协议只约束 Seedance / <code>asset://</code> 素材链路（S3 旁证）。</div>
+  </div>
+
+  <h3>13.2 C4 视频侧：三套书面口径 vs 真机</h3>
+  <div class="scroll"><table>
+    <tr><th style="width:24%">来源</th><th style="width:44%">说法</th><th style="width:32%">裁决</th></tr>
+    <tr><td><b>真机实测</b></td><td>PT 自有 <b>Cloudflare R2 公共桶</b> <code>pub-&lt;hash&gt;.r2.dev</code>，路径 <code>/task-results/YYYY/MM/DD/&lt;task_id&gt;.mp4</code>；query 空、无签名；带不带 token 都 <code>206 video/mp4</code>；<code>cache-control: public, max-age=31536000, immutable</code></td><td><span class="tag t-ok">✅ 基准事实</span></td></tr>
+    <tr><td>D4 §4</td><td>PT 自有 <code>/v1/videos/{task_id}/content</code>、无签名、不设过期、<b>需带 PT token 鉴权</b></td><td>「自有存储 / 无签名 / 不设过期」对；<b>域名形态与鉴权要求错</b></td></tr>
+    <tr><td>D5:476</td><td>14 天、字节 TOS 域名 <code>...volces.com</code>、仅查最近 7 天</td><td><b>域名错</b>（上游 <code>provider_name=Ali</code>，PT 已转存）；14 天未验证</td></tr>
+    <tr><td>透传链路</td><td>上游签名链接、24h</td><td>本次是标准接口，<b>不是透传</b></td></tr>
+    <tr><td>任务对象</td><td><code>metadata</code> 只有 <code>url</code>；完成后复查仍 8 字段，<b>无任何 TTL / expires 字段</b></td><td><code>--no-download</code> 短期安全，<b>不承诺永久</b>；图像链路仍是 24h 签名 URL，不可混用</td></tr>
+  </table></div>
+  <div class="box a"><b>仍未裁决 U9</b>：对象实际保留时长。<code>immutable</code> 只说明 CDN 缓存策略，不等于 PT 不清桶；需<b>跨周复测同一 URL</b>（零成本）才能定案。本轮不编。</div>
+
+  <h3>13.3 R1 异步闭环 · 同名 <code>id</code> 跨链路语义不同</h3>
+  <div class="scroll"><table>
+    <tr><th style="width:26%">位置</th><th style="width:74%">实测</th></tr>
+    <tr><td>提交响应 body</td><td><code>id</code> 与 <code>task_id</code> <b>同值</b>（是任务 ID）；另有 <code>object/model/status/progress/created_at</code></td></tr>
+    <tr><td>提交响应头</td><td><b>只有 <code>X-Oneapi-Request-Id</code></b>；没有 <code>X-Request-Id</code> / <code>X-Client-Request-Id</code></td></tr>
+    <tr><td>消费记录</td><td><code>request_id</code> = 该 header 值；<code>task_id</code> = body 的 <code>id</code>；<code>consume_id</code> = <code>COS_...</code></td></tr>
+    <tr><td>查询键实测</td><td><code>task_id</code> / <code>request_id</code> / <code>consume_id</code> <b>三键都查到同一条 500 credits 记录</b>；拿任务 ID 当 <code>request_id</code> 查返回全空</td></tr>
+  </table></div>
+  <div class="box r"><b>⚠️ 高危易踩点</b>：§2.7 的「body <code>id</code> 与 <code>X-Request-Id</code> 同值」只适用于 <b>chat 同步</b>；
+    <b>视频异步的 body <code>id</code> 是 task_id</b>，request_id 只在响应头。同一个字段名两种语义，日志查询用错键会静默查不到。</div>
+
+  <h3>13.4 单价三方冲突（不静默选边）</h3>
+  <div class="scroll"><table>
+    <tr><th style="width:40%">来源</th><th style="width:24%">5s / 720P</th><th style="width:36%">与实测</th></tr>
+    <tr><td><code>catalog.json</code> / <code>pt_video.py</code> 价格表</td><td>0.20 USD（≈200 credits）</td><td>差 <b>2.5 倍</b></td></tr>
+    <tr><td>上轮 <code>POST /v1/billing/estimate</code> 试算</td><td>1000 credits（＄1）</td><td>差 <b>2 倍</b></td></tr>
+    <tr><td><b>真机实扣</b></td><td><b>500 credits = ＄0.5</b></td><td><span class="tag t-ok">唯一可信</span></td></tr>
+  </table></div>
+  <div class="sm"><code>logs.billing</code> 全文口径：<code>pricing_mode=calculator</code> · <code>billing_unit=per_second</code> ·
+    <code>unit_quota=100 credits/秒</code> · <code>formula = 5s × 100 + 0 图 × 0 = 500 credits</code>。
+    <code>charging.estimate_vs_actual = "以实际扣费为主"</code> 再次坐实。<br>
+    <b>处置</b>：写入 <code>catalog.json:live_billing_observations</code>（观测 + 5 条冲突），
+    <b>86 个模型单价一条未改</b>；是否订正 <code>0.20 → 0.50</code> 需你拍板（会动价格表与三道守门员，登记 U10）。</div>
+
+  <h3>13.5 新偏差与未决</h3>
+  <div class="scroll"><table>
+    <tr><th style="width:14%">编号</th><th style="width:56%">内容</th><th style="width:30%">前置条件</th></tr>
+    <tr><td><b>N7</b></td><td><code>GET /v1/billing/usage</code> 当日 <code>total_cost=0</code> / <code>items=null</code>，<b>未实时计入</b>这 500 credits → 日汇总有延迟，<code>logs/query</code> 才是实时真相源</td><td>已登记，无需复测</td></tr>
+    <tr><td><b>U9</b></td><td>视频产物对象实际保留时长（14 天 vs immutable 1 年）</td><td>跨周复测同一 URL（零成本）</td></tr>
+    <tr><td><b>U10</b></td><td>是否订正 <code>wan3.0-video</code> 单价 0.20 → 0.50</td><td><b>需你拍板</b></td></tr>
+    <tr><td><b>U1–U8 / S3</b></td><td>§13.8 遗留项；未签协议账户跑 Seedance / <code>asset://</code> 的真实拒绝行为</td><td>需 PT 答复或一次尝试</td></tr>
+  </table></div>
+
+  <div class="good"><b>验收与安全</b>：<code>validate_catalog.py</code> <b>169 项 PASS</b> · <code>run_tests.py</code> <b>287/287 PASS</b> ·
+    <code>node --test</code> <b>26/26 PASS</b>（退出码全 0）。<code>pt_video.py</code> 生成链路 <b>0 行改动</b>；
+    凭证只在内存 / 本机 Temp 且用完即删，URL 只记域名与参数名、签名值不入库，远程提交独立核验 <b>SECRET_LEAK=NONE</b>。</div>
+</section>
+
 <div class="foot">
-  PT 项目资料总集看板 <b>v2.3 完整版</b> · 2026-11-12 建 / 11-13 账户域实测 / 11-13 下午 <code>/v1/models</code> 上线回写 ·
+  PT 项目资料总集看板 <b>v2.4 完整版</b> · 2026-11-12 建 / 11-13 账户域实测 / 11-13 下午 <code>/v1/models</code> 上线回写 / 11-16 付费真机定案 C4·R1 ·
   v1.0 为开工前决策摘要版（7 节 / 264 行），保留于 git 历史<br>
   SSOT <code>docs/PT_项目资料总集_20261112.md</code> · 详细逐条版 <code>docs/PT_问题_答复_影响功能_全量对照_20261112.md</code><br>
-  自证（0.8.0）：<code>validate_catalog.py</code> <b>160 项 PASS</b> · <code>run_tests.py</code> <b>286/286 PASS</b> · <code>node --test</code> <b>26/26 PASS</b> · 0 花费只读取证<br>
+  自证（0.8.1）：<code>validate_catalog.py</code> <b>169 项 PASS</b> · <code>run_tests.py</code> <b>287/287 PASS</b> · <code>node --test</code> <b>26/26 PASS</b> · 唯一付费调用 500 credits（＄0.5，上限 ＄1.5）<br>
   未含任何 Key / 令牌 / 签名值 · 所有响应示例已脱敏
 </div>
 

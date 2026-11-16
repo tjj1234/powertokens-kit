@@ -6,6 +6,34 @@
 
 ---
 
+## 0.8.1 — 2026-11-16 · 付费真机实测：C4 视频侧 / R1 异步定案
+
+**背景**：用户批准单次 **1.5 USD** 上限，用账户 B（未签资产库协议）跑一次 5 秒文生视频；
+实际花费 **500 credits（＄0.5）**，提交 1 次、无重试。事实全文见 `docs/PT_项目资料总集_20261112.md` §15。
+
+- **C4 视频侧定案**：产物落在 PT 自有 Cloudflare R2 公共桶（`pub-<hash>.r2.dev`，
+  `/task-results/YYYY/MM/DD/<task_id>.mp4`），**无签名、无 TTL 字段、公开可读**；
+  带不带 PT token 都返回 `206 video/mp4`；`cache-control: public, max-age=31536000, immutable`。
+  推翻 D4 的「`/v1/videos/{id}/content` + 需带 token 鉴权」与 D5 的「字节 TOS 域名」；
+  「14 天保留期」仍未裁决（需跨周复测，登记 U9）。`provider_name=Ali` 但产物已由 PT 转存。
+- **R1 异步闭环**：提交响应 `id` 与 `task_id` 同值（是任务 ID）；`request_id` **只**在
+  `X-Oneapi-Request-Id` 响应头，body 没有 `X-Request-Id`。`logs/query` 三键
+  （`task_id` / `request_id` / `consume_id`）都能查到同一条 500 credits 记录。
+  ⚠️ 与 chat 同步链路的 body `id`（= request_id）**同名不同义**，日志查询别用错键。
+- **单价三方冲突登记（不静默选边）**：catalog 记 `0.20 USD`、上轮 estimate 试算 `1000 credits`、
+  **真机实扣 `500 credits`（＄0.5）**；`logs.billing` 给出 `per_second × 100 credits/秒 × 5s`。
+  86 个模型单价字段一条未改，是否订正待拍板（U10）。
+- **新偏差**：`GET /v1/billing/usage` 当日 `total_cost=0`，未实时计入该笔消费 →
+  `logs/query` 才是实时真相源；未签协议账户可正常跑普通文生视频（协议只约束 Seedance / `asset://`）。
+- `catalog.json` 新增 `live_billing_observations`（观测 + 5 条冲突，`updated=2026-11-16`），
+  `catalog.schema.json` / `validate_catalog.py`（+9 项）/ `test_unit_catalog.py`（+1 用例）同步；
+  `pt_video.py` 生成链路 **0 行改动**。
+- 文档：SSOT §15、看板 v2.4（新增 §13）、详细对照版 v1.4、本条。
+- **验收**：`validate_catalog.py` **169 项 PASS**、`run_tests.py` **287/287 PASS**、
+  `node --test` **26/26 PASS**，退出码全 0；凭证与临时文件已清理，无明文入库。
+
+---
+
 ## 0.8.0 — 2026-11-13 · Node 核心包 / 账户客户端 / catalog 补充需求 P0
 
 **范围**：按《powertokens-kit catalog 补充需求》§0 的 P0 清单落地，逐条固化进 SSOT §14。

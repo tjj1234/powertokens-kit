@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "updated": "2026-11-13",
+  "updated": "2026-11-16",
   "note": [
     "PT 统一媒体能力目录：agent 通过 list_capabilities 读取，无需再翻文档查模型能力。",
     "execution: sync=一次调用直接返回结果; async=提交拿 task_id 后轮询 task_status。",
@@ -2617,5 +2617,75 @@
     },
     "task_id_recheck": "完全安全：Fetch 端点只读（DB + 上游 FetchTask），不触发 Submit / Refund / Settle；不会重新生成、不会二次扣费。",
     "estimate_vs_actual": "以实际扣费为主（预估可能有偏差）。"
+  },
+  "live_billing_observations": {
+    "_source": "verified",
+    "observed_at": "2026-11-16T01:51Z",
+    "note": "真机实扣与产物持久化观测。不覆盖 models[].price_usd_5s_720p —— 该字段与实测存在冲突，按 P0「冲突必须登记、不静默选边」留待拍板，详见 SSOT §15.4。",
+    "currency": "credits",
+    "credits_per_usd": 1000,
+    "cases": [
+      {
+        "model": "wan3.0-video",
+        "endpoint": "POST /v1/videos",
+        "duration_seconds": 5,
+        "resolution": "720P",
+        "charged_quota": 500,
+        "charged_usd": 0.5,
+        "balance_before": 49450,
+        "balance_after": 48950,
+        "billing": {
+          "pricing_mode": "calculator",
+          "billing_unit": "per_second",
+          "unit_quota": 100,
+          "quota_per_unit": 1000,
+          "formula": "(Duration (seconds) 5 seconds × 100 credits/seconds + Input images 0 images × 0 credits/images) × 1.00 ≈ 500 credits"
+        },
+        "provider_name": "Ali",
+        "result_persistence": {
+          "storage": "PT 自有 Cloudflare R2 公共桶",
+          "host_shape": "pub-<hash>.r2.dev",
+          "path_shape": "/task-results/YYYY/MM/DD/<task_id>.mp4",
+          "signed": false,
+          "requires_auth": false,
+          "cache_control": "public, max-age=31536000, immutable",
+          "ttl_field_in_task": null,
+          "note": "公开可读、无签名参数；任务对象 metadata 只有 url、无任何 TTL 字段。对象实际保留期仍未实测（D5 称 14 天），需跨周复测同一 URL。"
+        },
+        "request_id_contract": {
+          "submit_body_id_equals_task_id": true,
+          "submit_body_fields": [
+            "id",
+            "task_id",
+            "object",
+            "model",
+            "status",
+            "progress",
+            "created_at"
+          ],
+          "request_id_header": "X-Oneapi-Request-Id",
+          "has_x_request_id_header": false,
+          "logs_query_keys": [
+            "task_id",
+            "request_id",
+            "consume_id"
+          ],
+          "note": "异步视频 body.id 是任务 ID（与 task_id 同值），不是 chat 同步链路的 request_id；日志三键都能查到同一条记录，但 request_id 必须用 X-Oneapi-Request-Id 响应头的值。"
+        },
+        "status_flow": [
+          "queued",
+          "in_progress",
+          "completed"
+        ],
+        "agreement_required": false
+      }
+    ],
+    "conflicts_registered": [
+      "catalog models.wan3.0-video.price_usd_5s_720p=0.20 USD vs 真机实扣 0.50 USD（500 credits）",
+      "上轮 POST /v1/billing/estimate 试算 1000 credits vs 实扣 500 credits（estimate_vs_actual 口径再次坐实）",
+      "D4 §4 称 PT 自有 /v1/videos/{task_id}/content 且需带 PT token 鉴权 vs 实测 R2 公共桶、无需鉴权",
+      "D5:476 称 14 天 + 字节 TOS 域名 vs 实测 r2.dev 域名、任务对象无 TTL 字段",
+      "GET /v1/billing/usage 当日汇总 total_cost=0 / items=null，未实时计入该笔 500 credits"
+    ]
   }
 }

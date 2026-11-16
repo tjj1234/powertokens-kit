@@ -279,6 +279,35 @@ def main():
             and "pre_consume_token_quota_failed" in last_ex.get("note", ""),
             "现行 402 真机样例已落地（C9 验证）")
 
+    # --- 0.8.1 真机计费观测（C4 视频侧 / R1 异步定案） --------------------
+    obs = d.get("live_billing_observations")
+    r.check(isinstance(obs, dict) and obs.get("_source") == "verified",
+            "live_billing_observations 存在且来源 verified")
+    r.check(isinstance(obs, dict) and obs.get("credits_per_usd") == 1000,
+            "观测节汇率 credits_per_usd=1000")
+    cases = obs.get("cases") if isinstance(obs, dict) else None
+    r.check(isinstance(cases, list) and len(cases) >= 1,
+            "观测节至少 1 个真机 case")
+    c0 = cases[0] if isinstance(cases, list) and cases else {}
+    r.check(c0.get("model") == "wan3.0-video" and c0.get("charged_quota") == 500,
+            "wan3.0-video 5s 真机实扣 500 credits")
+    r.check(c0.get("balance_before") == 49450 and c0.get("balance_after") == 48950,
+            "余额前后 49450 -> 48950 自洽")
+    r.check((c0.get("billing") or {}).get("billing_unit") == "per_second"
+            and (c0.get("billing") or {}).get("unit_quota") == 100,
+            "计费口径 per_second / 100 credits 每秒")
+    rp = c0.get("result_persistence") or {}
+    r.check(rp.get("signed") is False and rp.get("requires_auth") is False
+            and rp.get("ttl_field_in_task") is None,
+            "C4 视频侧：无签名 / 无需鉴权 / 任务对象无 TTL 字段")
+    rq = c0.get("request_id_contract") or {}
+    r.check(rq.get("request_id_header") == "X-Oneapi-Request-Id"
+            and rq.get("has_x_request_id_header") is False
+            and rq.get("submit_body_id_equals_task_id") is True,
+            "R1 异步：request_id 在 X-Oneapi-Request-Id，body.id 是 task_id")
+    r.check(isinstance(obs, dict) and len(obs.get("conflicts_registered") or []) >= 5,
+            "单价/产物/usage 冲突已登记，不静默选边")
+
     # --- 汇总 -------------------------------------------------------------
     print("")
     if r.fails:

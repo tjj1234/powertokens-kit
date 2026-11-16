@@ -708,6 +708,27 @@ class TestCatalogV080(unittest.TestCase):
             self.assertIsNone(lim["max_context_tokens"], mid)
             self.assertIsNone(lim["max_output_tokens"], mid)
 
+    def test_live_billing_observations(self):
+        """0.8.1 真机观测：只登记证据与冲突，不擅自覆盖已锁定单价。"""
+        obs = self.cat["live_billing_observations"]
+        self.assertEqual("verified", obs["_source"])
+        self.assertEqual(1000, obs["credits_per_usd"])
+        c0 = obs["cases"][0]
+        self.assertEqual("wan3.0-video", c0["model"])
+        self.assertEqual(500, c0["charged_quota"])
+        self.assertEqual(500, c0["balance_before"] - c0["balance_after"])
+        self.assertEqual("per_second", c0["billing"]["billing_unit"])
+        self.assertFalse(c0["result_persistence"]["signed"])
+        self.assertFalse(c0["result_persistence"]["requires_auth"])
+        self.assertIsNone(c0["result_persistence"]["ttl_field_in_task"])
+        self.assertEqual("X-Oneapi-Request-Id",
+                         c0["request_id_contract"]["request_id_header"])
+        self.assertFalse(c0["request_id_contract"]["has_x_request_id_header"])
+        self.assertTrue(c0["request_id_contract"]["submit_body_id_equals_task_id"])
+        self.assertGreaterEqual(len(obs["conflicts_registered"]), 5)
+        # 关键：86 个模型的单价保持原样，未被观测值覆写
+        self.assertEqual(0.2, self.cat["models"]["wan3.0-video"]["price_usd_5s_720p"])
+
     def test_no_verified_results_fabricated(self):
         for e in self.cat["models"].values():
             if "tool_calling" in e:
