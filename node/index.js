@@ -17,6 +17,8 @@
  * input.pinned，按「用户指定模型」规则处理（同模型重试、不自动换）。
  * 0.8.2 起 npm pack 自包含：包内 catalog.snapshot.json 是 pt-gateway/catalog.json
  * 的只读快照；开发态仍读仓库同一份，放进 vendor 后自动回退包内快照。
+ * 0.8.4 起 retryDecision 分支顺序固定为：发送前拦截 → 受理未知 → 2xx 已受理
+ * （不重放）→ 上下文超长 → 其余（D2）；2xx 一律不返回 compact/retry/switch。
  *
  * 参考：docs/PT_项目资料总集_20261112.md §7（Agent 侧约定）、
  *       "powertokens-kit catalog 补充需求.md" §0 P0 / §3 需求 3、4 / §7。
@@ -410,6 +412,11 @@ const PINNED_STOP_CATEGORIES = new Set(['auth_invalid', 'insufficient_balance', 
  *   - 带图片但模型不能看图：发送前返回 unsupported，交给用户决定；
  *   - tool_calling 实测为 null：照常使用，结果里 untested=['tool_calling']；
  *   - 401/402：停止（与 AUTO 一致）。
+ *
+ * 0.8.4 D2：分支优先级固定为 发送前拦截 → 受理未知 → 2xx 已受理（不重放）
+ *   → 上下文超长 → 其余。2xx 一律 action='none'（含流中途报错、含 body 带
+ *   context_length_exceeded），pinned 与否都一致，绝不 compact/retry/switch；
+ *   只有非 2xx 的上下文超长才 compact（避免宿主压缩后重发重复扣费）。
  */
 function retryDecision(input = {}, options = {}) {
   const cat = _catalog(options);
@@ -494,18 +501,20 @@ function retryDecision(input = {}, options = {}) {
     needsUserChoice = true;
     reason = '未收到有效 HTTP 状态码（客户端超时 / 断网 / 连接重置）：PT 可能已受理并扣费，'
       + '不重发、不换模型；需用户用 request_id / task_id 查 logs/query 确认受理状态';
+  } else if (status >= 200 && status < 300) {
+    // D2：2xx 已受理（含流中途报错）一律不重放，优先于上下文超长与一切重放分支。
+    // 否则 HTTP 200 + context_length_exceeded 会返回 compact，宿主压缩后再发可能重复扣费。
+    action = 'none'; reason = midstreamBad
+      ? 'HTTP 200 流中途失败已按量扣费，重试会二次扣费；只记录不重放'
+      : '已受理并结算，不能重放';
   } else if (cls.agent_action === 'compress_context' || cls.compact === true) {
-    // A3：上下文超长 —— 先压缩上下文或缩减输入再发，禁止原样重试。
+    // A3：上下文超长 —— 仅非 2xx（通常 400）先压缩上下文或缩减输入再发，禁止原样重试。
     action = 'compact'; reasonCode = 'context_too_long';
     reason = '上下文超长（400 context_length_exceeded）：先压缩上下文或缩减输入再发，不原样重试；'
       + '各模型上下文上限见 limits（未实测为 null，不猜）';
   } else if (pinned && PINNED_STOP_CATEGORIES.has(cls.category)) {
     action = 'stop'; reasonCode = 'pinned_stop';
     reason = `category=${cls.category} 不可重试（换 Key / 充值 / 告知用户）`;
-  } else if (status >= 200 && status < 300) {
-    action = 'none'; reason = midstreamBad
-      ? 'HTTP 200 流中途失败已按量扣费，重试会二次扣费；只记录不重放'
-      : '已受理并结算，不能重放';
   } else if (pinned && TRANSIENT_CATEGORIES.has(cls.category)) {
     // 429/5xx/超时：只重试同一个模型；耗尽后停止，绝不返回换模型。
     if (attempt > maxRetries) {

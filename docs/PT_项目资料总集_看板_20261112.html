@@ -105,12 +105,13 @@
 <div class="wrap">
 
 <header>
-  <h1>PT 项目资料总集 <span class="badge">完整版 v2.6 · 已发布</span><span class="badge b">12/12 全答</span><span class="badge b">§17 已固化</span><span class="badge b">C4/R1/U10 已裁决 + 0.8.3 复核</span></h1>
+  <h1>PT 项目资料总集 <span class="badge">完整版 v2.7 · 已发布</span><span class="badge b">12/12 全答</span><span class="badge b">§18 已固化</span><span class="badge b">C4/R1/U10 已裁决 + 0.8.4 复核</span></h1>
   <div class="sub">2026-11-12 · 仓库 <code>tjj1234/powertokens-kit</code> ·
     <b>本版把 v1.0「开工前决策摘要」补全为全量资料</b>：逐条问答、问题→影响功能映射、PT 原表、冲突裁决、真机结果、落地清单、文档索引<br>
     主文档 <code>docs/PT_项目资料总集_20261112.md</code>（SSOT） ·
     <b>详细逐条版 <code>docs/PT_问题_答复_影响功能_全量对照_20261112.md</code></b> ·
     发布报告 <code>docs/PT_发布与测试报告_20261112.html</code><br>
+  <b>v2.7（2026-11-16 下午）</b>：北极星 Codex 第二轮复核 2 项边界情况修复（0.8.4）—— D1 <code>code:null</code> 不再当成功（账户域只认明确成功码）、D2 2xx 已受理优先于上下文超长（HTTP 200 + 超长返回 <code>none</code>，避免重复扣费）；加 <code>.gitattributes</code> 固定 JSON 为 LF 消除对账哈希分歧。见 <a href="#s16">§16</a> 与 SSOT §18。<br>
   <b>v2.5（2026-11-16 中午）</b>：北极星交付 1 的 3 项 P0 落地 —— <code>selectCandidates</code> 支持 <code>pinnedModel</code>、<code>retryDecision</code> 支持 <code>pinned</code> 五规则、用途按 <code>routing.recommended</code> 兜底；<b>U10 裁决</b>（PT 确认以实扣为准，<code>wan3.0-video</code> 0.20 → 0.50 verified）；<code>npm pack</code> 自包含 tgz 附 Release 并给 SHA-256。见 <a href="#s14">§14</a> 与 SSOT §16。<br>
   <b>v2.4（2026-11-16 上午）</b>：用户批准单次 1.5 USD，用账户 B 跑一次 5 秒 <code>wan3.0-video</code> 真生成，实扣 <b>500 credits（＄0.5）</b>。<b>C4 视频侧</b>产物落 PT 自有 R2 公共桶（无签名、公开可读、<code>immutable</code> 1y），<b>R1 异步</b> request_id 只在 <code>X-Oneapi-Request-Id</code>；另登记单价三方冲突与 usage 日汇总延迟。见 <a href="#s13">§13</a> 与 SSOT §15。
     <b>v2.3（2026-11-13 傍晚）</b>：收到《powertokens-kit catalog 补充需求》13 条，P0 已落地 —— Node 核心包 / 双版本账户客户端 / auto_policy 补 3 种用途 / limits 子键 / 一键复核脚本 / CI，逐条固化进 <a class="doc" href="PT_项目资料总集_20261112.md">SSOT §14</a> → 见本看板 <a href="#s12">§12</a>。三项阻塞（模板缺失、limits 无来源、7 主力需花钱实测）如实登记。<br>
@@ -121,7 +122,7 @@
   <div class="kpi g"><div class="n">12 / 12</div><div class="l">发给 PT 的 10 必问 + 2 条件项全答</div></div>
   <div class="kpi"><div class="n">Q8 + R11 + S3</div><div class="l">22 个编号问题全部闭环</div></div>
   <div class="kpi v"><div class="n">6 条</div><div class="l">真机硬结论推翻/收紧书面口径（+C4 视频侧/R1 异步/单价）</div></div>
-  <div class="kpi t"><div class="n">287 / 287</div><div class="l">离线测试 PASS · 校验器全过 · Node 48/48（0.8.3）</div></div>
+  <div class="kpi t"><div class="n">287 / 287</div><div class="l">离线测试 PASS · 校验器全过 · Node 55/55（0.8.4）</div></div>
   <div class="kpi g"><div class="n">8 + 5</div><div class="l">errors 订正 8 处 · 新增字段组 5 组</div></div>
   <div class="kpi a"><div class="n">C1 已裁决</div><div class="l">2026-11-13 真机：账户域裸值鉴权</div></div>
   <div class="kpi r"><div class="n">F1 作废</div><div class="l">可见视图 ≠ 全量清单 · sync() 已修</div></div>
@@ -158,7 +159,7 @@
   <a href="#s3">3 逐批答复</a><a href="#s4">4 问题→影响功能</a><a href="#s5">5 D4 正式答复</a>
   <a href="#s6">6 冲突裁决</a><a href="#s7">7 真机 T0–T8</a><a href="#s8">8 落地清单</a>
   <a href="#s9">9 文档索引</a><a href="#s10">10 未决项</a><a href="#s11">11 /v1/models 上线</a>
-  <a href="#s12">12 补充需求 0.8.0</a><a href="#s13">13 付费真机实测</a><a href="#s14">14 交付1 P0 0.8.2</a><a href="#s15">15 Codex 复核 0.8.3</a>
+  <a href="#s12">12 补充需求 0.8.0</a><a href="#s13">13 付费真机实测</a><a href="#s14">14 交付1 P0 0.8.2</a><a href="#s15">15 Codex 复核 0.8.3</a><a href="#s16">16 Codex 复核 0.8.4</a>
 </nav>
 
 <section id="s0">
@@ -721,8 +722,28 @@
     包内 catalog.json SHA-256 <code>17e8090c56fb510babfd5783c492330efcab40685b172b9fd393b45a59a07bba</code>（与主 catalog 逐字节一致）。附 GitHub Release v0.8.3。</div>
 </section>
 
+<section id="s16">
+  <h2 class="g">16. 北极星 Codex 复核第二轮：2 项边界情况（0.8.4）</h2>
+  <div class="sub">2026-11-16 下午 · 对 0.8.3 c35ee5b 复核，产品侧已实际运行复现。与上一轮 A/B/C 不重复；修复前不正式接入账户链路与自动重试。</div>
+
+  <h3>16.1 两项修复</h3>
+  <div class="scroll"><table>
+    <tr><th style="width:16%">项</th><th style="width:42%">复现：输入 / 原返回 → 应返回</th><th>处置</th></tr>
+    <tr><td>D1 <code>code:null</code> 当成功</td><td><code>normalizeResult({code:null,data:{}},200)</code> → <code>ok:true</code> / 应 <code>ok:false</code> + <code>invalid_response</code></td><td>账户域只有 code 明确是成功值（<code>200/'200'/0/'0'</code>）才算成功；<code>null/''/'abc'/缺失</code> 一律 <code>invalid_response</code>，不按 HTTP 200 兜底；生成域 /v1/models 规则不变；500/'500'/402 仍 <code>business_error</code></td></tr>
+    <tr><td>D2 超长抢在已受理前</td><td><code>retryDecision({status:200,body:{error:{code:'context_length_exceeded'}}})</code> → <code>compact</code> / 应 <code>none</code>（加 pinned 也一样）</td><td>分支顺序固定：发送前拦截 → 受理未知 → <b>2xx 已受理（不重放）</b> → 上下文超长 → 其余；2xx 一律不 compact/retry/switch；400/422 + 超长仍 compact</td></tr>
+    <tr><td>顺带 · LF 行尾</td><td>tgz 内 catalog 为 CRLF、仓库为 LF → 哈希不同致对账误会</td><td>加 <code>.gitattributes</code> 固定 <code>*.json eol=lf</code>，工作区 JSON 归一 LF，工作区/仓库/tgz 三者逐字节一致</td></tr>
+  </table></div>
+
+  <div class="good"><b>验收（0.8.4）</b>：Node <b>55/55</b>（新增 D1 四项 + D2 三项含两两组合矩阵，全模拟响应零真实调用）· 校验器全过 · Python 287/287 · 空目录干净安装实跑（86 模型 / kit_version=0.8.4 / D1·D2 行为正确）。<br>
+    产物 <code>dist/powertokens-kit-core-0.8.4.tgz</code>（42,985 B），SHA-256
+    <code>e00615533df1e11d0940e7f37dc660001580a26a981253b17e73e17aad41c975</code>；
+    包内 catalog.json SHA-256 <code>83dba22af13b71c3c1731b98551ddb08ea6acb2db832b5c945d5b3f68f51afe6</code>
+    （LF，与主 catalog 逐字节一致）。附 GitHub Release v0.8.4。<br>
+    <b>不改</b>：生成链路 <code>pt_video.py</code>、catalog 模型数据；对话模型的上下文/输出上限待 PT 更新 <code>/v1/models</code> 后另发一版写进 limits。</div>
+</section>
+
 <div class="foot">
-  PT 项目资料总集看板 <b>v2.5 完整版</b> · 2026-11-12 建 / 11-13 账户域实测 / 11-13 下午 <code>/v1/models</code> 上线回写 / 11-16 付费真机定案 C4·R1 / 11-16 交付1 P0 + U10 裁决 ·
+  PT 项目资料总集看板 <b>v2.7 完整版</b> · 2026-11-12 建 / 11-13 账户域实测 / 11-13 下午 <code>/v1/models</code> 上线回写 / 11-16 付费真机定案 C4·R1 / 11-16 交付1 P0 + U10 裁决 / 11-16 Codex 复核两轮（0.8.3 + 0.8.4） ·
   v1.0 为开工前决策摘要版（7 节 / 264 行），保留于 git 历史<br>
   SSOT <code>docs/PT_项目资料总集_20261112.md</code> · 详细逐条版 <code>docs/PT_问题_答复_影响功能_全量对照_20261112.md</code><br>
   自证（0.8.2）：校验器全通过 · <code>run_tests.py</code> <b>287/287 PASS</b> · <code>node --test</code> <b>35/35 PASS</b> · 唯一付费调用 500 credits（＄0.5，上限 ＄1.5）<br>

@@ -22,6 +22,11 @@
  *     PT 没返回时为 null（此前固定填"现在"与 false，属于编造，已改）。
  *   - B3 调用方可传 AbortSignal（与内部超时合并）；响应读取有大小上限
  *     （默认 1 MiB，maxResponseBytes 可配），超限中止并返回 response_too_large。
+ *
+ * 0.8.4（北极星 Codex 复核 D1）：
+ *   - D1 账户域只有 code 明确是成功值（200/'200'/0/'0'）才算成功；code=null/''/'abc'/
+ *     缺失时即使 HTTP 200 也返回 invalid_response，绝不按 HTTP 状态兜底当成成功。
+ *     生成域 /v1/models 规则不变（无 code 时按 HTTP 判断）。
  */
 
 const ACCOUNT_BASE_DEFAULT = 'https://powertokens.ai/api';
@@ -85,18 +90,49 @@ function failure(category, message, httpStatus = null) {
   };
 }
 
-/** 把 PT 的 {code,data,msg} 统一成一种结果。HTTP 与 code 冲突时以 code 为准。 */
-function normalizeResult(raw, httpStatus, extras = {}) {
+/** 明确成功 code 白名单：账户域唯一可信的成功依据。 */
+function isSuccessCode(code) {
+  return code === 200 || code === '200' || code === 0 || code === '0';
+}
+
+/** code 形态是否合法：非 null / undefined / 空串，且能转成有限数字。畸形 code 无法判定业务结果。 */
+function isValidCodeShape(code) {
+  if (code === null || code === undefined || code === '') return false;
+  return Number.isFinite(Number(code));
+}
+
+/**
+ * 把 PT 的 {code,data,msg} 统一成一种结果。
+ * 0.8.4 D1：账户域（strictCode=true，默认）只有 code 明确是成功值才算成功；
+ *   code 为 null / '' / 'abc' / 缺失一律失败并归 invalid_response，绝不退回 HTTP 200。
+ *   明确的业务失败码（如 500 / '500'）仍归 business_error（保持既有语义）。
+ *   生成域 /v1/models（strictCode=false）规则不变：无 code 时退回 HTTP 判断。
+ */
+function normalizeResult(raw, httpStatus, extras = {}, options = {}) {
   const body = (raw && typeof raw === 'object') ? raw : {};
   const innerErr = (body.error && typeof body.error === 'object') ? body.error : {};
   const code = body.code !== undefined ? body.code : (innerErr.code !== undefined ? innerErr.code : null);
   const message = body.msg || body.message || innerErr.message || '';
   const numericCode = Number(code);
-  const codeOk = code === 200 || code === '200' || (code === 0) || (code === '0');
+  const codeOk = isSuccessCode(code);
   const httpOk = httpStatus >= 200 && httpStatus < 300;
-  // code 存在时它是权威；code 缺失才退回 HTTP 判断。
-  const ok = code !== null && code !== undefined ? codeOk : httpOk;
-  const category = ok ? null : (classifyHttpStatus(httpStatus) || 'business_error');
+  const strictCode = options.strictCode !== false;
+
+  let ok;
+  let category;
+  if (strictCode) {
+    // 账户域：code 是唯一权威，明文成功值才算成功，不用 HTTP 兜底。
+    ok = codeOk;
+    if (!ok) {
+      category = isValidCodeShape(code)
+        ? (classifyHttpStatus(httpStatus) || 'business_error')  // 明确的业务失败码
+        : 'invalid_response';                                    // null / '' / 'abc' / 缺失
+    }
+  } else {
+    // 生成域：规则不变 —— 有 code 以 code 为准，无 code 退回 HTTP。
+    ok = code !== null && code !== undefined ? codeOk : httpOk;
+    category = ok ? null : (classifyHttpStatus(httpStatus) || 'business_error');
+  }
   const meta = serverMeta(body);
   return {
     ok,
@@ -106,7 +142,9 @@ function normalizeResult(raw, httpStatus, extras = {}) {
       category,
       // 账户域 HTTP 200 + code=500 也要能看出来不是成功
       http_status: httpStatus,
-      message: String(message || (numericCode ? `code=${code}` : 'request failed')),
+      message: String(message || (category === 'invalid_response'
+        ? '响应 code 非法或缺失，无法判定业务结果'
+        : (numericCode ? `code=${code}` : 'request failed'))),
     },
     http_status: httpStatus,
     // B2：只透传服务端值，没有就 null，不编造
@@ -257,11 +295,12 @@ class AccountClient {
           `HTTP ${resp.status} 响应不是合法 JSON 对象（可能是 HTML / 空串 / 截断 JSON）：${preview}`, resp.status);
       }
       // B1：账户域还必须有 PT 的 code 字段，以 code 判成功。
+      // D1：这里同时挡住 code=null / '' / 'abc' 等畸形值 —— 它们无法判定业务结果。
       if (!isGeneration && !('code' in parsed)) {
         return failure('invalid_response',
           `HTTP ${resp.status} 响应是 JSON 但缺少 PT code 字段，无法判定业务结果。`, resp.status);
       }
-      return normalizeResult(parsed, resp.status);
+      return normalizeResult(parsed, resp.status, {}, { strictCode: !isGeneration });
     } catch (e) {
       const isAbort = e && e.name === 'AbortError';
       const category = isAbort

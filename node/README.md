@@ -93,11 +93,22 @@ const e = retryDecision({ status: 403, pinned: true, model: 'gpt-5.2' });
   `category:'aborted'`）；响应大小上限 `maxResponseBytes`（默认 1 MiB 可配），超限返回
   `response_too_large`。
 
+### 0.8.4（北极星 Codex 复核第二轮：2 项边界情况）
+
+- **D1 `code:null` 不再当成功**：账户域只有 `code` 明确是成功值（`200`/`'200'`/`0`/`'0'`）
+  才算成功；`code` 为 `null` / `''` / `'abc'` / 缺失时即使 HTTP 200 也返回
+  `ok:false` + `error.category:'invalid_response'`。明确的失败码（如 `500`）仍归
+  `business_error`，生成域 `/v1/models` 规则不变。
+- **D2 2xx 已受理优先于上下文超长**：`retryDecision` 分支顺序固定为 发送前拦截 → 受理未知 →
+  **2xx 已受理（不重放）** → 上下文超长 → 其余。HTTP 200 + `context_length_exceeded`
+  现在返回 `action:'none'`（加不加 `pinned` 都一样），绝不 compact/retry/switch，避免重复扣费；
+  非 2xx（400/422）+ 上下文超长仍 `compact`。
+
 ### 打包（npm pack / vendor 离线使用）
 
 ```bash
-cd node && npm pack              # 生成 dist/powertokens-kit-core-0.8.3.tgz
-sha256sum dist/powertokens-kit-core-0.8.3.tgz
+cd node && npm pack              # 生成 dist/powertokens-kit-core-0.8.4.tgz
+sha256sum dist/powertokens-kit-core-0.8.4.tgz
 ```
 
 tgz 含 `index.js` / `account-client.js` / `catalog.snapshot.json` /

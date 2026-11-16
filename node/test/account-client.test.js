@@ -185,6 +185,55 @@ test('B1: 200 响应是 JSON 但缺少 PT code 字段 → invalid_response；生
   assert.deepEqual(r2.data, [{ id: 'wan3.0-video' }]);
 });
 
+// ---- D1：code 必须明确是成功值，畸形 code 不按 HTTP 兜底 ----
+
+test('D1: normalizeResult 账户域 code=null/空串/abc/缺失 + HTTP 200 → ok:false invalid_response', () => {
+  // 复现输入：code:null + 200 原来会退回 HTTP 判成 ok:true，必须修成 invalid_response
+  const cases = [
+    { name: 'code=null', raw: { code: null, data: {} } },
+    { name: "code=''", raw: { code: '', data: {} } },
+    { name: "code='abc'", raw: { code: 'abc', data: {} } },
+    { name: 'code 缺失', raw: { data: {} } },
+  ];
+  for (const { name, raw } of cases) {
+    const r = normalizeResult(raw, 200);
+    assert.equal(r.ok, false, `${name} 即使 HTTP 200 也不能当成功`);
+    assert.equal(r.error.category, 'invalid_response', `${name} 应归 invalid_response`);
+    assert.equal(r.error.http_status, 200);
+    assert.equal(r.data, null);
+  }
+  // 明确的成功值仍要通过（0.8.3 既有语义不变）
+  for (const c of [200, '200', 0, '0']) {
+    const r = normalizeResult({ code: c, data: { quota: 80 } }, 200);
+    assert.equal(r.ok, true, `code=${JSON.stringify(c)} 是成功值`);
+    assert.deepEqual(r.data, { quota: 80 });
+  }
+});
+
+test('D1: 明确的业务失败码（如 500/字符串500）仍归 business_error，不误伤', () => {
+  for (const c of [500, '500', 402]) {
+    const r = normalizeResult({ code: c, msg: 'token not found' }, 200);
+    assert.equal(r.ok, false, `code=${c} 是失败`);
+    assert.equal(r.error.category, 'business_error', `code=${c} 是明确业务码，不归 invalid_response`);
+  }
+});
+
+test('D1: _request 集成 —— getBalance 收到 HTTP 200 + code:null/字符串abc/缺失 都返回 invalid_response', async () => {
+  for (const payload of [{ code: null, data: {} }, { code: 'abc', data: {} }, { data: {} }]) {
+    const c = new AccountClient({ token: 'pt_live_TEST_ONLY', keyId: 123456, fetchImpl: fakeFetch(200, payload) });
+    const r = await c.getBalance();
+    assert.equal(r.ok, false, `payload=${JSON.stringify(payload)} 不能当成功`);
+    assert.equal(r.error.category, 'invalid_response');
+  }
+});
+
+test('D1: 生成域 /v1/models 规则不变 —— 无 code 的 OpenAI 风格响应仍按 HTTP 判成功', async () => {
+  const gen = new AccountClient({ fetchImpl: fakeFetch(200, { object: 'list', data: [{ id: 'm' }] }) });
+  const r = await gen.getKeyModels('sk-model-key');
+  assert.equal(r.ok, true, '生成域不要求 code，规则与 0.8.3 一致');
+  assert.deepEqual(r.data, [{ id: 'm' }]);
+});
+
 // ---- B3：AbortSignal 与响应大小上限 ----
 
 test('B3: 调用方预先 abort 的信号直接返回 aborted，不发请求', async () => {

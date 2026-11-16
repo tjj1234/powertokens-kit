@@ -6,6 +6,35 @@
 
 ---
 
+## 0.8.4 — 2026-11-16 · 北极星 Codex 复核第二轮：2 项边界情况（D1 / D2）+ LF 行尾固定
+
+**来源**：北极星主程 Codex 对 0.8.3 `c35ee5b` 的源码复核，产品侧已在 c35ee5b 实际运行复现。
+修复前北极星的账户链路与自动重试不正式接入；其余准备工作照常。
+
+- **D1 `code:null` 不再被当成功**（`node/account-client.js`）：账户域只有 `code` 明确是
+  成功值（`200` / `'200'` / `0` / `'0'`）才算成功；`code` 为 `null` / `''` / `'abc'` / 缺失
+  一律返回 `ok:false` + `error.category:'invalid_response'`，即使 HTTP 200 也不按状态兜底
+  （根因：`normalizeResult` 原来在 `code===null` 时退回 HTTP 判断）。明确的业务失败码
+  （如 `500` / `'500'`）仍归 `business_error`，不误伤；生成域 `/v1/models` 规则不变
+  （无 `code` 时按 HTTP 判断）。
+- **D2 上下文超长不再抢在"已受理"之前**（`node/index.js`）：`retryDecision` 分支顺序固定为
+  发送前拦截 → 受理未知 → **2xx 已受理（不重放）** → 上下文超长 → 其余。HTTP 200 + 
+  `context_length_exceeded`（如流中途报错）现在返回 `action:'none'`，加不加 `pinned` 都一样，
+  绝不 `compact`/`retry`/`switch`，避免宿主压缩后重发重复扣费；非 2xx（400/422）+ 上下文超长
+  仍返回 `compact`。
+- **`.gitattributes` 固定 `*.json` 为 LF**：消除 Windows `core.autocrlf=true` 导致 tgz 内
+  catalog 为 CRLF、git blob 为 LF 的哈希分歧，三者（工作区 / 仓库 / tgz）统一 LF。
+
+**验收**：Node `--test` **55/55**（新增 D1 四项 + D2 三项含两两组合矩阵，全部模拟响应零真实
+调用）；`validate_catalog.py` 全通过；Python `run_tests.py` **287/287**。生成链路 `pt_video.py`
+与 catalog 模型数据 0 改动（上下文/输出上限字段等 PT 更新 `/v1/models` 后另发一版）。
+产物 `dist/powertokens-kit-core-0.8.4.tgz`（42,985 B），SHA-256
+`e00615533df1e11d0940e7f37dc660001580a26a981253b17e73e17aad41c975`；包内 catalog.json
+SHA-256 `83dba22af13b71c3c1731b98551ddb08ea6acb2db832b5c945d5b3f68f51afe6`（LF，与主 catalog
+逐字节一致）。附 GitHub Release v0.8.4（含 tgz 与包内 catalog SHA-256）。
+
+---
+
 ## 0.8.3 — 2026-11-16 · 北极星 Codex 源码复核 9 项修复（A1-A4 / B1-B3 / C1-C2 补强）
 
 **来源**：北极星主程 Codex 对 0.8.1 `node/` 的源码复核，4 个问题已在 905e7a3 实际运行复现。

@@ -361,6 +361,69 @@ test('A3: 400 context_length_exceeded → compact，不原样重试', () => {
   assert.equal(p.action, 'compact');
 });
 
+// ---- D2：2xx 已受理优先于上下文超长；2xx 一律不重放 ----
+
+test('D2: HTTP 200 + context_length_exceeded（含 pinned）→ none，绝不 compact/retry/switch', () => {
+  const body = { error: { code: 'context_length_exceeded', message: 'midstream too long' } };
+  // 复现 1：无 pinned
+  const r = retryDecision({ status: 200, body }, { catalog: cat });
+  assert.equal(r.action, 'none', '2xx 已受理优先，不因 body 的上下文超长而 compact');
+  assert.equal(r.retryable, false);
+  assert.equal(r.switch_model, false);
+  assert.equal(r.settled, true);
+  assert.equal(r.reason_code, null, 'none 不挂 context_too_long reason_code');
+  // 复现 2：加 pinned + model 仍一样
+  const p = retryDecision({ status: 200, body, pinned: true, model: 'glm-4.7' }, { catalog: cat });
+  assert.equal(p.action, 'none', '2xx + pinned + 上下文超长也必须是 none');
+  assert.equal(p.retryable, false);
+  assert.equal(p.switch_model, false);
+  assert.equal(p.pinned, true);
+});
+
+test('D2: 非 2xx 的上下文超长仍 compact（400 未受影响）', () => {
+  const body = { error: { code: 'context_length_exceeded' } };
+  for (const pinned of [false, true]) {
+    const r = retryDecision({ status: 400, body, pinned, model: pinned ? 'glm-4.7' : undefined }, { catalog: cat });
+    assert.equal(r.action, 'compact', `400 + 上下文超长（pinned=${pinned}）仍 compact`);
+    assert.equal(r.category, 'context_too_long');
+    assert.equal(r.reason_code, 'context_too_long');
+  }
+});
+
+test('D2: 组合矩阵 —— 2xx / 受理未知 / 上下文超长 / pinned 两两组合都符合优先级', () => {
+  const tooLong = { error: { code: 'context_length_exceeded' } };
+  const p = { pinned: true, model: 'glm-4.7' };
+  // 优先级：发送前拦截 > 受理未知 > 2xx > 上下文超长 > 其余
+  const cases = [
+    // 2xx × 上下文超长 × pinned：永远是 none
+    { name: '200 + 超长', input: { status: 200, body: tooLong }, action: 'none', rc: null },
+    { name: '200 + 超长 + pinned', input: { status: 200, body: tooLong, ...p }, action: 'none', rc: null },
+    { name: '201 + 超长', input: { status: 201, body: tooLong }, action: 'none', rc: null },
+    { name: '200 普通 + pinned', input: { status: 200, body: { id: 'x' }, ...p }, action: 'none', rc: null },
+    // 受理未知 × 上下文超长 × pinned：受理未知优先 → stop
+    { name: '无状态 + 超长', input: { status: 0, body: tooLong }, action: 'stop', rc: 'acceptance_unknown' },
+    { name: '无状态 + 超长 + pinned', input: { status: 0, body: tooLong, ...p }, action: 'stop', rc: 'acceptance_unknown' },
+    // 2xx × 受理未知：无有效状态码就是受理未知，即便 body 像成功
+    { name: '无状态 + 成功体', input: { status: 0, body: { id: 'x' } }, action: 'stop', rc: 'acceptance_unknown' },
+    // 非 2xx × 上下文超长 × pinned：compact
+    { name: '400 + 超长', input: { status: 400, body: tooLong }, action: 'compact', rc: 'context_too_long' },
+    { name: '400 + 超长 + pinned', input: { status: 400, body: tooLong, ...p }, action: 'compact', rc: 'context_too_long' },
+    { name: '422 + 超长', input: { status: 422, body: tooLong }, action: 'compact', rc: 'context_too_long' },
+  ];
+  for (const c of cases) {
+    const r = retryDecision(c.input, { catalog: cat });
+    assert.equal(r.action, c.action, `${c.name}: action`);
+    assert.equal(r.reason_code, c.rc, `${c.name}: reason_code`);
+    if (c.action === 'none') {
+      assert.equal(r.retryable, false, `${c.name}: none 不重放`);
+      assert.equal(r.switch_model, false, `${c.name}: none 不换模型`);
+    }
+    if (c.rc === 'acceptance_unknown') {
+      assert.equal(r.accepted, 'unknown', `${c.name}: 受理未知`);
+    }
+  }
+});
+
 test('A4: 搜索用途只有 works===true 且 returns_sources===true 才是候选；null 进 pending_verification', () => {
   const d = selectCandidates('search', null, { catalog: cat, detail: true });
   // 当前 3 个搜索候选的 works / returns_sources 全是 null → candidates 为空、pending 3 个
