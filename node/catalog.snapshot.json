@@ -1,0 +1,2708 @@
+{
+  "schema": 2,
+  "updated": "2026-11-16",
+  "note": [
+    "PT 统一媒体能力目录：agent 通过 list_capabilities 读取，无需再翻文档查模型能力。",
+    "execution: sync=一次调用直接返回结果; async=提交拿 task_id 后轮询 task_status。",
+    "价格字段 price_usd_5s_720p 基于 5s/720p 探测（PT 预扣单价）；n/a 表示 PT 未公开，以仪表盘为准。",
+    "模型可见性由 ModelRegistry.sync() 维护：GET /v1/models 返回本 Key / 分组的可见模型视图（按 Key 限额、分组启用、定价规则与名单双重过滤），不是平台全量清单（PT 2026-11-13 答复 + 双 Key 实测）。不在列表只标 not_in_key_view，不再自动判下架；确认下架须显式 mark_delisted()。本目录只维护能力档案（分辨率/时长/模式等人工标注字段）。",
+    "音频类（TTS）端点：PT 侧统一为 OpenAI 兼容 POST /v1/audio/speech（同步返回 data.audio url）；请求体 {model, input, voice}，voice 必填（OpenAI 标准音色实测可用）。注：此前假设的 /ali/api/v1/services/aigc/... 实测 404/500，已废弃；各模型的上游厂商提示见 upstream_endpoint 字段，实际调用一律走 /v1/audio/speech。"
+  ],
+  "models_api_contract": {
+    "_source": "models_api",
+    "_checked_at": "2026-11-13",
+    "endpoint": "GET https://api.powertokens.ai/v1/models",
+    "scope": "本 Key / 分组可见模型视图，按「Key 模型限额 → 分组启用模型 → HasPricingRuleCandidateForModel + IsModelNameListed 双重过滤」生成；不是平台全量清单，不在列表不等于下架",
+    "compatibility": "只增不改：OpenAI 原生字段 id/object/created/owned_by 语义不变；扩展字段 omitempty 纯增量；object=list / success=true 是网关外层包裹，非本次新增；无分页，全量返回",
+    "fields": {
+      "always": ["id", "object", "created", "owned_by", "name", "supported_endpoint_types", "architecture"],
+      "architecture": ["modality", "input_modalities", "output_modalities"],
+      "optional": ["supported_parameters", "reasoning", "pricing"]
+    },
+    "limits_probe": {
+      "_source": "models_api",
+      "_checked_at": "2026-11-13",
+      "date": "2026-11-13",
+      "endpoint": "GET https://api.powertokens.ai/v1/models",
+      "http": 200,
+      "cost_usd": 0,
+      "model_count": 77,
+      "field_union": [
+        "id",
+        "object",
+        "created",
+        "owned_by",
+        "name",
+        "supported_endpoint_types",
+        "architecture",
+        "supported_parameters",
+        "reasoning",
+        "pricing"
+      ],
+      "limit_like_field_carriers": 0,
+      "has_max_context_tokens": false,
+      "has_max_output_tokens": false,
+      "main_models": {
+        "glm-4.7": {
+          "endpoint_types": [
+            "anthropic",
+            "openai"
+          ],
+          "reasoning_effort": true,
+          "reasoning": {
+            "supported": true,
+            "mandatory": false,
+            "default_enabled": true
+          },
+          "web_search_options": false
+        },
+        "deepseek-v4-pro": {
+          "endpoint_types": [
+            "anthropic",
+            "openai"
+          ],
+          "reasoning_effort": true,
+          "reasoning": {
+            "supported": true,
+            "mandatory": false,
+            "default_enabled": true
+          },
+          "web_search_options": false
+        },
+        "qwen3.8-flash": {
+          "endpoint_types": [
+            "anthropic",
+            "openai",
+            "openai-response"
+          ],
+          "reasoning_effort": true,
+          "reasoning": {
+            "supported": true,
+            "mandatory": false,
+            "default_enabled": true
+          },
+          "web_search_options": true
+        },
+        "seed-2-0-pro-260328": {
+          "endpoint_types": [
+            "anthropic",
+            "openai",
+            "openai-response"
+          ],
+          "reasoning_effort": true,
+          "reasoning": {
+            "supported": true,
+            "mandatory": false,
+            "default_enabled": true
+          },
+          "web_search_options": false
+        },
+        "MiniMax-M3": {
+          "endpoint_types": [
+            "anthropic",
+            "openai",
+            "openai-response"
+          ],
+          "reasoning_effort": true,
+          "reasoning": {
+            "supported": true,
+            "mandatory": false,
+            "default_enabled": true
+          },
+          "web_search_options": false
+        },
+        "glm-5.2": {
+          "endpoint_types": [
+            "anthropic",
+            "openai"
+          ],
+          "reasoning_effort": true,
+          "reasoning": {
+            "supported": true,
+            "mandatory": false,
+            "default_enabled": true
+          },
+          "web_search_options": false
+        },
+        "mimo-v2.6-pro": {
+          "endpoint_types": [
+            "openai"
+          ],
+          "reasoning_effort": false,
+          "reasoning": null,
+          "web_search_options": false
+        }
+      },
+      "notes": "0 花费只读探测结论：7 个主力模型全部在本 Key 可见视图内；其中 6 个带 reasoning_effort 且 reasoning.default_enabled=true（不传参也会开思考），mimo-v2.6-pro 无 reasoning 字段。只有 qwen3.8-flash 带 web_search_options，而 catalog 里 glm-4.7 的 how_to_enable 仍是 tools:[{type:web_search}]，两者写法冲突且都未经真机验证，故本轮不改写 how_to_enable，登记为待实测项（SSOT §14）。/v1/models 完全没有上下文/输出上限字段，所以 limits 的两个子键只能保持 null，不能从该接口补值。"
+    },
+    "capability_rules": {
+      "generation_vs_understanding": "output_modalities 含 image/video/audio → 生成类，input_modalities 是素材输入；output 仅 text 且 input 含 image/video/audio/file → 理解类。判生成类看 output，判理解类看 input，不另加字段",
+      "thinking": "reasoning.supported + supported_parameters 含 reasoning_effort；mandatory=false, default_enabled=true 表示不传参网关也会开思考，调用方须显式传 reasoning_effort 关闭（具体取值待与 relay 层对齐）",
+      "web_search": "supported_parameters 含 web_search_options 表示支持；pricing.web_search=\"0\" 表示免费，不是未配置",
+      "ocr": "input_modalities 含 file 表示可喂文档；PT 无专用 OCR 模型"
+    },
+    "not_a_truth_source_for": [
+      "PT 计费单价：pricing 其余字段只是匹配 OpenRouter 模型 ID，图片/视频模型有意省略",
+      "模型是否下架：列表是可见视图，缺失有多种解释，需 mark_delisted() 显式确认",
+      "模型能力档案（分辨率 / 时长 / 模式）：仍由 catalog.models 人工维护"
+    ],
+    "observed": {
+      "date": "2026-11-13",
+      "model_count": 77,
+      "keys_compared": 2,
+      "same_view_across_keys": true,
+      "document_sample_count": 89,
+      "catalog_model_count": 86,
+      "supported_parameters_models": 56,
+      "reasoning_models": 25,
+      "reasoning_effort_models": 25,
+      "default_enabled_true": 25,
+      "web_search_options_models": 6,
+      "pricing_models": 13,
+      "notes": "两枚 Key 同账号 / 分组，视图完全一致（77/77）；77 个全部落在 89 条文档样例内，样例另有 12 个本视图不可见；catalog 有 15 个不在本视图（含 kling-v2-1-master，同日 estimate 仍可计价 1400 credits），另有 6 个 live 新模型未入 catalog。全程 0 花费。"
+    }
+  },
+  "kinds": {
+    "image": {
+      "execution": "sync",
+      "submit": "/v1/images/generations",
+      "poll": null,
+      "note": "OpenAI 风格，同步返回 data[].url，不轮询"
+    },
+    "video": {
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}",
+      "note": "提交拿 task_id，每 10s 轮询；素材支持 http(s) 或 asset://"
+    },
+    "seedance": {
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}",
+      "requires": "需签《Asset Library User Agreement》（仪表盘手动签）；文生视频 prompt 走 media-text，图生视频素材强制 asset://",
+      "note": "与 video 共用传输端点，但请求体构造不同（本网关已归一化）",
+      "interface_variants": {
+        "_source": "official",
+        "_checked_at": "2026-11-12",
+        "note": "D5《Seedance 2.0 快速上手》+ D4 C1。两种接口共用 Base URL https://api.powertokens.ai 与 Authorization: Bearer <API_KEY>。PT 建议走标准接口。字段名刻意避开「透传」二字（本仓库已有 6+ 种「透传」语义，见 docs/Seedance_双接口与产物有效期_覆盖评估_20261112.md）。",
+        "active": "openai_standard",
+        "openai_standard": {
+          "label": "OpenAI 风格标准接口（本网关当前使用）",
+          "submit": "POST /v1/videos",
+          "poll": "GET /v1/videos/{task_id}",
+          "request_body": "media 数组（OpenAI 风格）",
+          "list_tasks": false,
+          "cancel_task": false
+        },
+        "vendor_compatible": {
+          "label": "供应商官方兼容接口（独立前缀路由，本网关未接入）",
+          "submit": "POST /byteplus/api/v3/contents/generations/tasks",
+          "poll": "GET /byteplus/api/v3/contents/generations/tasks/{id}",
+          "list_tasks": "GET /byteplus/api/v3/contents/generations/tasks",
+          "cancel_task": "DELETE /byteplus/api/v3/contents/generations/tasks/{id}",
+          "request_body": "content 数组（与字节官方一致）",
+          "other_vendor_prefix": [
+            "/minimax/...",
+            "/kling/...",
+            "/vidu/..."
+          ],
+          "note": "D4 C1：是独立前缀路由，不是 /v1/videos 加参数；MiniMax / Kling / Vidu 的完整端点与字段差异清单待 PT 给对齐文档（仅当决定接入，N2 暂不做）。D5 给出的是字节侧完整路径，以此为准。"
+        },
+        "agreement_required_both": true,
+        "agreement_note": "D4 C2：两种接口都需签《Asset Library User Agreement》且仍强制 asset:// 素材；asset:// 是上游账号维度素材体系，透传时素材仍挂在 PT 账号下、仍受上游协议约束。"
+      },
+      "result_persistence": {
+        "_source": "official",
+        "_checked_at": "2026-11-12",
+        "note": "D4 §4（S2 书面口径）。⚠️ 冲突 C4 已由 2026-11-12 真机部分裁决：三套数字对应**不同链路**——① 视频标准接口 PT 自有地址永久（D4，余额不足未实测）；② 供应商兼容接口上游签名链接 24h（D4）；③ **图像同步标准接口实测 24h 上游 OSS 签名链接**（本节点 image_sync_observed，真机 P0）；④ D5:476「视频 URL 14 天 / 仅查最近 7 天任务」示例为字节 TOS 域名，属另一版本/链路，待视频链路实测。结论：--no-download 在图像链路上**明确不安全**，成功即下载是硬要求。",
+        "openai_standard": {
+          "persistence": "permanent",
+          "storage": "文件本体转存到 PT 对象存储，返回 PT 自有地址 /v1/videos/{task_id}/content（图片同理）",
+          "url": "不带签名、不设过期、需带 PT token 鉴权；本体与 URL 均长期可引用",
+          "force_download_on_success": false,
+          "precondition": "任务记录保留（网关侧无自动清理任务，默认长期保留，仅管理员可手动按时间删除）"
+        },
+        "vendor_compatible": {
+          "persistence": "24h",
+          "url": "上游（BytePlus / 阿里 / 可灵 / Vidu）返回的签名下载链接",
+          "ttl_from": "生成完成时由上游签发并起算",
+          "renewable": false,
+          "force_download_on_success": true,
+          "note": "PT 透传不落盘，链接过期后无法凭 task_id 重新签发，只能重新生成 → 必须「成功即下载转存」。"
+        },
+        "default_strategy": "走标准接口 + **成功即下载转存**（真机已确认图像链路 24h 过期，视频链路按最保守处理）；--no-download 模式不承诺永久，仅在调用方自行转存时使用。",
+        "image_sync_observed": {
+          "_source": "verified",
+          "_checked_at": "2026-11-12",
+          "endpoint": "POST /v1/images/generations（图像同步标准接口）",
+          "model": "image-01",
+          "status": 200,
+          "url_host": "hailuo-image-algeng-data-us.oss-us-east-1.aliyuncs.com",
+          "url_kind": "上游对象存储签名链接（非 PT 自有地址）",
+          "signed_query_keys": [
+            "Expires",
+            "OSSAccessKeyId",
+            "Signature"
+          ],
+          "ttl_seconds": 86415,
+          "ttl_hours": 24.0,
+          "ttl_from": "created（生成完成时刻，Unix 秒）起算至 Expires",
+          "note": "2026-11-12 真机（T5）：Expires - created = 86415 秒 ≈ 24.0 小时。这是**图像同步接口**，与 D4 §4 描述的视频标准接口 /v1/videos/{task_id}/content（PT 自有地址、无签名、长期可引用）是不同链路，两者不矛盾。与 README 既有记录「image data[].url 约 24 小时签名地址」一致。响应只记录 host 与参数名，未记录签名值。"
+        }
+      }
+    },
+    "audio": {
+      "execution": "sync",
+      "submit": "/v1/audio/speech",
+      "poll": null,
+      "vendor": "OpenAI-compatible (MiniMax TTS backend)",
+      "capabilities_observed": [
+        "语音合成(TTS)",
+        "音色选择(voice 必填: alloy/echo/fable/onyx/nova/shimmer)"
+      ],
+      "note": "Ali 兼容 TTS 端点，同步返回 audio url；请求体采用 Ali 标准结构（model + input.prompt[+voice]），响应 url 多位置兜底抽取。具体字段以 PT 文档实测为准。"
+    },
+    "chat": {
+      "execution": "sync",
+      "submit": "/v1/chat/completions",
+      "poll": null,
+      "vendor": "OpenAI compatible",
+      "capabilities_observed": [
+        "文本对话",
+        "多轮对话（messages）",
+        "system 角色设定",
+        "temperature / max_tokens 采样控制"
+      ],
+      "note": "OpenAI 兼容对话端点，同步返回 choices[0].message.content；messages 可传多轮，或用 prompt 作为单轮 user 消息（system 前置）。",
+      "capability_schema": {
+        "multimodal.vision": "是否可接受图片输入（多模态视觉）；false=文本模型",
+        "multimodal.audio_in": "是否可接受音频输入",
+        "web_search": "是否支持联网搜索；null=PT 平台能力待确认/可探测",
+        "thinking": "是否支持思考/推理模式；true/false/null(未知)",
+        "tools": "是否支持 function calling（工具调用）",
+        "streaming": "是否支持 SSE 流式输出",
+        "_source": "configured=按基础模型家族推断(待 PT 确认)；verified=真机探测；null/unknown=未知"
+      },
+      "capabilities_legend": "chat 模型能力由 capabilities 字段描述，维度见 capability_schema。默认值为按基础模型家族推断（_source=configured），PT 平台侧的实际支持（尤其 web_search）以 PT 文档/真机探测为准；可用 gateway.probe_chat_capabilities(model, key) 真机校验 vision 支持。"
+    }
+  },
+  "models": {
+    "wan3.0-video": {
+      "kind": "video",
+      "price_usd_5s_720p": 0.5,
+      "price_usd_5s_720p_source": "verified",
+      "price_verified_note": "0.8.1 付费真机实测（2026-11-16）：logs.billing 给出 per_second × 100 credits/秒 × 5s = 500 credits = 0.5 USD（1000 credits/USD）。PT 已确认「以实际扣费为准」（U10 裁决）。原值 0.2 USD 系 PT 预扣单价探测，已被实扣推翻；其余视频模型未实测，不批量订正。",
+      "max_duration_s": 10,
+      "resolutions": [
+        "720p",
+        "1080p"
+      ],
+      "modes": [
+        "text",
+        "image"
+      ],
+      "params_observed": [],
+      "vendor_endpoint": "/v1/videos",
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}"
+    },
+    "wan3.0-video-prime": {
+      "kind": "video",
+      "price_usd_5s_720p": 0.7,
+      "max_duration_s": 10,
+      "resolutions": [
+        "720p",
+        "1080p"
+      ],
+      "modes": [
+        "text",
+        "image"
+      ],
+      "params_observed": [],
+      "vendor_endpoint": "/v1/videos",
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}"
+    },
+    "wan2.7-t2v": {
+      "kind": "video",
+      "price_usd_5s_720p": 0.475,
+      "max_duration_s": 10,
+      "resolutions": [
+        "720p",
+        "1080p"
+      ],
+      "modes": [
+        "text",
+        "image"
+      ],
+      "params_observed": [
+        "input",
+        "parameters",
+        "prompt",
+        "negative_prompt",
+        "audio_url",
+        "resolution",
+        "ratio",
+        "duration",
+        "prompt_extend",
+        "watermark",
+        "seed"
+      ],
+      "vendor_endpoint": "/ali/api/v1/services/aigc/video-generation/video-synthesis",
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}"
+    },
+    "kling-v3": {
+      "kind": "video",
+      "price_usd_5s_720p": 0.42,
+      "max_duration_s": 10,
+      "resolutions": [
+        "720p",
+        "1080p"
+      ],
+      "modes": [
+        "text",
+        "image",
+        "audio"
+      ],
+      "params_observed": [],
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}",
+      "vendor_endpoint": "/v1/videos"
+    },
+    "kling-video-o1": {
+      "kind": "video",
+      "price_usd_5s_720p": 0.42,
+      "max_duration_s": 10,
+      "resolutions": [
+        "720p",
+        "1080p"
+      ],
+      "modes": [
+        "text",
+        "image"
+      ],
+      "params_observed": [],
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}",
+      "vendor_endpoint": "/v1/videos"
+    },
+    "kling-v2-1-master": {
+      "kind": "video",
+      "price_usd_5s_720p": 1.4,
+      "max_duration_s": 10,
+      "resolutions": [
+        "720p",
+        "1080p"
+      ],
+      "modes": [
+        "text",
+        "image",
+        "audio(运镜)"
+      ],
+      "params_observed": [],
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}",
+      "vendor_endpoint": "/v1/videos"
+    },
+    "seedance-1-5-pro-251215": {
+      "kind": "seedance",
+      "price_usd_5s_720p": 0.247,
+      "max_duration_s": 10,
+      "resolutions": [
+        "720p",
+        "1080p"
+      ],
+      "modes": [
+        "text",
+        "image(first-frame)",
+        "start-end",
+        "video+audio-ref"
+      ],
+      "params_observed": [],
+      "vendor_endpoint": "/v1/videos",
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}"
+    },
+    "dreamina-seedance-2-0-fast-260128": {
+      "kind": "seedance",
+      "price_usd_5s_720p": 0.605,
+      "max_duration_s": 10,
+      "resolutions": [
+        "720p",
+        "1080p"
+      ],
+      "modes": [
+        "text",
+        "image(first-frame)",
+        "start-end",
+        "video+audio-ref"
+      ],
+      "params_observed": [],
+      "vendor_endpoint": "/v1/videos",
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}"
+    },
+    "dreamina-seedance-2-0-260128": {
+      "kind": "seedance",
+      "price_usd_5s_720p": 0.756,
+      "max_duration_s": 10,
+      "resolutions": [
+        "720p",
+        "1080p"
+      ],
+      "modes": [
+        "text",
+        "image(first-frame)",
+        "start-end",
+        "video+audio-ref"
+      ],
+      "params_observed": [],
+      "vendor_endpoint": "/v1/videos",
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}"
+    },
+    "dreamina-seedance-2-0-mini-260615": {
+      "kind": "seedance",
+      "price_usd_5s_720p": null,
+      "max_duration_s": 10,
+      "resolutions": [
+        "720p",
+        "1080p"
+      ],
+      "modes": [
+        "text",
+        "image(first-frame)",
+        "start-end",
+        "video+audio-ref"
+      ],
+      "params_observed": [],
+      "vendor_endpoint": "/v1/videos",
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}"
+    },
+    "dreamina-seedance-2-5-260628": {
+      "kind": "seedance",
+      "price_usd_5s_720p": null,
+      "max_duration_s": 10,
+      "resolutions": [
+        "720p",
+        "1080p"
+      ],
+      "modes": [
+        "text",
+        "image(first-frame)",
+        "start-end",
+        "video+audio-ref"
+      ],
+      "params_observed": [],
+      "vendor_endpoint": "/v1/videos",
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}"
+    },
+    "seedance-1-0-pro-fast-251015": {
+      "kind": "seedance",
+      "price_usd_5s_720p": null,
+      "max_duration_s": 10,
+      "resolutions": [
+        "720p",
+        "1080p"
+      ],
+      "modes": [
+        "text",
+        "image(first-frame)",
+        "start-end",
+        "video+audio-ref"
+      ],
+      "params_observed": [],
+      "vendor_endpoint": "/v1/videos",
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}"
+    },
+    "seedance-1-0-pro-250528": {
+      "kind": "seedance",
+      "price_usd_5s_720p": null,
+      "max_duration_s": 10,
+      "resolutions": [
+        "720p",
+        "1080p"
+      ],
+      "modes": [
+        "text",
+        "image(first-frame)",
+        "start-end",
+        "video+audio-ref"
+      ],
+      "params_observed": [],
+      "vendor_endpoint": "/v1/videos",
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}"
+    },
+    "seedream-5-0-260128": {
+      "kind": "image",
+      "price": null,
+      "aspect_ratios": [
+        "1:1",
+        "16:9",
+        "4:3",
+        "3:2",
+        "2:3",
+        "3:4",
+        "9:16",
+        "21:9"
+      ],
+      "modes": [
+        "text"
+      ],
+      "note": "image 类 auto 默认",
+      "params_observed": [],
+      "vendor_endpoint": "/v1/images/generations",
+      "execution": "sync",
+      "submit": "/v1/images/generations",
+      "poll": null
+    },
+    "qwen-image": {
+      "kind": "image",
+      "price": null,
+      "aspect_ratios": [
+        "1:1",
+        "16:9",
+        "4:3",
+        "3:2",
+        "2:3",
+        "3:4",
+        "9:16",
+        "21:9"
+      ],
+      "modes": [
+        "text"
+      ],
+      "params_observed": [],
+      "execution": "sync",
+      "submit": "/v1/images/generations",
+      "poll": null,
+      "vendor_endpoint": "/v1/images/generations"
+    },
+    "image-01": {
+      "kind": "image",
+      "price": null,
+      "aspect_ratios": [
+        "1:1",
+        "16:9",
+        "4:3",
+        "3:2",
+        "2:3",
+        "3:4",
+        "9:16",
+        "21:9"
+      ],
+      "modes": [
+        "text"
+      ],
+      "params_observed": [],
+      "vendor_endpoint": "/minimax/v1/image_generation",
+      "execution": "sync",
+      "submit": "/v1/images/generations",
+      "poll": null
+    },
+    "kling-image": {
+      "kind": "image",
+      "price": null,
+      "aspect_ratios": [
+        "1:1",
+        "16:9",
+        "4:3",
+        "3:2",
+        "2:3",
+        "3:4",
+        "9:16",
+        "21:9"
+      ],
+      "modes": [
+        "text"
+      ],
+      "params_observed": [],
+      "execution": "sync",
+      "submit": "/v1/images/generations",
+      "poll": null,
+      "vendor_endpoint": "/v1/images/generations"
+    },
+    "qwen3-tts-instruct-flash": {
+      "params_observed": [
+        "input",
+        "text",
+        "voice",
+        "language_type",
+        "instructions",
+        "optimize_instructions"
+      ],
+      "vendor_endpoint": "/v1/audio/speech",
+      "execution": "sync",
+      "submit": "/v1/audio/speech",
+      "poll": null,
+      "kind": "audio",
+      "upstream_endpoint": "/ali/api/v1/services/aigc/multimodal-generation/generation"
+    },
+    "speech-2.8-hd": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/audio/speech",
+      "execution": "sync",
+      "submit": "/v1/audio/speech",
+      "poll": null,
+      "kind": "audio",
+      "upstream_endpoint": "/minimax/v1/t2a_v2"
+    },
+    "speech-2.8-turbo": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/audio/speech",
+      "execution": "sync",
+      "submit": "/v1/audio/speech",
+      "poll": null,
+      "kind": "audio",
+      "upstream_endpoint": "/minimax/v1/t2a_v2"
+    },
+    "speech-2.6-hd": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/audio/speech",
+      "execution": "sync",
+      "submit": "/v1/audio/speech",
+      "poll": null,
+      "kind": "audio",
+      "upstream_endpoint": "/minimax/v1/t2a_v2"
+    },
+    "speech-2.6-turbo": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/audio/speech",
+      "execution": "sync",
+      "submit": "/v1/audio/speech",
+      "poll": null,
+      "kind": "audio",
+      "upstream_endpoint": "/minimax/v1/t2a_v2"
+    },
+    "speech-02-hd": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/audio/speech",
+      "execution": "sync",
+      "submit": "/v1/audio/speech",
+      "poll": null,
+      "kind": "audio",
+      "upstream_endpoint": "/minimax/v1/t2a_v2"
+    },
+    "speech-02-turbo": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/audio/speech",
+      "execution": "sync",
+      "submit": "/v1/audio/speech",
+      "poll": null,
+      "kind": "audio",
+      "upstream_endpoint": "/minimax/v1/t2a_v2"
+    },
+    "audio1.0": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/audio/speech",
+      "execution": "sync",
+      "submit": "/v1/audio/speech",
+      "poll": null,
+      "kind": "audio",
+      "upstream_endpoint": "/vidu/ent/v2/text2audio"
+    },
+    "deepseek-v4-pro-0813": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": "/v1/chat/completions",
+      "poll": null,
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": true,
+          "audio_in": false,
+          "video_in": false
+        },
+        "channel": "ali",
+        "web_search": false,
+        "web_search_param": null,
+        "thinking": false,
+        "thinking_param": null,
+        "tools": true,
+        "streaming": true,
+        "_source": "official",
+        "notes": {
+          "web_search": "ali 渠道 deepseek 一般不支持联网搜索",
+          "thinking": "ali 渠道 deepseek 未在文档保证思考模式"
+        }
+      }
+    },
+    "qwen3-coder-plus": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": "/v1/chat/completions",
+      "poll": null,
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": null,
+          "audio_in": false,
+          "video_in": false
+        },
+        "channel": "ali",
+        "web_search": "conditional",
+        "web_search_param": "enable_search:true",
+        "thinking": true,
+        "thinking_param": "enable_thinking:true",
+        "tools": true,
+        "streaming": true,
+        "_source": "official+verified",
+        "notes": {
+          "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
+          "thinking": "仅 qwen3 系列 / qwq 系列支持"
+        }
+      }
+    },
+    "qwen3-max": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": "/v1/chat/completions",
+      "poll": null,
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": true,
+          "audio_in": false,
+          "video_in": false
+        },
+        "channel": "ali",
+        "web_search": "conditional",
+        "web_search_param": "enable_search:true",
+        "thinking": true,
+        "thinking_param": "enable_thinking:true",
+        "tools": true,
+        "streaming": true,
+        "_source": "official",
+        "notes": {
+          "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
+          "thinking": "仅 qwen3 系列 / qwq 系列支持"
+        }
+      }
+    },
+    "qwen3.5-flash": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": "/v1/chat/completions",
+      "poll": null,
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": true,
+          "audio_in": false,
+          "video_in": false
+        },
+        "channel": "ali",
+        "web_search": "conditional",
+        "web_search_param": "enable_search:true",
+        "thinking": true,
+        "thinking_param": "enable_thinking:true",
+        "tools": true,
+        "streaming": true,
+        "_source": "official",
+        "notes": {
+          "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
+          "thinking": "仅 qwen3 系列 / qwq 系列支持"
+        }
+      }
+    },
+    "qwen3.6-plus": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": "/v1/chat/completions",
+      "poll": null,
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": true,
+          "audio_in": false,
+          "video_in": false
+        },
+        "channel": "ali",
+        "web_search": "conditional",
+        "web_search_param": "enable_search:true",
+        "thinking": true,
+        "thinking_param": "enable_thinking:true",
+        "tools": true,
+        "streaming": true,
+        "_source": "official",
+        "notes": {
+          "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
+          "thinking": "仅 qwen3 系列 / qwq 系列支持"
+        }
+      }
+    },
+    "qwen3.7-max": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": "/v1/chat/completions",
+      "poll": null,
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": true,
+          "audio_in": false,
+          "video_in": false
+        },
+        "channel": "ali",
+        "web_search": "conditional",
+        "web_search_param": "enable_search:true",
+        "thinking": true,
+        "thinking_param": "enable_thinking:true",
+        "tools": true,
+        "streaming": true,
+        "_source": "official",
+        "notes": {
+          "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
+          "thinking": "仅 qwen3 系列 / qwq 系列支持"
+        }
+      }
+    },
+    "qwen3.7-plus": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": "/v1/chat/completions",
+      "poll": null,
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": true,
+          "audio_in": false,
+          "video_in": false
+        },
+        "channel": "ali",
+        "web_search": "conditional",
+        "web_search_param": "enable_search:true",
+        "thinking": true,
+        "thinking_param": "enable_thinking:true",
+        "tools": true,
+        "streaming": true,
+        "_source": "official",
+        "notes": {
+          "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
+          "thinking": "仅 qwen3 系列 / qwq 系列支持"
+        }
+      }
+    },
+    "qwen3.8-flash": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": "/v1/chat/completions",
+      "poll": null,
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": true,
+          "audio_in": false,
+          "video_in": false
+        },
+        "channel": "ali",
+        "web_search": "conditional",
+        "web_search_param": "enable_search:true",
+        "thinking": true,
+        "thinking_param": "enable_thinking:true",
+        "tools": true,
+        "streaming": true,
+        "_source": "official",
+        "notes": {
+          "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
+          "thinking": "仅 qwen3 系列 / qwq 系列支持"
+        }
+      },
+      "limits": {
+        "max_context_tokens": null,
+        "max_output_tokens": null,
+        "_source": "inferred",
+        "_checked_at": "2026-11-13",
+        "notes": "【0.8.0 结构补齐】键名按《powertokens-kit catalog 补充需求》§0 P0 指定（模板第 2 节）。数值一律 null：2026-11-13 真机 GET /v1/models（77 个模型）字段并集只有 id/object/created/owned_by/name/supported_endpoint_types/architecture/supported_parameters/reasoning/pricing，无任何上下文或输出上限字段（0 个 carrier），PT 2.0.0 文档亦未提供；按 A3「不知道填 null，不猜」处理。待 PT 给出上限或官方模型文档到位后补值并把 _source 升为 official/documented/verified。结构补齐不等于需求 1 完成，见 models_api_contract.limits_probe 与 SSOT §14。"
+      },
+      "tool_calling": {
+        "verified": null,
+        "_source": "inferred",
+        "_checked_at": "2026-11-12",
+        "notes": "capabilities.tools=True 为官方能力声明；但 tool_calling.verified 需真机实测（A1 跳过规则引用该字段）。本轮未实测，按 A3 填 null。第一阶段不要求 true，null 不触发跳过。"
+      },
+      "web_search_detail": {
+        "how_to_enable": "enable_search:true",
+        "works": null,
+        "returns_sources": null,
+        "_source": "inferred",
+        "_checked_at": "2026-11-12",
+        "notes": "A4：how_to_enable 从 capabilities.web_search_param 原样复制；works / returns_sources 需真机实测（优先智谱 / 阿里 / BytePlus），本轮未实测按 A3 填 null。只有两者都为 true 才作为搜索候选（A1/A4）。"
+      },
+      "routing": {
+        "recommended": [
+          "agent",
+          "search"
+        ],
+        "_source": "configured",
+        "_checked_at": "2026-11-12",
+        "notes": "A1：无序标签，仅在 auto_policy.purposes 未覆盖的用途时兜底。A5：product 仅用于 auto_policy，故此处用 configured（产品侧配置标签，非官方事实、非实测）。用途键待模板全文核对。"
+      }
+    },
+    "qwen3.8-max": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": "/v1/chat/completions",
+      "poll": null,
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": true,
+          "audio_in": false,
+          "video_in": false
+        },
+        "channel": "ali",
+        "web_search": "conditional",
+        "web_search_param": "enable_search:true",
+        "thinking": true,
+        "thinking_param": "enable_thinking:true",
+        "tools": true,
+        "streaming": true,
+        "_source": "official",
+        "notes": {
+          "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
+          "thinking": "仅 qwen3 系列 / qwq 系列支持"
+        }
+      }
+    },
+    "deepseek-v3-2-251201": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": "/v1/chat/completions",
+      "poll": null,
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": true,
+          "audio_in": false,
+          "video_in": false
+        },
+        "channel": "byteplus",
+        "web_search": "conditional",
+        "web_search_param": "tools:[{\"type\":\"web_search\"}]",
+        "thinking": true,
+        "thinking_param": "thinking:{\"type\":\"enabled\"}+reasoning_effort",
+        "tools": true,
+        "streaming": true,
+        "_source": "official",
+        "notes": {
+          "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
+          "thinking": "需客户端显式传参；上游是否生效以渠道文档/实测为准"
+        }
+      }
+    },
+    "deepseek-v4-1-flash-260910": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": "/v1/chat/completions",
+      "poll": null,
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": true,
+          "audio_in": false,
+          "video_in": false
+        },
+        "channel": "byteplus",
+        "web_search": "conditional",
+        "web_search_param": "tools:[{\"type\":\"web_search\"}]",
+        "thinking": true,
+        "thinking_param": "thinking:{\"type\":\"enabled\"}+reasoning_effort",
+        "tools": true,
+        "streaming": true,
+        "_source": "official+verified",
+        "notes": {
+          "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
+          "thinking": "需客户端显式传参；上游是否生效以渠道文档/实测为准"
+        }
+      }
+    },
+    "dola-seed-2-1-turbo-260628": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": "/v1/chat/completions",
+      "poll": null,
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": true,
+          "audio_in": false,
+          "video_in": true
+        },
+        "channel": "byteplus",
+        "web_search": "conditional",
+        "web_search_param": "tools:[{\"type\":\"web_search\"}]",
+        "thinking": true,
+        "thinking_param": "thinking:{\"type\":\"enabled\"}+reasoning_effort",
+        "tools": true,
+        "streaming": true,
+        "_source": "official",
+        "notes": {
+          "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
+          "thinking": "需客户端显式传参；上游是否生效以渠道文档/实测为准"
+        }
+      }
+    },
+    "seed-1-6-250915": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": "/v1/chat/completions",
+      "poll": null,
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": true,
+          "audio_in": false,
+          "video_in": true
+        },
+        "channel": "byteplus",
+        "web_search": "conditional",
+        "web_search_param": "tools:[{\"type\":\"web_search\"}]",
+        "thinking": true,
+        "thinking_param": "thinking:{\"type\":\"enabled\"}+reasoning_effort",
+        "tools": true,
+        "streaming": true,
+        "_source": "official",
+        "notes": {
+          "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
+          "thinking": "需客户端显式传参；上游是否生效以渠道文档/实测为准"
+        }
+      }
+    },
+    "seed-1-6-flash-250715": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": "/v1/chat/completions",
+      "poll": null,
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": true,
+          "audio_in": false,
+          "video_in": true
+        },
+        "channel": "byteplus",
+        "web_search": "conditional",
+        "web_search_param": "tools:[{\"type\":\"web_search\"}]",
+        "thinking": true,
+        "thinking_param": "thinking:{\"type\":\"enabled\"}+reasoning_effort",
+        "tools": true,
+        "streaming": true,
+        "_source": "official",
+        "notes": {
+          "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
+          "thinking": "需客户端显式传参；上游是否生效以渠道文档/实测为准"
+        }
+      }
+    },
+    "seed-1-8-251228": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": "/v1/chat/completions",
+      "poll": null,
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": true,
+          "audio_in": false,
+          "video_in": true
+        },
+        "channel": "byteplus",
+        "web_search": "conditional",
+        "web_search_param": "tools:[{\"type\":\"web_search\"}]",
+        "thinking": true,
+        "thinking_param": "thinking:{\"type\":\"enabled\"}+reasoning_effort",
+        "tools": true,
+        "streaming": true,
+        "_source": "official",
+        "notes": {
+          "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
+          "thinking": "需客户端显式传参；上游是否生效以渠道文档/实测为准"
+        }
+      }
+    },
+    "seed-2-0-lite-260228": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": "/v1/chat/completions",
+      "poll": null,
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": true,
+          "audio_in": false,
+          "video_in": true
+        },
+        "channel": "byteplus",
+        "web_search": "conditional",
+        "web_search_param": "tools:[{\"type\":\"web_search\"}]",
+        "thinking": true,
+        "thinking_param": "thinking:{\"type\":\"enabled\"}+reasoning_effort",
+        "tools": true,
+        "streaming": true,
+        "_source": "official",
+        "notes": {
+          "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
+          "thinking": "需客户端显式传参；上游是否生效以渠道文档/实测为准"
+        }
+      }
+    },
+    "seed-2-0-mini-260215": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": "/v1/chat/completions",
+      "poll": null,
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": true,
+          "audio_in": false,
+          "video_in": true
+        },
+        "channel": "byteplus",
+        "web_search": "conditional",
+        "web_search_param": "tools:[{\"type\":\"web_search\"}]",
+        "thinking": true,
+        "thinking_param": "thinking:{\"type\":\"enabled\"}+reasoning_effort",
+        "tools": true,
+        "streaming": true,
+        "_source": "official",
+        "notes": {
+          "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
+          "thinking": "需客户端显式传参；上游是否生效以渠道文档/实测为准"
+        }
+      }
+    },
+    "seed-2-0-pro-260328": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": "/v1/chat/completions",
+      "poll": null,
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": true,
+          "audio_in": false,
+          "video_in": true
+        },
+        "channel": "byteplus",
+        "web_search": "conditional",
+        "web_search_param": "tools:[{\"type\":\"web_search\"}]",
+        "thinking": true,
+        "thinking_param": "thinking:{\"type\":\"enabled\"}+reasoning_effort",
+        "tools": true,
+        "streaming": true,
+        "_source": "official",
+        "notes": {
+          "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
+          "thinking": "需客户端显式传参；上游是否生效以渠道文档/实测为准"
+        }
+      },
+      "limits": {
+        "max_context_tokens": null,
+        "max_output_tokens": null,
+        "_source": "inferred",
+        "_checked_at": "2026-11-13",
+        "notes": "【0.8.0 结构补齐】键名按《powertokens-kit catalog 补充需求》§0 P0 指定（模板第 2 节）。数值一律 null：2026-11-13 真机 GET /v1/models（77 个模型）字段并集只有 id/object/created/owned_by/name/supported_endpoint_types/architecture/supported_parameters/reasoning/pricing，无任何上下文或输出上限字段（0 个 carrier），PT 2.0.0 文档亦未提供；按 A3「不知道填 null，不猜」处理。待 PT 给出上限或官方模型文档到位后补值并把 _source 升为 official/documented/verified。结构补齐不等于需求 1 完成，见 models_api_contract.limits_probe 与 SSOT §14。"
+      },
+      "tool_calling": {
+        "verified": null,
+        "_source": "inferred",
+        "_checked_at": "2026-11-12",
+        "notes": "capabilities.tools=True 为官方能力声明；但 tool_calling.verified 需真机实测（A1 跳过规则引用该字段）。本轮未实测，按 A3 填 null。第一阶段不要求 true，null 不触发跳过。"
+      },
+      "web_search_detail": {
+        "how_to_enable": "tools:[{\"type\":\"web_search\"}]",
+        "works": null,
+        "returns_sources": null,
+        "_source": "inferred",
+        "_checked_at": "2026-11-12",
+        "notes": "A4：how_to_enable 从 capabilities.web_search_param 原样复制；works / returns_sources 需真机实测（优先智谱 / 阿里 / BytePlus），本轮未实测按 A3 填 null。只有两者都为 true 才作为搜索候选（A1/A4）。"
+      },
+      "routing": {
+        "recommended": [
+          "agent",
+          "search"
+        ],
+        "_source": "configured",
+        "_checked_at": "2026-11-12",
+        "notes": "A1：无序标签，仅在 auto_policy.purposes 未覆盖的用途时兜底。A5：product 仅用于 auto_policy，故此处用 configured（产品侧配置标签，非官方事实、非实测）。用途键待模板全文核对。"
+      }
+    },
+    "deepseek-flash": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": "/v1/chat/completions",
+      "poll": null,
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": true,
+          "audio_in": false,
+          "video_in": false
+        },
+        "channel": "deepseek",
+        "web_search": false,
+        "web_search_param": null,
+        "thinking": true,
+        "thinking_param": "thinking:{\"type\":\"enabled\"|\"disabled\"}",
+        "tools": true,
+        "streaming": true,
+        "_source": "official",
+        "notes": {
+          "web_search": "DeepSeek 官方 API 无联网搜索能力"
+        }
+      }
+    },
+    "deepseek-v4-pro": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": "/v1/chat/completions",
+      "poll": null,
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": true,
+          "audio_in": false,
+          "video_in": false
+        },
+        "channel": "deepseek",
+        "web_search": false,
+        "web_search_param": null,
+        "thinking": true,
+        "thinking_param": "thinking:{\"type\":\"enabled\"|\"disabled\"}",
+        "tools": true,
+        "streaming": true,
+        "_source": "official+verified",
+        "notes": {
+          "web_search": "DeepSeek 官方 API 无联网搜索能力"
+        }
+      },
+      "limits": {
+        "max_context_tokens": null,
+        "max_output_tokens": null,
+        "_source": "inferred",
+        "_checked_at": "2026-11-13",
+        "notes": "【0.8.0 结构补齐】键名按《powertokens-kit catalog 补充需求》§0 P0 指定（模板第 2 节）。数值一律 null：2026-11-13 真机 GET /v1/models（77 个模型）字段并集只有 id/object/created/owned_by/name/supported_endpoint_types/architecture/supported_parameters/reasoning/pricing，无任何上下文或输出上限字段（0 个 carrier），PT 2.0.0 文档亦未提供；按 A3「不知道填 null，不猜」处理。待 PT 给出上限或官方模型文档到位后补值并把 _source 升为 official/documented/verified。结构补齐不等于需求 1 完成，见 models_api_contract.limits_probe 与 SSOT §14。"
+      },
+      "tool_calling": {
+        "verified": null,
+        "_source": "inferred",
+        "_checked_at": "2026-11-12",
+        "notes": "capabilities.tools=True 为官方能力声明；但 tool_calling.verified 需真机实测（A1 跳过规则引用该字段）。本轮未实测，按 A3 填 null。第一阶段不要求 true，null 不触发跳过。"
+      },
+      "routing": {
+        "recommended": [
+          "agent"
+        ],
+        "_source": "configured",
+        "_checked_at": "2026-11-12",
+        "notes": "A1：无序标签，仅在 auto_policy.purposes 未覆盖的用途时兜底。A5：product 仅用于 auto_policy，故此处用 configured（产品侧配置标签，非官方事实、非实测）。用途键待模板全文核对。"
+      }
+    },
+    "mimo-v2.6-flash": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": "/v1/chat/completions",
+      "poll": null,
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": true,
+          "audio_in": false,
+          "video_in": false
+        },
+        "channel": "mimo",
+        "web_search": false,
+        "web_search_param": null,
+        "thinking": "conditional",
+        "thinking_param": "thinking(透传,待实测)",
+        "tools": true,
+        "streaming": true,
+        "_source": "official+verified",
+        "notes": {
+          "web_search": "mimo 不支持联网搜索",
+          "thinking": "网关无专门字段处理，仅透传 thinking，需上游实测"
+        }
+      }
+    },
+    "mimo-v2.6-pro": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": "/v1/chat/completions",
+      "poll": null,
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": true,
+          "audio_in": false,
+          "video_in": false
+        },
+        "channel": "mimo",
+        "web_search": false,
+        "web_search_param": null,
+        "thinking": "conditional",
+        "thinking_param": "thinking(透传,待实测)",
+        "tools": true,
+        "streaming": true,
+        "_source": "official+verified",
+        "notes": {
+          "web_search": "mimo 不支持联网搜索",
+          "thinking": "网关无专门字段处理，仅透传 thinking，需上游实测"
+        }
+      },
+      "limits": {
+        "max_context_tokens": null,
+        "max_output_tokens": null,
+        "_source": "inferred",
+        "_checked_at": "2026-11-13",
+        "notes": "【0.8.0 结构补齐】键名按《powertokens-kit catalog 补充需求》§0 P0 指定（模板第 2 节）。数值一律 null：2026-11-13 真机 GET /v1/models（77 个模型）字段并集只有 id/object/created/owned_by/name/supported_endpoint_types/architecture/supported_parameters/reasoning/pricing，无任何上下文或输出上限字段（0 个 carrier），PT 2.0.0 文档亦未提供；按 A3「不知道填 null，不猜」处理。待 PT 给出上限或官方模型文档到位后补值并把 _source 升为 official/documented/verified。结构补齐不等于需求 1 完成，见 models_api_contract.limits_probe 与 SSOT §14。"
+      },
+      "tool_calling": {
+        "verified": null,
+        "_source": "inferred",
+        "_checked_at": "2026-11-12",
+        "notes": "capabilities.tools=True 为官方能力声明；但 tool_calling.verified 需真机实测（A1 跳过规则引用该字段）。本轮未实测，按 A3 填 null。第一阶段不要求 true，null 不触发跳过。"
+      },
+      "routing": {
+        "recommended": [
+          "agent"
+        ],
+        "_source": "configured",
+        "_checked_at": "2026-11-12",
+        "notes": "A1：无序标签，仅在 auto_policy.purposes 未覆盖的用途时兜底。A5：product 仅用于 auto_policy，故此处用 configured（产品侧配置标签，非官方事实、非实测）。用途键待模板全文核对。"
+      }
+    },
+    "MiniMax-M2.5": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": "/v1/chat/completions",
+      "poll": null,
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": true,
+          "audio_in": false,
+          "video_in": false
+        },
+        "channel": "minimax",
+        "web_search": false,
+        "web_search_param": null,
+        "thinking": true,
+        "thinking_param": "reasoning_split(OpenAI)/thinking(Claude)",
+        "tools": true,
+        "streaming": true,
+        "_source": "official+verified",
+        "notes": {
+          "web_search": "MiniMax chat 官方仅保障基础字段"
+        }
+      }
+    },
+    "MiniMax-M2.5-highspeed": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": "/v1/chat/completions",
+      "poll": null,
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": true,
+          "audio_in": false,
+          "video_in": false
+        },
+        "channel": "minimax",
+        "web_search": false,
+        "web_search_param": null,
+        "thinking": true,
+        "thinking_param": "reasoning_split(OpenAI)/thinking(Claude)",
+        "tools": true,
+        "streaming": true,
+        "_source": "official+verified",
+        "notes": {
+          "web_search": "MiniMax chat 官方仅保障基础字段"
+        }
+      }
+    },
+    "MiniMax-M2.7": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": "/v1/chat/completions",
+      "poll": null,
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": true,
+          "audio_in": false,
+          "video_in": false
+        },
+        "channel": "minimax",
+        "web_search": false,
+        "web_search_param": null,
+        "thinking": true,
+        "thinking_param": "reasoning_split(OpenAI)/thinking(Claude)",
+        "tools": true,
+        "streaming": true,
+        "_source": "official+verified",
+        "notes": {
+          "web_search": "MiniMax chat 官方仅保障基础字段"
+        }
+      }
+    },
+    "MiniMax-M2.7-highspeed": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": "/v1/chat/completions",
+      "poll": null,
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": true,
+          "audio_in": false,
+          "video_in": false
+        },
+        "channel": "minimax",
+        "web_search": false,
+        "web_search_param": null,
+        "thinking": true,
+        "thinking_param": "reasoning_split(OpenAI)/thinking(Claude)",
+        "tools": true,
+        "streaming": true,
+        "_source": "official+verified",
+        "notes": {
+          "web_search": "MiniMax chat 官方仅保障基础字段"
+        }
+      }
+    },
+    "MiniMax-M3": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": "/v1/chat/completions",
+      "poll": null,
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": true,
+          "audio_in": false,
+          "video_in": false
+        },
+        "channel": "minimax",
+        "web_search": false,
+        "web_search_param": null,
+        "thinking": true,
+        "thinking_param": "reasoning_split(OpenAI)/thinking(Claude)",
+        "tools": true,
+        "streaming": true,
+        "_source": "official+verified",
+        "notes": {
+          "web_search": "MiniMax chat 官方仅保障基础字段"
+        }
+      },
+      "limits": {
+        "max_context_tokens": null,
+        "max_output_tokens": null,
+        "_source": "inferred",
+        "_checked_at": "2026-11-13",
+        "notes": "【0.8.0 结构补齐】键名按《powertokens-kit catalog 补充需求》§0 P0 指定（模板第 2 节）。数值一律 null：2026-11-13 真机 GET /v1/models（77 个模型）字段并集只有 id/object/created/owned_by/name/supported_endpoint_types/architecture/supported_parameters/reasoning/pricing，无任何上下文或输出上限字段（0 个 carrier），PT 2.0.0 文档亦未提供；按 A3「不知道填 null，不猜」处理。待 PT 给出上限或官方模型文档到位后补值并把 _source 升为 official/documented/verified。结构补齐不等于需求 1 完成，见 models_api_contract.limits_probe 与 SSOT §14。"
+      },
+      "tool_calling": {
+        "verified": null,
+        "_source": "inferred",
+        "_checked_at": "2026-11-12",
+        "notes": "capabilities.tools=True 为官方能力声明；但 tool_calling.verified 需真机实测（A1 跳过规则引用该字段）。本轮未实测，按 A3 填 null。第一阶段不要求 true，null 不触发跳过。"
+      },
+      "routing": {
+        "recommended": [
+          "agent"
+        ],
+        "_source": "configured",
+        "_checked_at": "2026-11-12",
+        "notes": "A1：无序标签，仅在 auto_policy.purposes 未覆盖的用途时兜底。A5：product 仅用于 auto_policy，故此处用 configured（产品侧配置标签，非官方事实、非实测）。用途键待模板全文核对。"
+      }
+    },
+    "MiniMax-M3.1-Flash": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": "/v1/chat/completions",
+      "poll": null,
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": true,
+          "audio_in": false,
+          "video_in": false
+        },
+        "channel": "minimax",
+        "web_search": false,
+        "web_search_param": null,
+        "thinking": true,
+        "thinking_param": "reasoning_split(OpenAI)/thinking(Claude)",
+        "tools": true,
+        "streaming": true,
+        "_source": "official+verified",
+        "notes": {
+          "web_search": "MiniMax chat 官方仅保障基础字段"
+        }
+      }
+    },
+    "glm-4.5-air": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": "/v1/chat/completions",
+      "poll": null,
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": false,
+          "audio_in": false,
+          "video_in": false
+        },
+        "channel": "zhipu",
+        "web_search": "conditional",
+        "web_search_param": "tools:[{\"type\":\"web_search\"}]",
+        "thinking": true,
+        "thinking_param": "thinking:{\"type\":\"enabled\",\"clear_thinking\":true}",
+        "tools": true,
+        "streaming": true,
+        "_source": "official",
+        "notes": {
+          "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
+          "thinking": "需客户端显式传参；上游是否生效以渠道文档/实测为准"
+        }
+      }
+    },
+    "glm-4.7": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": "/v1/chat/completions",
+      "poll": null,
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": false,
+          "audio_in": false,
+          "video_in": false
+        },
+        "channel": "zhipu",
+        "web_search": "conditional",
+        "web_search_param": "tools:[{\"type\":\"web_search\"}]",
+        "thinking": true,
+        "thinking_param": "thinking:{\"type\":\"enabled\",\"clear_thinking\":true}",
+        "tools": true,
+        "streaming": true,
+        "_source": "official",
+        "notes": {
+          "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
+          "thinking": "需客户端显式传参；上游是否生效以渠道文档/实测为准"
+        }
+      },
+      "limits": {
+        "max_context_tokens": null,
+        "max_output_tokens": null,
+        "_source": "inferred",
+        "_checked_at": "2026-11-13",
+        "notes": "【0.8.0 结构补齐】键名按《powertokens-kit catalog 补充需求》§0 P0 指定（模板第 2 节）。数值一律 null：2026-11-13 真机 GET /v1/models（77 个模型）字段并集只有 id/object/created/owned_by/name/supported_endpoint_types/architecture/supported_parameters/reasoning/pricing，无任何上下文或输出上限字段（0 个 carrier），PT 2.0.0 文档亦未提供；按 A3「不知道填 null，不猜」处理。待 PT 给出上限或官方模型文档到位后补值并把 _source 升为 official/documented/verified。结构补齐不等于需求 1 完成，见 models_api_contract.limits_probe 与 SSOT §14。"
+      },
+      "tool_calling": {
+        "verified": null,
+        "_source": "inferred",
+        "_checked_at": "2026-11-12",
+        "notes": "capabilities.tools=True 为官方能力声明；但 tool_calling.verified 需真机实测（A1 跳过规则引用该字段）。本轮未实测，按 A3 填 null。第一阶段不要求 true，null 不触发跳过。"
+      },
+      "web_search_detail": {
+        "how_to_enable": "tools:[{\"type\":\"web_search\"}]",
+        "works": null,
+        "returns_sources": null,
+        "_source": "inferred",
+        "_checked_at": "2026-11-12",
+        "notes": "A4：how_to_enable 从 capabilities.web_search_param 原样复制；works / returns_sources 需真机实测（优先智谱 / 阿里 / BytePlus），本轮未实测按 A3 填 null。只有两者都为 true 才作为搜索候选（A1/A4）。"
+      },
+      "routing": {
+        "recommended": [
+          "agent",
+          "search"
+        ],
+        "_source": "configured",
+        "_checked_at": "2026-11-12",
+        "notes": "A1：无序标签，仅在 auto_policy.purposes 未覆盖的用途时兜底。A5：product 仅用于 auto_policy，故此处用 configured（产品侧配置标签，非官方事实、非实测）。用途键待模板全文核对。"
+      }
+    },
+    "glm-4.7-flash": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": "/v1/chat/completions",
+      "poll": null,
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": false,
+          "audio_in": false,
+          "video_in": false
+        },
+        "channel": "zhipu",
+        "web_search": "conditional",
+        "web_search_param": "tools:[{\"type\":\"web_search\"}]",
+        "thinking": true,
+        "thinking_param": "thinking:{\"type\":\"enabled\",\"clear_thinking\":true}",
+        "tools": true,
+        "streaming": true,
+        "_source": "official",
+        "notes": {
+          "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
+          "thinking": "需客户端显式传参；上游是否生效以渠道文档/实测为准"
+        }
+      }
+    },
+    "glm-5": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": "/v1/chat/completions",
+      "poll": null,
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": false,
+          "audio_in": false,
+          "video_in": false
+        },
+        "channel": "zhipu",
+        "web_search": "conditional",
+        "web_search_param": "tools:[{\"type\":\"web_search\"}]",
+        "thinking": true,
+        "thinking_param": "thinking:{\"type\":\"enabled\",\"clear_thinking\":true}",
+        "tools": true,
+        "streaming": true,
+        "_source": "official",
+        "notes": {
+          "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
+          "thinking": "需客户端显式传参；上游是否生效以渠道文档/实测为准"
+        }
+      }
+    },
+    "glm-5-turbo": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": "/v1/chat/completions",
+      "poll": null,
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": false,
+          "audio_in": false,
+          "video_in": false
+        },
+        "channel": "zhipu",
+        "web_search": "conditional",
+        "web_search_param": "tools:[{\"type\":\"web_search\"}]",
+        "thinking": true,
+        "thinking_param": "thinking:{\"type\":\"enabled\",\"clear_thinking\":true}",
+        "tools": true,
+        "streaming": true,
+        "_source": "official",
+        "notes": {
+          "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
+          "thinking": "需客户端显式传参；上游是否生效以渠道文档/实测为准"
+        }
+      }
+    },
+    "glm-5.1": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": "/v1/chat/completions",
+      "poll": null,
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": false,
+          "audio_in": false,
+          "video_in": false
+        },
+        "channel": "zhipu",
+        "web_search": "conditional",
+        "web_search_param": "tools:[{\"type\":\"web_search\"}]",
+        "thinking": "conditional",
+        "thinking_param": "thinking:{\"type\":\"enabled\",\"clear_thinking\":true}",
+        "tools": true,
+        "streaming": true,
+        "_source": "official",
+        "notes": {
+          "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
+          "thinking": "需客户端显式传参；上游是否生效以渠道文档/实测为准"
+        }
+      }
+    },
+    "glm-5.2": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": "/v1/chat/completions",
+      "poll": null,
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": false,
+          "audio_in": false,
+          "video_in": false
+        },
+        "channel": "zhipu",
+        "web_search": "conditional",
+        "web_search_param": "tools:[{\"type\":\"web_search\"}]",
+        "thinking": "conditional",
+        "thinking_param": "thinking:{\"type\":\"enabled\",\"clear_thinking\":true}",
+        "tools": true,
+        "streaming": true,
+        "_source": "official",
+        "notes": {
+          "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
+          "thinking": "需客户端显式传参；上游是否生效以渠道文档/实测为准"
+        }
+      },
+      "limits": {
+        "max_context_tokens": null,
+        "max_output_tokens": null,
+        "_source": "inferred",
+        "_checked_at": "2026-11-13",
+        "notes": "【0.8.0 结构补齐】键名按《powertokens-kit catalog 补充需求》§0 P0 指定（模板第 2 节）。数值一律 null：2026-11-13 真机 GET /v1/models（77 个模型）字段并集只有 id/object/created/owned_by/name/supported_endpoint_types/architecture/supported_parameters/reasoning/pricing，无任何上下文或输出上限字段（0 个 carrier），PT 2.0.0 文档亦未提供；按 A3「不知道填 null，不猜」处理。待 PT 给出上限或官方模型文档到位后补值并把 _source 升为 official/documented/verified。结构补齐不等于需求 1 完成，见 models_api_contract.limits_probe 与 SSOT §14。"
+      },
+      "tool_calling": {
+        "verified": null,
+        "_source": "inferred",
+        "_checked_at": "2026-11-12",
+        "notes": "capabilities.tools=True 为官方能力声明；但 tool_calling.verified 需真机实测（A1 跳过规则引用该字段）。本轮未实测，按 A3 填 null。第一阶段不要求 true，null 不触发跳过。"
+      },
+      "web_search_detail": {
+        "how_to_enable": "tools:[{\"type\":\"web_search\"}]",
+        "works": null,
+        "returns_sources": null,
+        "_source": "inferred",
+        "_checked_at": "2026-11-12",
+        "notes": "A4：how_to_enable 从 capabilities.web_search_param 原样复制；works / returns_sources 需真机实测（优先智谱 / 阿里 / BytePlus），本轮未实测按 A3 填 null。只有两者都为 true 才作为搜索候选（A1/A4）。"
+      },
+      "routing": {
+        "recommended": [
+          "agent",
+          "search"
+        ],
+        "_source": "configured",
+        "_checked_at": "2026-11-12",
+        "notes": "A1：无序标签，仅在 auto_policy.purposes 未覆盖的用途时兜底。A5：product 仅用于 auto_policy，故此处用 configured（产品侧配置标签，非官方事实、非实测）。用途键待模板全文核对。"
+      }
+    },
+    "glm-5.3": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": "/v1/chat/completions",
+      "poll": null,
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": false,
+          "audio_in": false,
+          "video_in": false
+        },
+        "channel": "zhipu",
+        "web_search": "conditional",
+        "web_search_param": "tools:[{\"type\":\"web_search\"}]",
+        "thinking": "conditional",
+        "thinking_param": "thinking:{\"type\":\"enabled\",\"clear_thinking\":true}",
+        "tools": true,
+        "streaming": true,
+        "_source": "official",
+        "notes": {
+          "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
+          "thinking": "需客户端显式传参；上游是否生效以渠道文档/实测为准"
+        }
+      }
+    },
+    "glm-5.3-flash": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/chat/completions",
+      "execution": "sync",
+      "submit": "/v1/chat/completions",
+      "poll": null,
+      "kind": "chat",
+      "capabilities": {
+        "multimodal": {
+          "vision": true,
+          "audio_in": false,
+          "video_in": false
+        },
+        "channel": "zhipu",
+        "web_search": "conditional",
+        "web_search_param": "tools:[{\"type\":\"web_search\"}]",
+        "thinking": "conditional",
+        "thinking_param": "thinking:{\"type\":\"enabled\",\"clear_thinking\":true}",
+        "tools": true,
+        "streaming": true,
+        "_source": "official",
+        "notes": {
+          "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
+          "thinking": "需客户端显式传参；上游是否生效以渠道文档/实测为准"
+        }
+      }
+    },
+    "qwen-image-3.0-pro": {
+      "params_observed": [
+        "input",
+        "parameters",
+        "messages",
+        "prompt_extend",
+        "prompt_extend_mode",
+        "n",
+        "size",
+        "negative_prompt",
+        "seed",
+        "watermark"
+      ],
+      "vendor_endpoint": "/ali/api/v1/services/aigc/multimodal-generation/generation",
+      "execution": "sync",
+      "submit": "/v1/images/generations",
+      "poll": null,
+      "kind": "image"
+    },
+    "qwen-image-2.0-pro": {
+      "params_observed": [
+        "input",
+        "parameters",
+        "messages",
+        "negative_prompt",
+        "n",
+        "watermark",
+        "seed",
+        "size",
+        "prompt_extend"
+      ],
+      "vendor_endpoint": "/ali/api/v1/services/aigc/multimodal-generation/generation",
+      "execution": "sync",
+      "submit": "/v1/images/generations",
+      "poll": null,
+      "kind": "image"
+    },
+    "wan2.7-image-pro": {
+      "params_observed": [
+        "input",
+        "parameters",
+        "messages",
+        "bbox_list",
+        "enable_sequential",
+        "size",
+        "n",
+        "thinking_mode",
+        "color_palette",
+        "watermark",
+        "seed"
+      ],
+      "vendor_endpoint": "/ali/api/v1/services/aigc/multimodal-generation/generation",
+      "execution": "sync",
+      "submit": "/v1/images/generations",
+      "poll": null,
+      "kind": "image"
+    },
+    "seedream-4-0-250828": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/images/generations",
+      "execution": "sync",
+      "submit": "/v1/images/generations",
+      "poll": null,
+      "kind": "image"
+    },
+    "seedream-4-5-251128": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/images/generations",
+      "execution": "sync",
+      "submit": "/v1/images/generations",
+      "poll": null,
+      "kind": "image"
+    },
+    "dola-seedream-5-0-pro-260628": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/images/generations",
+      "execution": "sync",
+      "submit": "/v1/images/generations",
+      "poll": null,
+      "kind": "image"
+    },
+    "viduq2": {
+      "params_observed": [],
+      "vendor_endpoint": "/vidu/ent/v2/reference2image",
+      "execution": "sync",
+      "submit": "/v1/images/generations",
+      "poll": null,
+      "kind": "image"
+    },
+    "wan2.2-kf2v-flash": {
+      "params_observed": [
+        "input",
+        "parameters",
+        "prompt",
+        "negative_prompt",
+        "first_frame_url",
+        "last_frame_url",
+        "template",
+        "resolution",
+        "duration",
+        "prompt_extend",
+        "watermark",
+        "seed"
+      ],
+      "vendor_endpoint": "/ali/api/v1/services/aigc/image2video/video-synthesis",
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}",
+      "kind": "video"
+    },
+    "wan2.1-kf2v-plus": {
+      "params_observed": [
+        "input",
+        "parameters",
+        "prompt",
+        "negative_prompt",
+        "first_frame_url",
+        "last_frame_url",
+        "template",
+        "resolution",
+        "duration",
+        "prompt_extend",
+        "watermark",
+        "seed"
+      ],
+      "vendor_endpoint": "/ali/api/v1/services/aigc/image2video/video-synthesis",
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}",
+      "kind": "video"
+    },
+    "wan2.7-i2v": {
+      "params_observed": [
+        "input",
+        "parameters",
+        "prompt",
+        "negative_prompt",
+        "media",
+        "resolution",
+        "duration",
+        "prompt_extend",
+        "watermark",
+        "seed"
+      ],
+      "vendor_endpoint": "/ali/api/v1/services/aigc/video-generation/video-synthesis",
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}",
+      "kind": "video"
+    },
+    "wan2.7-r2v": {
+      "params_observed": [
+        "input",
+        "parameters",
+        "prompt",
+        "negative_prompt",
+        "media",
+        "resolution",
+        "ratio",
+        "duration",
+        "prompt_extend",
+        "watermark",
+        "seed"
+      ],
+      "vendor_endpoint": "/ali/api/v1/services/aigc/video-generation/video-synthesis",
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}",
+      "kind": "video"
+    },
+    "happyhorse-1.1-i2v": {
+      "params_observed": [
+        "input",
+        "parameters",
+        "prompt",
+        "media",
+        "resolution",
+        "duration",
+        "watermark",
+        "seed"
+      ],
+      "vendor_endpoint": "/ali/api/v1/services/aigc/video-generation/video-synthesis",
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}",
+      "kind": "video"
+    },
+    "happyhorse-1.1-r2v": {
+      "params_observed": [
+        "input",
+        "parameters",
+        "prompt",
+        "media",
+        "resolution",
+        "ratio",
+        "duration",
+        "watermark",
+        "seed"
+      ],
+      "vendor_endpoint": "/ali/api/v1/services/aigc/video-generation/video-synthesis",
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}",
+      "kind": "video"
+    },
+    "happyhorse-1.1-t2v": {
+      "params_observed": [
+        "input",
+        "parameters",
+        "prompt",
+        "resolution",
+        "ratio",
+        "duration",
+        "watermark",
+        "seed"
+      ],
+      "vendor_endpoint": "/ali/api/v1/services/aigc/video-generation/video-synthesis",
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}",
+      "kind": "video"
+    },
+    "MiniMax-H3": {
+      "params_observed": [],
+      "vendor_endpoint": "/minimax/v2/video_generation",
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}",
+      "kind": "video"
+    },
+    "MiniMax-H3-Max": {
+      "params_observed": [],
+      "vendor_endpoint": "/minimax/v2/video_generation",
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}",
+      "kind": "video"
+    },
+    "MiniMax-Hailuo-02": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/videos",
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}",
+      "kind": "video"
+    },
+    "MiniMax-Hailuo-2.3-Fast": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/videos",
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}",
+      "kind": "video"
+    },
+    "MiniMax-Hailuo-2.3": {
+      "params_observed": [],
+      "vendor_endpoint": "/v1/videos",
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}",
+      "kind": "video"
+    },
+    "viduq3-pro-fast": {
+      "params_observed": [],
+      "vendor_endpoint": "/vidu/ent/v2/img2video",
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}",
+      "kind": "video"
+    },
+    "viduq3-pro": {
+      "params_observed": [],
+      "vendor_endpoint": "/vidu/ent/v2/img2video",
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}",
+      "kind": "video"
+    },
+    "viduq3": {
+      "params_observed": [],
+      "vendor_endpoint": "/vidu/ent/v2/reference2video",
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}",
+      "kind": "video"
+    },
+    "viduq3-turbo": {
+      "params_observed": [],
+      "vendor_endpoint": "/vidu/ent/v2/img2video",
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}",
+      "kind": "video"
+    },
+    "viduq4-preview": {
+      "params_observed": [],
+      "vendor_endpoint": "/vidu/ent/v2/img2video",
+      "execution": "async",
+      "submit": "/v1/videos",
+      "poll": "/v1/videos/{task_id}",
+      "kind": "video"
+    }
+  },
+  "multimodal_source": "PT 官方渠道适配器代码 + OpenAPI 文档《模型能力汇总》(2026-11-02) §4 逐模型清单；网关对多模态原样透传、不做白名单，实际可用性以上游为准。",
+  "currency": {
+    "credits_per_usd": 1000,
+    "_source": "official",
+    "_checked_at": "2026-11-12",
+    "notes": "PT API 2.0.0 /v1/billing/estimate 字段说明：1 USD 折算的 credits 数量，calculation 明写 1000 quota/USD。消费记录文本里的 3 是 per_1k_tokens 计费项的 quota_per_unit，不是换算率（见核销报告 §7.1 / Q6）。pricing / charging 属 P2，本轮不落地；A2 措辞修订（准确费用以 estimate 为准）待用户确认，未写入。 【C3 补充 2026-11-12】设计层《全模态计费与定价技术规范 V1.0》写「全局基础汇率动态配置，默认 1000」，与对外口径「1 USD = 1000 credits，固定不变」并存；catalog 保留 credits_per_usd=1000 + _source: official，动态配置属内部实现，不改变对外口径（资料总集 C3 已裁决，不阻塞）。pricing 字段仍属 P2，本轮不落地；chat 单价不自建表，直接调 estimate 取预估、以实际扣费为准（D4 §9）。"
+  },
+  "auto_policy": {
+    "_source": "product",
+    "_checked_at": "2026-11-12",
+    "purposes": {
+      "general": [
+        "qwen3.8-flash",
+        "glm-4.7",
+        "deepseek-v4-pro"
+      ],
+      "agent": [
+        "glm-4.7",
+        "deepseek-v4-pro",
+        "qwen3.8-flash"
+      ],
+      "search": [
+        "glm-4.7",
+        "qwen3.8-flash",
+        "seed-2-0-pro-260328"
+      ],
+      "long_report": [
+        "glm-5.2",
+        "MiniMax-M3",
+        "deepseek-v4-pro"
+      ],
+      "vision": [
+        "qwen3.8-flash",
+        "seed-2-0-pro-260328",
+        "MiniMax-M3"
+      ]
+    },
+    "skip_rules": [
+      "delisted",
+      "tool_calling.verified === false",
+      "搜索用途且 works 或 returns_sources 为 false",
+      "Key 无权使用该模型"
+    ],
+    "notes": "A1：purposes 为按用途的有序候选列表，决定候选与顺序；routing.recommended 为无序标签，仅在 auto_policy 未覆盖的用途时兜底。第一阶段不要求 tool_calling.verified=true，列进 purposes 即为候选；null 不触发跳过（只有显式 false 才跳过）。【0.8.0 补用途 2026-11-13】按《powertokens-kit catalog 补充需求》§0 P0 补齐 general / long_report / vision，与既有 agent / search 共 5 种；每用途 >= 2 候选且跨 >= 2 渠道。vision 三个候选均取自 capabilities.multimodal.vision === true 的模型。long_report 是产品侧候选顺序，**不宣称上下文长度**（limits 仍为 null，见 limits_probe）。列进 purposes 只代表产品认可为候选，不代表已实测；A1 跳过规则不变。配套字段模板全文仍未到位，本轮仅按需求正文已明确的键名/语义落地。"
+  },
+  "errors": {
+    "rate_limited": {
+      "http_status": [
+        429
+      ],
+      "agent_action": "retry",
+      "examples": [
+        {
+          "status": 429,
+          "message": "rate limited",
+          "_source": "verified",
+          "note": "真机轮询层记录；服务端带 Retry-After 头，网关已实现 Retry-After + deadline 保护（docs/pitfall-archive.md A.20 / A.02）"
+        },
+        {
+          "status": 429,
+          "message": "您已达到请求数限制：N分钟内最多请求M次",
+          "_source": "official",
+          "note": "D4 §3 补行：429 + {error:{message,type:api_error,code:model_rate_limited}}；Retry-After 一定有。上游 429 原样透传。此条为官方口径样例，非本仓库真机。"
+        }
+      ],
+      "_source": "official+verified",
+      "_checked_at": "2026-11-12",
+      "notes": "429 限流判定看 error.code。网关侧 code=model_rate_limited（api_error），上游 429 原 code/type 原样透传。Retry-After 一定有：网关默认 5s，上游给了用上游值；按账户 / 按模型限流（D4 §3 口径已给，Q5-3 闭环）。网关侧限流发生在预扣费之前，不产生费用、无需退款；上游 429 属首包前失败，自动退款。属于「肯定没受理」，可安全重试，具体规则见顶层 retry_policy.rules。"
+    },
+    "upstream_error": {
+      "http_status": [
+        502,
+        503
+      ],
+      "agent_action": "retry",
+      "examples": [
+        {
+          "status": 502,
+          "message": "OpenAI error 格式，message 末尾追加 (request id: xxx)",
+          "_source": "official",
+          "note": "第 4 批 #1/#3：非流式 / 流式首包前 上游 5xx，透传上游状态码（502/503 等），application/json OpenAI error 格式，不走 SSE，失败 → 自动全额 Refund → 可安全重试。"
+        },
+        {
+          "status": 503,
+          "message": null,
+          "_source": "official",
+          "note": "第 4 批：首包前 5xx 透传上游状态码；与「固定 500 = DoRequest 超时」区分开，后者见 errors.timeout。"
+        }
+      ],
+      "_source": "official",
+      "_checked_at": "2026-11-12",
+      "notes": "首包前上游 5xx = 非 2xx + JSON OpenAI error 格式 + message 追加 request_id + 自动全额 Refund，按 retry_policy 可安全重试。流式首包前同形态但不走 SSE。⚠️ 区别于流中途失败（HTTP 200 已锁死 + SSE finish_reason，已按量扣费、不可自动重试）。账户域状态码表（含 500、无 402）不得混入。Q5-4 已由第 4 批 / D4 闭环。"
+    },
+    "timeout": {
+      "http_status": [
+        500
+      ],
+      "agent_action": "retry",
+      "examples": [
+        {
+          "status": 500,
+          "message": "code=do_request_failed",
+          "_source": "official",
+          "note": "第 4 批 #2：非流式 DoRequest 超时固定 500 + JSON code=do_request_failed，失败 → 自动 Refund，可安全重试。"
+        },
+        {
+          "status": 500,
+          "message": "TaskError JSON: code=fail_to_fetch_task / do_request_failed",
+          "_source": "official",
+          "note": "第 4 批 #9：异步 Submit DoRequest 超时固定 500 + TaskError JSON（defer 自动 Refund）；上游 5xx 时 code=fail_to_fetch_task 并透传上游状态码。"
+        }
+      ],
+      "_source": "official",
+      "_checked_at": "2026-11-12",
+      "notes": "首包前 DoRequest 超时固定 500 + code=do_request_failed（非流式）/ TaskError JSON（异步 Submit，defer 自动 Refund），可安全重试。⚠️ 注意区分：流中途 streaming timeout 是 HTTP 200 已锁死 + SSE finish_reason=timeout + [DONE]，adaptor.DoResponse 内部已 settle 按量扣费、不可自动重试（会二次扣费）——见顶层 retry_policy.rules 与 charging。Q8 已由 D4 §2 / §10 闭环，本类不再有待确认项。"
+    },
+    "auth_invalid": {
+      "http_status": [
+        401
+      ],
+      "agent_action": "stop",
+      "examples": [
+        {
+          "status": 401,
+          "message": null,
+          "_source": "official",
+          "note": "A.04 官方语义：401 = 凭据无效（生成域）。D4 §1：Key 停用 / Key 过期 / Key 缺失。判定只看 error.code，不看 message 文案（会随 i18n 变）。"
+        },
+        {
+          "status": 401,
+          "message": null,
+          "_source": "official",
+          "note": "D4 §1 三分类的 error.code：token_invalid / expired / disabled。客户端处理：换有效 Key，不要重试。账户域 401 语义不得混入本条。"
+        }
+      ],
+      "_source": "official",
+      "_checked_at": "2026-11-12",
+      "notes": "401 = 凭据无效。error.code 三值 token_invalid / expired / disabled（A.04 + D4 §1）。账户域 401 语义不得混入本条。判定只看 error.code。Q5-1 已闭环。"
+    },
+    "insufficient_balance": {
+      "http_status": [
+        402
+      ],
+      "agent_action": "stop",
+      "examples": [
+        {
+          "status": 402,
+          "message": null,
+          "_source": "official",
+          "note": "A.04 官方语义：402 = 余额不足 / 额度耗尽（生成域专属；账户域状态码表无 402）"
+        },
+        {
+          "status": 403,
+          "message": "token quota is not enough ... need quota: ＄0.200000",
+          "_source": "verified",
+          "note": "A.04 改版前真机 720p 提交触发（docs/pitfall-archive.md:56）。⚠️ 按新版口径作废：余额不足统一 402，此 403 形态不再出现（资料总集 C9）。保留仅作历史审计，Agent 不得据此判断。"
+        },
+        {
+          "status": null,
+          "message": "pre-consume quota failed",
+          "_source": "verified",
+          "note": "真机预扣失败（README.zh-CN.md:485）；预扣校验不通过不扣费"
+        },
+        {
+          "status": 402,
+          "message": "token quota is not enough, token remain quota: ＄0.005000, need quota: ＄0.034000 (request id: xxx)",
+          "_source": "verified",
+          "note": "2026-11-12 真机（T5 补测，seedream-5-0-260128 图片提交）：HTTP 402 + error.code=pre_consume_token_quota_failed + api_error，message 末尾追加 (request id: xxx)，X-Oneapi-Request-Id 同值。**A.04 改版后的现行形态**，真机证明余额不足已统一 402（C9 验证）；失败请求不扣费。响应示例已脱敏。"
+        }
+      ],
+      "_source": "official+verified",
+      "_checked_at": "2026-11-12",
+      "notes": "402 = 余额不足 / 额度耗尽，客户端应充值后再试（A.04 / D4 §1）。现行真机 error.code=pre_consume_token_quota_failed（见 examples 末条，2026-11-12 实测）。历史 403 报文（examples[1]）已按新版作废，且被本次实测反向验证。账户域状态码表无 402，不得混入。判定只看 error.code。"
+    },
+    "model_unavailable": {
+      "http_status": [
+        403,
+        503
+      ],
+      "agent_action": "switch_model",
+      "examples": [
+        {
+          "status": 403,
+          "message": null,
+          "_source": "official",
+          "note": "D4 §1：模型未上架 / 已下架 / 从未接入 → 403 + error.code=model_not_found + error.type=api_error。中间件 abort 的 type 恒为 api_error；第五批对比表第 8 行「400 + upstream_error」已由 D4 明确作废。"
+        },
+        {
+          "status": 403,
+          "message": "model_not_found ... not listed (pending), please contact admin to enable it",
+          "_source": "verified",
+          "note": "真机 A.21：该模型仍出现在 /v1/models 列表里（docs/pitfall-archive.md:172-176）；「列表里有」≠「能用」。列表按「分组可用 + 命中定价规则 + status=2」三重过滤，status 走内存缓存每 60s 刷新，后台直改 DB 状态最长滞后 60s；请求名带后缀 / 渠道映射名与列表名不一致也会表现为「列表有、调用 403」。"
+        },
+        {
+          "status": 403,
+          "message": null,
+          "_source": "official",
+          "note": "D4 §1：Key 无权访问该模型 → error.code=token_model_forbidden（换 Key / 加模型授权）；Key 无权访问该分组 → token_group_forbidden（换分组）；指定渠道已被禁用（仅指定 channel 时）→ channel_disabled（去掉渠道指定）。"
+        },
+        {
+          "status": 503,
+          "message": null,
+          "_source": "official",
+          "note": "D4 §1：已上架、但当前分组无可用渠道 → 503 + error.code=model_not_found + api_error（找运营）。⚠️ 与 403 同 code，靠 HTTP 状态码区分。"
+        }
+      ],
+      "_source": "official+verified",
+      "_checked_at": "2026-11-12",
+      "notes": "判定只看 error.code，不看 message 文案。403 四个细分：model_not_found（换模型 / 提上架）、token_model_forbidden（换 Key / 加授权）、token_group_forbidden（换分组）、channel_disabled（去掉渠道指定）。503 + model_not_found = 已上架但当前分组无可用渠道（找运营），靠 HTTP 码与 403 区分。400 + invalid_request 属请求体非法，不是模型不可用。D4 §1 已明确作废第五批对比表第 8 行（资料总集 C5）。下架 / 无权限时换模型或停止，重试无效。"
+    },
+    "param_unsupported": {
+      "http_status": [
+        400
+      ],
+      "agent_action": "stop",
+      "examples": [
+        {
+          "status": 400,
+          "message": "unsupported_parameter（上游原 code）/ invalid_request_error（上游原 type）",
+          "_source": "official",
+          "note": "第 5 批对比表：模型不支持 tools / vision(image_url) / response_format 时网关不拦截，上游 error code 与 message 原样保留，网关仅在 message 末尾追加 (request id: xxx)。通常 400。此条为官方口径样例，非本仓库真机。"
+        }
+      ],
+      "_source": "official",
+      "_checked_at": "2026-11-12",
+      "notes": "上游参数类错误原样透传，网关不拦截（第 5 批对比表）。通常 400，error.code / error.type 用上游原值（unsupported_parameter / invalid_request_error），判定只看 error.code。Agent 应停下改参数而非换模型或重试。Q5-5 已闭环。"
+    },
+    "content_filtered": {
+      "http_status": null,
+      "agent_action": "stop",
+      "examples": [
+        {
+          "status": null,
+          "message": null,
+          "_source": "documented",
+          "note": "无真机/官方样例；B3 明确「内容拦截」只能标 documented，精确报文待 Q5-1"
+        }
+      ],
+      "_source": "documented",
+      "_checked_at": "2026-11-12",
+      "notes": "不重试、不换模型（同一内容大概率仍被拦）；不得标 verified。"
+    },
+    "context_too_long": {
+      "http_status": [
+        400
+      ],
+      "agent_action": "compress_context",
+      "examples": [
+        {
+          "status": 400,
+          "message": "Maximum context length for gpt-4o is 128000 tokens. (request id: xxx)",
+          "_source": "official",
+          "note": "第 5 批给出的返回体形态：HTTP 400 + {error:{message,type:invalid_request_error,param:messages,code:context_length_exceeded}}；网关不拦截，上游原 code/type 保留，message 末尾追加 (request id: xxx)。PT 文档示例（gpt-4o 举例），非本仓库真机。"
+        }
+      ],
+      "_source": "official",
+      "_checked_at": "2026-11-12",
+      "notes": "上游原样透传，网关不拦截。error.code=context_length_exceeded、type=invalid_request_error、param=messages。压缩上下文或换长上下文模型；各模型上下文上限见 limits（子字段待模板全文核对）。不重试。Q5-5 已闭环。"
+    }
+  },
+  "capability_gaps": {
+    "asr": {
+      "label": "语音转写 ASR",
+      "in_kinds": false,
+      "callable_now": false,
+      "status": null,
+      "notes": "remake 管线 ② 所需；PT 当前模型页未提供对应可调用 kind。来源 docs/五类能力_7家供应商调研报告.md。",
+      "_source": "documented",
+      "_checked_at": "2026-11-12"
+    },
+    "tts": {
+      "label": "语音合成 TTS",
+      "in_kinds": false,
+      "callable_now": false,
+      "status": null,
+      "notes": "kinds 中 audio 为 /v1/audio/speech（OpenAI 兼容 TTS），但 ASR 方向无 kind；本条指「ASR/TTS 能力簇中未覆盖的转写侧」及独立 TTS 能力声明，待 PT 口径确认。",
+      "_source": "documented",
+      "_checked_at": "2026-11-12"
+    },
+    "ocr": {
+      "label": "OCR 文档识别",
+      "in_kinds": false,
+      "callable_now": false,
+      "status": null,
+      "notes": "7 家供应商中 Z.ai 有专用 GLM-OCR；PT 侧未见对应模型。",
+      "_source": "documented",
+      "_checked_at": "2026-11-12"
+    },
+    "embeddings_rerank": {
+      "label": "Embeddings / Rerank",
+      "in_kinds": false,
+      "callable_now": false,
+      "status": null,
+      "notes": "catalog 当前 5 类 kind 均不含向量化/重排端点。",
+      "_source": "documented",
+      "_checked_at": "2026-11-12"
+    },
+    "realtime_voice": {
+      "label": "实时语音",
+      "in_kinds": false,
+      "callable_now": false,
+      "status": null,
+      "notes": "用户标注「优先级较低，可后置」；PT 侧未见对应可调用端点。",
+      "_source": "documented",
+      "_checked_at": "2026-11-12"
+    }
+  },
+  "retry_policy": {
+    "_source": "official",
+    "_checked_at": "2026-11-12",
+    "note": "D4 §3：没有单一专用的「是否已被受理」信号，按 HTTP 状态码 + 响应体形态 + SSE finish_reason + error.code 组合判定。判定结果决定能否自动重试。 【R1 实测补充 2026-11-12】成功响应 body 的 request_id 字段名为 id（OpenAI 兼容），与 X-Request-Id header 同值；失败时 header 一定有且 error.message 末尾追加 (request id: xxx)。异步视频提交响应的字段名仍未实测（Key 余额不足，未做提交）。",
+    "signal": "no_single_dedicated_signal",
+    "request_id_header": "X-Oneapi-Request-Id",
+    "request_id_header_note": "只用于报障定位，不是受理信号 / 重试信号。",
+    "rules": [
+      {
+        "observe": "非 2xx（401 / 402 / 403 / 429 / 5xx）",
+        "accepted": false,
+        "refund": "auto_full",
+        "auto_retry": true,
+        "note": "一定没受理，费用已自动全额退回；按 Retry-After 退避（429）或直接重试。"
+      },
+      {
+        "observe": "200 + JSON（非流式）",
+        "accepted": true,
+        "settled": true,
+        "auto_retry": false,
+        "note": "已受理、已结算，重试会二次扣费。"
+      },
+      {
+        "observe": "200 + SSE，末帧 finish_reason=stop | tool_calls | length",
+        "accepted": true,
+        "settled": true,
+        "auto_retry": false,
+        "note": "正常完成。"
+      },
+      {
+        "observe": "200 + SSE，末帧 finish_reason=error | timeout | abort",
+        "accepted": true,
+        "settled": true,
+        "charged": true,
+        "auto_retry": false,
+        "note": "HTTP 200 已锁死、内部已 settle 按量扣费，中途失败；普通重试逻辑识别不到，且重试会二次扣费。对账用 logs.other.finish_reason 过滤，见 charging。"
+      },
+      {
+        "observe": "异步：200 + task_id",
+        "accepted": true,
+        "auto_retry": false,
+        "note": "已受理。用 task_id 查状态，不要重复提交；Fetch 端点只读安全（DB + 上游 FetchTask）。"
+      }
+    ],
+    "rate_limit": {
+      "code": "model_rate_limited",
+      "retry_after": "always_present",
+      "gateway_default_s": 5,
+      "upstream_value_wins": true,
+      "note": "网关侧限流在预扣费之前，不产生费用、无需退款；上游 429 属首包前失败自动退款。属于「肯定没受理」，可安全重试。"
+    },
+    "request_id_success_body_field": "id",
+    "request_id_observed": {
+      "_source": "verified",
+      "_checked_at": "2026-11-12",
+      "non_stream": {
+        "http": 200,
+        "body_field": "id",
+        "headers": [
+          "X-Client-Request-Id（调用方自定义/默认值）",
+          "X-Oneapi-Request-Id（报障定位）",
+          "X-Request-Id（与 body.id 同值）"
+        ],
+        "note": "2026-11-12 真机 T3（deepseek-v4-1-flash-260910，max_tokens=1）：body.id 为 48 位十六进制串，X-Request-Id header 与之完全相同。"
+      },
+      "stream": {
+        "http": 200,
+        "headers": [
+          "X-Oneapi-Request-Id"
+        ],
+        "body": "SSE chunk 内仍带 id 字段",
+        "note": "流式响应头只回 X-Oneapi-Request-Id（与 D4 §3「流式只在 header」一致），但每个 SSE chunk 的 JSON 里仍有 id。"
+      },
+      "failure": {
+        "headers": [
+          "X-Oneapi-Request-Id"
+        ],
+        "body": "error.message 末尾追加 (request id: xxx)，与 header 同值",
+        "note": "T4 实测 403 model_not_found / 400 invalid_request 均成立。"
+      }
+    }
+  },
+  "charging": {
+    "_source": "official",
+    "_checked_at": "2026-11-12",
+    "note": "D4 §2：预扣 → settle 是同一条链的两个出口，不是两套账。RefundTaskQuota 只服务异步任务（video / image 的 task 表）；同步 chat 链路从不走它。",
+    "async_task": {
+      "on_submit": "pre-consume（Submit 成功即已预扣；中途查余额会看到暂时减少，勿误判为错扣而重试）",
+      "charged_on_failure": false,
+      "charged_on_timeout": false,
+      "on_failure": "polling 检测 FAILURE → 同循环内全额 RefundTaskQuota",
+      "on_timeout": "sweepTimedOutTasks 标 FAILURE + 自动退款；默认 24h / TASK_TIMEOUT_MINUTES=1440，可配，0=关闭，改值重启生效；每 15s 扫一次，进程崩溃后重启能兜住",
+      "refund_latency": "零延迟，DB 事务级同步退回（钱包 / 订阅 / Token 额度 / 专属积分同时退）",
+      "idempotency": "三重：入口 quota==0 早退 + CAS 乐观锁 + 退费后持久化 Quota=0",
+      "legacy_task": "submit_time < 2026-02-22 00:00:00 UTC 的旧系统迁移存量；超时只置失败 + 提示联系管理员，不退款",
+      "log_reconciliation": "写一条 status=failed 消费记录（quota=预扣值）+ 一条 refund 负数流水，成对出现、明细净额 0",
+      "crash_gap": "唯一兜不住：预扣完成但 task 行未落库就崩（无任务记录，只能按日志人工排查）"
+    },
+    "sync_chat_stream": {
+      "charged_on_midstream_failure": true,
+      "charge_basis": "已计费输入 + 已产出输出，在中断时刻的实测 token 结算",
+      "zero_token_exception": "total_tokens=0（一个 usage 都没取到）按 0 结算，等于全额退回",
+      "http_status": 200,
+      "finish_reason": [
+        "error",
+        "timeout",
+        "abort"
+      ],
+      "log_status": "success",
+      "log_status_note": "同步链路恒 success，无 failed 终态；对账用 logs.other.finish_reason 过滤",
+      "log_filter": "logs.other.finish_reason",
+      "refund": "不触发 controller 层 Refund；adaptor.DoResponse 内部已 settle",
+      "note": "⚠️ 与 async_task 相反：这类「失败」是扣费的。不要按 status=failed 对账，同步链路没有该终态。"
+    },
+    "task_id_recheck": "完全安全：Fetch 端点只读（DB + 上游 FetchTask），不触发 Submit / Refund / Settle；不会重新生成、不会二次扣费。",
+    "estimate_vs_actual": "以实际扣费为准（PT 2026-11-16 确认，U10 裁决）。POST /v1/billing/estimate 只是试算：0.8.1 实测 wan3.0-video 5s 预估 1000 credits，实扣 500 credits，预估可能偏高，只作参考，勿据此定价或对账。"
+  },
+  "pricing_policy": {
+    "_source": "verified",
+    "_checked_at": "2026-11-16",
+    "authority": "实际扣费（logs.billing / logs/query）> POST /v1/billing/estimate 预估 > catalog 预扣单价探测值",
+    "estimate_caveat": "预估可能偏高，只作参考：estimate 与实扣不一致时以实扣为准，不批量订正未实测模型。",
+    "verified_models": [
+      {
+        "model": "wan3.0-video",
+        "price_usd_5s_720p": 0.5,
+        "credits_5s_720p": 500,
+        "source": "verified",
+        "note": "仅此模型此档位（5s/720p）经真机验证；其他分辨率/时长与其它视频模型未实测。"
+      }
+    ]
+  },
+  "live_billing_observations": {
+    "_source": "verified",
+    "observed_at": "2026-11-16T01:51Z",
+    "note": "真机实扣与产物持久化观测。U10 已由 PT 于 2026-11-16 裁决「以实际扣费为准」：仅 wan3.0-video 5s/720p 单价据实扣订正为 0.5 USD 并标 source=verified；其他视频模型未实测，不批量改。冲突记录保留作审计轨迹，详见 SSOT §15.4。",
+    "currency": "credits",
+    "credits_per_usd": 1000,
+    "cases": [
+      {
+        "model": "wan3.0-video",
+        "endpoint": "POST /v1/videos",
+        "duration_seconds": 5,
+        "resolution": "720P",
+        "charged_quota": 500,
+        "charged_usd": 0.5,
+        "balance_before": 49450,
+        "balance_after": 48950,
+        "billing": {
+          "pricing_mode": "calculator",
+          "billing_unit": "per_second",
+          "unit_quota": 100,
+          "quota_per_unit": 1000,
+          "formula": "(Duration (seconds) 5 seconds × 100 credits/seconds + Input images 0 images × 0 credits/images) × 1.00 ≈ 500 credits"
+        },
+        "provider_name": "Ali",
+        "result_persistence": {
+          "storage": "PT 自有 Cloudflare R2 公共桶",
+          "host_shape": "pub-<hash>.r2.dev",
+          "path_shape": "/task-results/YYYY/MM/DD/<task_id>.mp4",
+          "signed": false,
+          "requires_auth": false,
+          "cache_control": "public, max-age=31536000, immutable",
+          "ttl_field_in_task": null,
+          "note": "公开可读、无签名参数；任务对象 metadata 只有 url、无任何 TTL 字段。对象实际保留期仍未实测（D5 称 14 天），需跨周复测同一 URL。"
+        },
+        "request_id_contract": {
+          "submit_body_id_equals_task_id": true,
+          "submit_body_fields": [
+            "id",
+            "task_id",
+            "object",
+            "model",
+            "status",
+            "progress",
+            "created_at"
+          ],
+          "request_id_header": "X-Oneapi-Request-Id",
+          "has_x_request_id_header": false,
+          "logs_query_keys": [
+            "task_id",
+            "request_id",
+            "consume_id"
+          ],
+          "note": "异步视频 body.id 是任务 ID（与 task_id 同值），不是 chat 同步链路的 request_id；日志三键都能查到同一条记录，但 request_id 必须用 X-Oneapi-Request-Id 响应头的值。"
+        },
+        "status_flow": [
+          "queued",
+          "in_progress",
+          "completed"
+        ],
+        "agreement_required": false
+      }
+    ],
+    "conflicts_registered": [
+      "【U10 已裁决 2026-11-16】catalog models.wan3.0-video.price_usd_5s_720p 原 0.20 USD vs 真机实扣 0.50 USD（500 credits）；PT 确认以实扣为准，已订正为 0.5 并标 source=verified",
+      "【U10 口径】POST /v1/billing/estimate 试算 1000 credits vs 实扣 500 credits：预估偏高只作参考，estimate_vs_actual 已注明",
+      "D4 §4 称 PT 自有 /v1/videos/{task_id}/content 且需带 PT token 鉴权 vs 实测 R2 公共桶、无需鉴权",
+      "D5:476 称 14 天 + 字节 TOS 域名 vs 实测 r2.dev 域名、任务对象无 TTL 字段",
+      "GET /v1/billing/usage 当日汇总 total_cost=0 / items=null，未实时计入该笔 500 credits"
+    ]
+  }
+}

@@ -308,6 +308,55 @@ def main():
     r.check(isinstance(obs, dict) and len(obs.get("conflicts_registered") or []) >= 5,
             "单价/产物/usage 冲突已登记，不静默选边")
 
+    # --- 0.8.2：U10 单价裁决（PT 2026-11-16 确认以实际扣费为准）-----------
+    pp = d.get("pricing_policy")
+    r.check(isinstance(pp, dict) and pp.get("_source") == "verified",
+            "pricing_policy 存在且来源 verified")
+    r.check(isinstance(pp, dict) and "实际扣费" in pp.get("authority", "")
+            and "estimate" in pp.get("authority", ""),
+            "价格真相源：实际扣费 > estimate 预估 > 探测值")
+    r.check(isinstance(pp, dict) and "偏高" in pp.get("estimate_caveat", "")
+            and "参考" in pp.get("estimate_caveat", ""),
+            "estimate 预估可能偏高、只作参考已注明")
+    verified_models = pp.get("verified_models") if isinstance(pp, dict) else None
+    r.check(isinstance(verified_models, list) and len(verified_models) == 1,
+            "仅 1 个模型档位经实扣验证，未批量订正", "实际 %r" % (verified_models,))
+    vm = verified_models[0] if isinstance(verified_models, list) and verified_models else {}
+    r.check(vm.get("model") == "wan3.0-video" and vm.get("price_usd_5s_720p") == 0.5
+            and vm.get("credits_5s_720p") == 500 and vm.get("source") == "verified",
+            "wan3.0-video 5s/720p 实扣 500 credits / 0.5 USD 标 verified",
+            repr(vm))
+    w3 = models.get("wan3.0-video", {})
+    r.check(w3.get("price_usd_5s_720p") == 0.5
+            and w3.get("price_usd_5s_720p_source") == "verified",
+            "wan3.0-video 单价已订正为 0.5 且带 source 标注")
+    # 其他视频模型不得被批量改写（保留原有探测值 / null）
+    other_prices = {k: v.get("price_usd_5s_720p") for k, v in models.items()
+                    if v.get("kind") == "video" and k != "wan3.0-video"}
+    r.check(other_prices.get("wan3.0-video-prime") == 0.7
+            and other_prices.get("wan2.7-t2v") == 0.475,
+            "其他视频模型单价未批量订正", repr({k: other_prices.get(k) for k in ("wan3.0-video-prime", "wan2.7-t2v")}))
+    r.check(all(v.get("price_usd_5s_720p_source") is None
+                for k, v in models.items() if k != "wan3.0-video"),
+            "只有 wan3.0-video 带 verified 价格来源标注")
+    r.check("实际扣费" in d.get("charging", {}).get("estimate_vs_actual", "")
+            and "参考" in d.get("charging", {}).get("estimate_vs_actual", ""),
+            "charging.estimate_vs_actual 以实扣为准并注明预估只作参考")
+
+    # --- 0.8.2：Node 包内 catalog 快照与主 catalog 一致性（打包自包含）----
+    snap_path = Path(__file__).resolve().parent.parent / "node" / "catalog.snapshot.json"
+    main_path = Path(__file__).resolve().parent / "catalog.json"
+    if snap_path.exists():
+        try:
+            snap = json.loads(snap_path.read_text(encoding="utf-8"))
+            main = json.loads(main_path.read_text(encoding="utf-8"))
+            r.check(snap == main, "node/catalog.snapshot.json 与主 catalog 内容一致",
+                    "快照滞后，npm pack 前需重新生成")
+        except Exception as e:
+            r.check(False, "node/catalog.snapshot.json 可解析", str(e))
+    else:
+        r.check(False, "node/catalog.snapshot.json 存在（npm pack 自包含）")
+
     # --- 汇总 -------------------------------------------------------------
     print("")
     if r.fails:

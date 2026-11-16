@@ -21,6 +21,16 @@ test('loadCatalog: schema 2 + 必需节齐全，版本可追溯', () => {
   assert.ok(Object.keys(cat.models).length > 50);
 });
 
+test('loadCatalog: 包内 catalog.snapshot.json 存在且与主 catalog 一致（npm pack 自包含）', () => {
+  const snap = path.join(__dirname, '..', 'catalog.snapshot.json');
+  assert.ok(fs.existsSync(snap), '包内快照应存在');
+  const snapCat = JSON.parse(fs.readFileSync(snap, 'utf8'));
+  assert.equal(snapCat.schema, cat.schema);
+  assert.equal(snapCat.updated, cat.updated);
+  assert.deepEqual(Object.keys(snapCat.models).sort(), Object.keys(cat.models).sort());
+  assert.equal(snapCat.models['wan3.0-video'].price_usd_5s_720p, 0.5);
+});
+
 test('loadCatalog: schema 不匹配 / 坏 JSON 一律抛错（不降级使用坏数据）', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pt-cat-'));
   const p = path.join(dir, 'catalog.json');
@@ -154,4 +164,119 @@ test('isKnownValue: null 或 inferred 一律按未知', () => {
   assert.equal(isKnownValue(128000, 'inferred'), false);
   assert.equal(isKnownValue(128000, 'official'), true);
   assert.equal(isKnownValue(true, 'verified'), true);
+});
+
+// ---------------------------------------------------------------------------
+// 0.8.2：pinned（用户指定模型）+ routing.recommended 兜底
+// ---------------------------------------------------------------------------
+
+test('selectCandidates.pinnedModel: 可用时只判定该模型，不返回候选列表', () => {
+  const mid = cat.auto_policy.purposes.agent[0];
+  const v = selectCandidates('agent', new Set([mid]), { catalog: cat, pinnedModel: mid });
+  assert.equal(v.pinned, mid);
+  assert.equal(v.available, true);
+  assert.deepEqual(v.reasons, []);
+  assert.equal(v.candidate.id, mid);
+  assert.ok(/不自动换模型/.test(v.note));
+});
+
+test('selectCandidates.pinnedModel: 不在 Key 视图 / 工具调用实测 false / 带图不能看 → 给出原因', () => {
+  const mid = 'glm-4.7';
+  const notVisible = selectCandidates('agent', new Set(['deepseek-v4-pro']),
+    { catalog: cat, pinnedModel: mid });
+  assert.equal(notVisible.available, false);
+  assert.deepEqual(notVisible.reasons.map((x) => x.code), ['not_in_key_view']);
+
+  const clone = JSON.parse(JSON.stringify(cat));
+  clone.models[mid].tool_calling = { verified: false, _source: 'verified' };
+  const toolBad = selectCandidates('agent', null, { catalog: clone, pinnedModel: mid });
+  assert.equal(toolBad.available, false);
+  assert.ok(toolBad.reasons.some((x) => x.code === 'tool_calling_not_verified'));
+  assert.equal(toolBad.checks.tool_calling, false);
+
+  // 带图片但该模型未声明看图能力（用 clone 显式置 false 以避免巧合）
+  clone.models[mid].capabilities.vision = false;
+  if (clone.models[mid].capabilities.multimodal) clone.models[mid].capabilities.multimodal.vision = false;
+  const img = selectCandidates('vision', null, { catalog: clone, pinnedModel: mid, hasImage: true });
+  assert.equal(img.available, false);
+  assert.ok(img.reasons.some((x) => x.code === 'vision_unsupported'));
+  assert.equal(img.checks.vision, false);
+});
+
+test('selectCandidates.pinnedModel: 未指定模型的目录项 → not_in_catalog', () => {
+  const v = selectCandidates('agent', null, { catalog: cat, pinnedModel: 'no-such-model' });
+  assert.equal(v.available, false);
+  assert.deepEqual(v.reasons.map((x) => x.code), ['not_in_catalog']);
+});
+
+test('selectCandidates: auto_policy 未覆盖的用途按 routing.recommended 兜底', () => {
+  // clone 一个 catalog，给若干模型加自定义标签（不污染真实 catalog）
+  const clone = JSON.parse(JSON.stringify(cat));
+  const ids = ['qwen3.8-flash', 'glm-4.7'];
+  for (const id of ids) clone.models[id].routing = { recommended: ['north_star_ab_test'] };
+  const v = selectCandidates('north_star_ab_test', null, { catalog: clone, detail: true });
+  assert.equal(v.matched_by, 'routing.recommended');
+  assert.equal(v.reason, undefined);
+  assert.deepEqual(v.candidates.map((x) => x.id), ids);
+  // 真实 catalog 里这个用途既不在 auto_policy 也无标签 → 仍返回 unknown_purpose
+  const none = selectCandidates('north_star_ab_test', null, { catalog: cat, detail: true });
+  assert.equal(none.reason, 'unknown_purpose');
+  assert.equal(none.matched_by, null);
+});
+
+test('retryDecision.pinned: 429/5xx/超时只重试同一模型，耗尽后停止不换模型', () => {
+  const mk = (status, code, attempt) => ({ status, body: { error: { code } }, attempt, pinned: true, model: 'glm-4.7' });
+  for (const [status, code] of [[429, 'model_rate_limited'], [502, 'upstream_5xx'], [500, 'do_request_failed']]) {
+    const r = retryDecision(mk(status, code, 1), { catalog: cat, maxRetries: 3 });
+    assert.equal(r.action, 'retry', `status=${status} 应重试`);
+    assert.equal(r.reason_code, 'pinned_retry_same_model');
+    assert.equal(r.switch_model, false);
+    const exhausted = retryDecision(mk(status, code, 4), { catalog: cat, maxRetries: 3 });
+    assert.equal(exhausted.action, 'stop');
+    assert.equal(exhausted.reason_code, 'pinned_retry_exhausted');
+    assert.equal(exhausted.switch_model, false);
+  }
+});
+
+test('retryDecision.pinned: 不可用/无权限/参数不支持 → user_choice，不自动换', () => {
+  const cases = [
+    [403, 'no_permission'],
+    [400, 'unsupported_parameter'],
+    [418, 'brand_new_error'], // unmapped
+  ];
+  for (const [status, code] of cases) {
+    const r = retryDecision({ status, body: { error: { code } }, pinned: true, model: 'glm-4.7' }, { catalog: cat });
+    assert.equal(r.action, 'user_choice', `status=${status} code=${code}`);
+    assert.equal(r.reason_code, 'pinned_user_choice');
+    assert.equal(r.needs_user_choice, true);
+    assert.equal(r.switch_model, false);
+  }
+  // AUTO 对照：同样输入走 switch
+  const auto = retryDecision({ status: 403, body: { error: { code: 'no_permission' } } }, { catalog: cat });
+  assert.equal(auto.action, 'switch');
+});
+
+test('retryDecision.pinned: 带图不能看图 → 发送前 unsupported；AUTO 自动换', () => {
+  const input = { status: 0, pinned: true, model: 'glm-4.7', inputModalities: ['text', 'image'] };
+  const r = retryDecision(input, { catalog: cat });
+  assert.equal(r.action, 'unsupported');
+  assert.equal(r.reason_code, 'vision_unsupported');
+  assert.equal(r.before_send, true);
+  assert.equal(r.needs_user_choice, true);
+  const auto = retryDecision({ status: 0, model: 'glm-4.7', inputModalities: ['text', 'image'] }, { catalog: cat });
+  assert.equal(auto.action, 'switch');
+  assert.equal(auto.reason_code, 'vision_unsupported_auto_switch');
+});
+
+test('retryDecision.pinned: 工具调用实测 null → 照常用并标 untested；401/402 仍停止', () => {
+  const clone = JSON.parse(JSON.stringify(cat));
+  clone.models['glm-4.7'].tool_calling = { verified: null, _source: 'verified' };
+  const r = retryDecision({ status: 429, body: { error: { code: 'model_rate_limited' } },
+    pinned: true, model: 'glm-4.7' }, { catalog: clone });
+  assert.equal(r.action, 'retry');
+  assert.deepEqual(r.untested, ['tool_calling']);
+  assert.equal(retryDecision({ status: 401, body: { error: { code: 'token_invalid' } },
+    pinned: true, model: 'glm-4.7' }, { catalog: cat }).action, 'stop');
+  assert.equal(retryDecision({ status: 402, body: { error: { code: 'pre_consume_token_quota_failed' } },
+    pinned: true, model: 'glm-4.7' }, { catalog: cat }).action, 'stop');
 });

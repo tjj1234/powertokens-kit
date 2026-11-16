@@ -726,8 +726,23 @@ class TestCatalogV080(unittest.TestCase):
         self.assertFalse(c0["request_id_contract"]["has_x_request_id_header"])
         self.assertTrue(c0["request_id_contract"]["submit_body_id_equals_task_id"])
         self.assertGreaterEqual(len(obs["conflicts_registered"]), 5)
-        # 关键：86 个模型的单价保持原样，未被观测值覆写
-        self.assertEqual(0.2, self.cat["models"]["wan3.0-video"]["price_usd_5s_720p"])
+        # 0.8.2 / U10 裁决：PT 确认以实扣为准，仅 wan3.0-video 5s/720p 档位订正
+        w3 = self.cat["models"]["wan3.0-video"]
+        self.assertEqual(0.5, w3["price_usd_5s_720p"])
+        self.assertEqual("verified", w3["price_usd_5s_720p_source"])
+        pp = self.cat["pricing_policy"]
+        self.assertEqual("verified", pp["_source"])
+        self.assertIn("实际扣费", pp["authority"])
+        self.assertIn("偏高", pp["estimate_caveat"])
+        self.assertEqual(1, len(pp["verified_models"]))
+        self.assertEqual("wan3.0-video", pp["verified_models"][0]["model"])
+        self.assertEqual(500, pp["verified_models"][0]["credits_5s_720p"])
+        # 其他视频模型未实测 → 单价与来源标注保持原样，不批量改
+        self.assertEqual(0.7, self.cat["models"]["wan3.0-video-prime"]["price_usd_5s_720p"])
+        self.assertEqual(0.475, self.cat["models"]["wan2.7-t2v"]["price_usd_5s_720p"])
+        for mid, e in self.cat["models"].items():
+            if mid != "wan3.0-video":
+                self.assertNotIn("price_usd_5s_720p_source", e, mid)
 
     def test_no_verified_results_fabricated(self):
         for e in self.cat["models"].values():

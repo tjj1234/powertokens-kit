@@ -6,6 +6,46 @@
 
 ---
 
+## 0.8.2 — 2026-11-16 · 北极星交付 1：pinned 指定模型 / 用途兜底 / U10 订正 / npm pack 自包含
+
+**P0（交付 1 要用）**：
+
+- **`selectCandidates` 支持 `options.pinnedModel`**：用户指定模型时只判定可用性、绝不自动换模型。
+  返回 `{ pinned, available, reasons, checks, candidate }`；不可用原因 code 覆盖
+  `not_in_catalog` / `not_in_key_view`（不在这把 Key 的可见列表）/ `vision_unsupported`（带图片但不能看图）/
+  `tool_calling_not_verified`（`verified === false`）/ `web_search_unusable` / `delisted`。
+  `null`（未实测）一律不当成不可用。
+- **`retryDecision` 支持 `input.pinned: true`**，按 5 行规则表实现：
+  ① 429/5xx/超时只重试同一模型，耗尽后 `stop`、**不返回换模型**；
+  ② 不可用/无权限/参数不支持 → `user_choice`，不自动换；
+  ③ 带图片但不能看图 → 发送前 `unsupported`（`before_send:true`），交用户决定；
+  ④ 工具调用实测 `null` → 照常用，`untested:['tool_calling']` 标「未实测」；
+  ⑤ 401/402 → `stop`。新增输出 `reason_code` / `needs_user_choice` / `pinned_model`。
+- **用途兜底**：`purpose` 不在 `auto_policy.purposes` 时，不再直接 `unknown_purpose`，
+  改按 `routing.recommended` 标签匹配（`matched_by:'routing.recommended'`），仍无匹配才返回未知。
+- **npm pack 自包含**：新增 `node/catalog.snapshot.json`（固定版本快照），包脱离仓库放进 `vendor/`
+  后自动回退读包内 catalog；`package.json` 加 `files` 白名单与 `./catalog` 导出；
+  `validate_catalog.py` / Node 单测各加一条快照一致性守门。
+  产物 `dist/powertokens-kit-core-0.8.2.tgz`（33171 B），SHA-256
+  `81e678ba48c7083584f59e30686db4446cd4c667900f8725af9eda552d53d89d`，已附 GitHub Release。
+
+**U10 单价订正（PT 2026-11-16 确认「以实际扣费为准」）**：
+
+- `wan3.0-video` 5s/720p `price_usd_5s_720p` 由 `0.20` 订正为 **`0.5` USD**，
+  新增 `price_usd_5s_720p_source: "verified"`（logs.billing `per_second × 100 credits/s × 5s = 500 credits`）。
+  **其他视频模型未实测，单价一律未动**。
+- 新增顶层 `pricing_policy`（真相源：实扣 > estimate > 探测值；仅 1 档 verified）；
+  `charging.estimate_vs_actual` 改为「预估可能偏高、只作参考，勿据此定价或对账」——
+  0.8.1 实测 estimate `1000 credits` vs 实扣 `500 credits`。
+- 冲突登记保留审计轨迹并标注 U10 已裁决；`catalog.schema.json` / `validate_catalog.py`
+  / Python 单测同步（校验器 +13 项含快照一致性）。`max_context_tokens` / `max_output_tokens` 仍为 `null`（等 PT 答复）。
+
+**验收**：catalog 校验全通过；Python 287/287；Node 35/35；tgz 解包到临时 `vendor/` 目录
+模拟脱离仓库实跑，pinned / 用途兜底 / 重试规则 / 单价全部正确，0 花费。
+`pt_video.py` 生成链路 **0 行改动**。
+
+---
+
 ## 0.8.1 — 2026-11-16 · 付费真机实测：C4 视频侧 / R1 异步定案
 
 **背景**：用户批准单次 **1.5 USD** 上限，用账户 B（未签资产库协议）跑一次 5 秒文生视频；

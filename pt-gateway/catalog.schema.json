@@ -189,8 +189,32 @@
     "charging": {
       "$ref": "#/definitions/charging"
     },
+    "pricing_policy": {
+      "description": "价格真相源口径（0.8.2 / U10 裁决）：实际扣费 > estimate 预估 > catalog 探测值。只登记真机验证过的模型档位，未实测不批量订正。",
+      "type": "object",
+      "required": ["_source", "authority", "estimate_caveat", "verified_models"],
+      "properties": {
+        "_source": { "$ref": "#/definitions/source" },
+        "authority": { "type": "string" },
+        "estimate_caveat": { "type": "string" },
+        "verified_models": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["model", "price_usd_5s_720p", "credits_5s_720p", "source"],
+            "properties": {
+              "model": { "type": "string" },
+              "price_usd_5s_720p": { "type": "number", "minimum": 0 },
+              "credits_5s_720p": { "type": "integer", "minimum": 0 },
+              "source": { "$ref": "#/definitions/source" },
+              "note": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
     "live_billing_observations": {
-      "description": "真机计费/产物持久化观测（0.8.1）。只登记观测与冲突，不覆盖 models 里已锁定的单价字段。",
+      "description": "真机计费/产物持久化观测（0.8.1；0.8.2 起 U10 单价已裁决，仅经实扣验证的模型档位订正，其余仍登记冲突作审计轨迹）。",
       "type": "object",
       "required": ["_source", "observed_at", "cases"]
     },

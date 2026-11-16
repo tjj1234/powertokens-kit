@@ -7,10 +7,16 @@
  * pt-gateway/catalog.json —— Python 工具链读的也是这一份。
  *
  *   loadCatalog(options)                     固定版本 + 格式校验，失败抛错
- *   selectCandidates(purpose, keyModels)     AUTO 选模（实现 auto_policy 的 4 条跳过规则）
+ *   selectCandidates(purpose, keyModels, opts)  AUTO 选模 / PINNED 指定模型可用性判定
  *   classifyError(status, body)              错误归类（errors 字典）
- *   retryDecision(input)                     重试 / 换模型 / 停止（retry_policy）
+ *   retryDecision(input)                     重试 / 换模型 / 停止（retry_policy，支持 pinned）
  *   reasoningParams(model, effort)           思考模式传参（models_api_contract）
+ *
+ * 0.8.2 起：selectCandidates 支持 options.pinnedModel（只判定、不自动换），
+ * 用途不在 auto_policy 时按 routing.recommended 兜底；retryDecision 支持
+ * input.pinned，按「用户指定模型」规则处理（同模型重试、不自动换）。
+ * 0.8.2 起 npm pack 自包含：包内 catalog.snapshot.json 是 pt-gateway/catalog.json
+ * 的只读快照；开发态仍读仓库同一份，放进 vendor 后自动回退包内快照。
  *
  * 参考：docs/PT_项目资料总集_20261112.md §7（Agent 侧约定）、
  *       "powertokens-kit catalog 补充需求.md" §0 P0 / §3 需求 3、4 / §7。
@@ -19,7 +25,17 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const DEFAULT_CATALOG_PATH = path.resolve(__dirname, '..', 'pt-gateway', 'catalog.json');
+const REPO_CATALOG_PATH = path.resolve(__dirname, '..', 'pt-gateway', 'catalog.json');
+const PACKAGED_CATALOG_PATH = path.resolve(__dirname, 'catalog.snapshot.json');
+/** 开发态读仓库同一份 catalog；放进 vendor 脱离仓库时回退到包内快照。 */
+function _defaultCatalogPath() {
+  try {
+    fs.accessSync(REPO_CATALOG_PATH, fs.constants.R_OK);
+    return REPO_CATALOG_PATH;
+  } catch (_) {
+    return PACKAGED_CATALOG_PATH;
+  }
+}
 const DEFAULT_SCHEMA = 2;
 const REQUIRED_TOP_LEVEL = [
   'schema', 'models', 'kinds', 'auto_policy', 'errors',
@@ -76,7 +92,7 @@ function _extract(body) {
  * 调用方应「继续用上一个版本」（需求 §7 约定），不要降级使用坏数据。
  */
 function loadCatalog(options = {}) {
-  const p = options.path ? path.resolve(options.path) : DEFAULT_CATALOG_PATH;
+  const p = options.path ? path.resolve(options.path) : _defaultCatalogPath();
   const expectedSchema = options.expectedSchema === undefined ? DEFAULT_SCHEMA : options.expectedSchema;
   const reasons = [];
   let raw;
@@ -125,7 +141,7 @@ function _catalog(options) {
 
 function catalogVersion(catalog) {
   const c = catalog || (_cached || loadCatalog());
-  return { schema: c.schema, updated: c.updated, path: _cachedPath || DEFAULT_CATALOG_PATH };
+  return { schema: c.schema, updated: c.updated, path: _cachedPath || _defaultCatalogPath() };
 }
 
 /** 需求 §7：来源可信 / null 一律按未知处理。 */
@@ -137,61 +153,150 @@ function isKnownValue(value, source) {
 }
 
 /**
- * AUTO 选模：按 auto_policy.purposes[purpose] 的顺序返回候选，并应用 4 条跳过规则。
+ * 单条候选的跳过理由。AUTO 与 PINNED 共用同一套判定，避免两种模式口径漂移。
+ * 顺序固定：delisted → tool_calling.verified===false → 搜索实测不可用 → 不在 Key 视图。
+ * 注意：null（未实测）一律不跳过；"not_in_key_view" 不等于 delisted。
+ */
+function _skipReason(id, e, ctx) {
+  const { keySet, searchLike, registry } = ctx;
+  const reg = registry && registry[id];
+  if (e.delisted === true || (reg && reg.delisted === true)) return 'delisted';
+  if (e.tool_calling && e.tool_calling.verified === false) return 'tool_calling_not_verified';
+  if (searchLike && e.web_search_detail) {
+    const w = e.web_search_detail;
+    if (w.works === false || w.returns_sources === false) return 'web_search_unusable';
+  }
+  if (keySet && !keySet.has(id)) return 'not_in_key_view';
+  return null;
+}
+
+/**
+ * 请求是否带图片：options.hasImage===true 或 inputModalities 含 'image'。
+ */
+function _needsVision(options) {
+  return options.hasImage === true ||
+    (Array.isArray(options.inputModalities) && options.inputModalities.includes('image'));
+}
+
+/** 模型是否声明看图能力：兼容 capabilities.vision 与 capabilities.multimodal.vision 两种写法。 */
+function _modelCanSeeImages(e) {
+  const caps = (e && e.capabilities) || {};
+  return caps.vision === true || Boolean(caps.multimodal && caps.multimodal.vision === true);
+}
+
+/**
+ * 选模。两种互斥模式：
+ *
+ * AUTO（默认）：按 auto_policy.purposes[purpose] 顺序返回候选，应用 4 条跳过规则；
+ *   用途不在 auto_policy 时，按模型 routing.recommended 标签兜底（0.8.2）。
+ *   @returns {Array} 默认 [{id, position, channel, kind}]；
+ *            detail:true → {purpose, candidates, skipped, matched_by}
+ *
+ * PINNED（options.pinnedModel 指定）：只判定这一个模型是否可用，**不自动换模型**。
+ *   返回 {pinned, available, reasons:[{code,message}], candidate, checks}。
  *
  * @param {string} purpose  用途键，例如 general / agent / search / long_report / vision
  * @param {Iterable<string>|null} keyModels  该 Key 的 /v1/models 可见 ID；null/undefined = 不做 Key 过滤
- * @param {object} options  { catalog, detail, registry, purposeKind }
- * @returns {Array|object}  默认返回 [{id, position, channel, kind}]；detail:true 返回 {purpose, candidates, skipped}
+ * @param {object} options  { catalog, detail, registry, purposeKind, pinnedModel, hasImage, inputModalities }
  */
 function selectCandidates(purpose, keyModels, options = {}) {
   const cat = _catalog(options);
   const purposes = (cat.auto_policy && cat.auto_policy.purposes) || {};
-  const list = Array.isArray(purposes[purpose]) ? purposes[purpose] : null;
-  const skipped = [];
-  const candidates = [];
-  if (!list) {
-    const empty = { purpose, candidates, skipped, reason: 'unknown_purpose' };
-    return options.detail ? empty : candidates;
-  }
   let keySet = null;
   if (keyModels !== null && keyModels !== undefined) {
     keySet = keyModels instanceof Set ? keyModels : new Set(keyModels);
   }
-  const searchLike = purpose === 'search' || options.purposeKind === 'search';
-  const registry = options.registry || null;
+  const ctx = {
+    keySet,
+    searchLike: purpose === 'search' || options.purposeKind === 'search',
+    registry: options.registry || null,
+    needVision: _needsVision(options),
+  };
 
+  // ---- PINNED：用户指定模型，只返回可用性判定，绝不自动换 ----
+  if (Object.prototype.hasOwnProperty.call(options, 'pinnedModel') &&
+      options.pinnedModel !== null && options.pinnedModel !== undefined) {
+    const id = String(options.pinnedModel);
+    const e = cat.models[id];
+    const reasons = [];
+    const checks = { in_catalog: Boolean(e), vision: null, key_view: null, tool_calling: null };
+    if (!e) {
+      reasons.push({ code: 'not_in_catalog', message: `模型 ${id} 不在 catalog 中` });
+    } else {
+      const skip = _skipReason(id, e, ctx);
+      checks.tool_calling = !(e.tool_calling && e.tool_calling.verified === false);
+      checks.key_view = !keySet || keySet.has(id);
+      if (skip) reasons.push({ code: skip, message: _pinnedReasonMessage(skip, id) });
+      if (ctx.needVision) {
+        const vision = _modelCanSeeImages(e);
+        checks.vision = vision;
+        if (!vision) reasons.push({
+          code: 'vision_unsupported',
+          message: `请求带图片，但模型 ${id} 未声明看图能力；按 pinned 规则由用户决定，不自动换模型`,
+        });
+      }
+    }
+    const available = reasons.length === 0;
+    return {
+      pinned: id,
+      available,
+      reasons,
+      checks,
+      candidate: available ? {
+        id, position: 0,
+        kind: e.kind || null,
+        channel: (e.capabilities && e.capabilities.channel) || null,
+      } : null,
+      note: available
+        ? '用户指定模型可用；pinned 模式下不自动换模型。'
+        : '用户指定模型不可用；pinned 模式下不自动换模型，交给用户选择。',
+    };
+  }
+
+  // ---- AUTO：用途候选列表 ----
+  let list = Array.isArray(purposes[purpose]) ? purposes[purpose] : null;
+  let matchedBy = 'auto_policy.purposes';
+  if (!list) {
+    // 0.8.2 兜底：auto_policy 未覆盖的用途，按模型 routing.recommended 标签匹配。
+    // 标签是无序的：按 catalog 中的稳定顺序返回，不宣称任何优先级。
+    const viaRouting = Object.keys(cat.models).filter((mid) => {
+      const r = cat.models[mid] && cat.models[mid].routing && cat.models[mid].routing.recommended;
+      return Array.isArray(r) && r.includes(purpose);
+    });
+    if (viaRouting.length) {
+      list = viaRouting;
+      matchedBy = 'routing.recommended';
+    }
+  }
+  const skipped = [];
+  const candidates = [];
+  if (!list) {
+    const empty = { purpose, candidates, skipped, reason: 'unknown_purpose', matched_by: null };
+    return options.detail ? empty : candidates;
+  }
   list.forEach((id, position) => {
     const e = cat.models[id];
     if (!e) { skipped.push({ id, reason: 'not_in_catalog' }); return; }
-    // 规则 1：已确认下架。0.7.3 起 "not_in_key_view" 不等于 delisted，不能当跳过理由。
-    const reg = registry && registry[id];
-    if (e.delisted === true || (reg && reg.delisted === true)) {
-      skipped.push({ id, reason: 'delisted' }); return;
-    }
-    // 规则 2：显式 false 才跳过；null（未实测）不跳过。
-    if (e.tool_calling && e.tool_calling.verified === false) {
-      skipped.push({ id, reason: 'tool_calling_not_verified' }); return;
-    }
-    // 规则 3：搜索用途且实测搜索不生效 / 不返回来源。
-    if (searchLike && e.web_search_detail) {
-      const w = e.web_search_detail;
-      if (w.works === false || w.returns_sources === false) {
-        skipped.push({ id, reason: 'web_search_unusable' }); return;
-      }
-    }
-    // 规则 4：当前 Key 无权使用。
-    if (keySet && !keySet.has(id)) {
-      skipped.push({ id, reason: 'not_in_key_view' }); return;
-    }
+    const skip = _skipReason(id, e, ctx);
+    if (skip) { skipped.push({ id, reason: skip }); return; }
     candidates.push({
       id, position,
       kind: e.kind || null,
       channel: (e.capabilities && e.capabilities.channel) || null,
     });
   });
-  if (options.detail) return { purpose, candidates, skipped };
+  if (options.detail) return { purpose, candidates, skipped, matched_by: matchedBy };
   return candidates;
+}
+
+function _pinnedReasonMessage(code, id) {
+  switch (code) {
+    case 'delisted': return `模型 ${id} 已确认下架`;
+    case 'tool_calling_not_verified': return `模型 ${id} 的 tool_calling.verified===false（已实测不支持工具调用）`;
+    case 'web_search_unusable': return `模型 ${id} 的搜索实测 works/returns_sources 为 false`;
+    case 'not_in_key_view': return `模型 ${id} 不在这把 Key 的可见列表里（/v1/models 视图）`;
+    default: return `模型 ${id} 不可用：${code}`;
+  }
 }
 
 function _actionFlags(agentAction) {
@@ -250,10 +355,20 @@ function classifyError(status, body, options = {}) {
   };
 }
 
+const TRANSIENT_CATEGORIES = new Set(['rate_limited', 'upstream_error', 'timeout']);
+const PINNED_STOP_CATEGORIES = new Set(['auth_invalid', 'insufficient_balance', 'content_filtered']);
+
 /**
  * 按 retry_policy 给出重试决策。
  * input 可直接是 {status, body, attempt, finishReason, hasTaskId, retryAfter}，
  * 也可以传 classifyError() 的结果（此时仍建议带上 status / attempt）。
+ *
+ * 0.8.2 起支持 input.pinned===true（用户指定了模型）：
+ *   - 429/5xx/超时：只重试同一模型，耗尽后停止，绝不返回「换模型」；
+ *   - 不可用/无权限/参数不支持：返回 user_choice，交给用户选择，不自动换；
+ *   - 带图片但模型不能看图：发送前返回 unsupported，交给用户决定；
+ *   - tool_calling 实测为 null：照常使用，结果里 untested=['tool_calling']；
+ *   - 401/402：停止（与 AUTO 一致）。
  */
 function retryDecision(input = {}, options = {}) {
   const cat = _catalog(options);
@@ -266,6 +381,16 @@ function retryDecision(input = {}, options = {}) {
   const maxRetries = Number(options.maxRetries || 3);
   const finishReason = input.finishReason || null;
   const midstreamBad = ['error', 'timeout', 'abort'].includes(finishReason);
+  const pinned = input.pinned === true;
+  const pinnedModel = input.model || input.pinnedModel ||
+    (typeof input.pinned === 'string' ? input.pinned : null);
+  const entry = pinnedModel && cat.models[pinnedModel] ? cat.models[pinnedModel] : null;
+  const hasImage = input.hasImage === true ||
+    (Array.isArray(input.inputModalities) && input.inputModalities.includes('image'));
+  const visionUnsupported = Boolean(hasImage && entry && !_modelCanSeeImages(entry));
+  const toolUntested = input.toolCallingVerified === null ||
+    (input.toolCallingVerified === undefined && Boolean(entry && entry.tool_calling &&
+      entry.tool_calling.verified === null));
 
   let accepted = false;
   let settled = false;
@@ -296,12 +421,45 @@ function retryDecision(input = {}, options = {}) {
 
   let action;
   let reason;
-  if (cls.agent_action === 'stop' || cls.category === 'auth_invalid' || cls.category === 'insufficient_balance') {
-    action = 'stop'; reason = `category=${cls.category} 不可重试（换 Key / 充值 / 告知用户）`;
+  let reasonCode = null;
+  let needsUserChoice = false;
+  let beforeSend = false;
+
+  if (visionUnsupported && !(status >= 200 && status < 300)) {
+    // 发送前拦截：带图片但指定模型不能看图。AUTO 选能看图的；PINNED 交给用户。
+    beforeSend = true;
+    if (pinned) {
+      action = 'unsupported'; reasonCode = 'vision_unsupported';
+      needsUserChoice = true;
+      reason = `请求带图片，但指定模型 ${pinnedModel} 不能看图；发送前返回不支持，由用户决定`;
+    } else {
+      action = 'switch'; reasonCode = 'vision_unsupported_auto_switch';
+      reason = '请求带图片，当前模型不能看图；自动改为选能看图的模型';
+    }
+  } else if (pinned && PINNED_STOP_CATEGORIES.has(cls.category)) {
+    action = 'stop'; reasonCode = 'pinned_stop';
+    reason = `category=${cls.category} 不可重试（换 Key / 充值 / 告知用户）`;
   } else if (status >= 200 && status < 300) {
     action = 'none'; reason = midstreamBad
       ? 'HTTP 200 流中途失败已按量扣费，重试会二次扣费；只记录不重放'
       : '已受理并结算，不能重放';
+  } else if (pinned && TRANSIENT_CATEGORIES.has(cls.category)) {
+    // 429/5xx/超时：只重试同一个模型；耗尽后停止，绝不返回换模型。
+    if (attempt > maxRetries) {
+      action = 'stop'; reasonCode = 'pinned_retry_exhausted';
+      needsUserChoice = true;
+      reason = `指定模型已重试 ${maxRetries} 次仍失败；pinned 不自动换模型，请用户选择`;
+    } else {
+      action = 'retry'; reasonCode = 'pinned_retry_same_model';
+      reason = '429/5xx/超时首包前失败可安全重试；pinned 只重试同一个模型，不返回换模型';
+    }
+  } else if (pinned) {
+    // 模型不可用 / 无权限 / 参数不支持 / unmapped → user_choice，不自动换。
+    action = 'user_choice'; reasonCode = 'pinned_user_choice';
+    needsUserChoice = true;
+    reason = `category=${cls.category} 在 pinned 模式下不自动换模型，需要用户选择`;
+  } else if (cls.agent_action === 'stop' || cls.category === 'auth_invalid' || cls.category === 'insufficient_balance') {
+    action = 'stop'; reason = `category=${cls.category} 不可重试（换 Key / 充值 / 告知用户）`;
   } else if (!autoRetry || !cls.retryable) {
     action = cls.switch_model ? 'switch' : 'stop';
     reason = cls.switch_model ? '规则不允许自动重试，换模型' : '规则不允许自动重试';
@@ -325,12 +483,18 @@ function retryDecision(input = {}, options = {}) {
     action,
     category: cls.category,
     retryable: action === 'retry',
-    switch_model: action === 'switch',
+    switch_model: pinned ? false : action === 'switch',
     accepted, settled, charged,
     attempt,
     max_retries: maxRetries,
     delay_ms: delayMs,
     reason,
+    reason_code: reasonCode,
+    pinned,
+    pinned_model: pinnedModel || null,
+    needs_user_choice: needsUserChoice,
+    before_send: beforeSend,
+    untested: pinned && toolUntested ? ['tool_calling'] : [],
     rule_observe: rule ? rule.observe : null,
     refund: status >= 200 && status < 300 ? null : (rule ? rule.refund : null),
   };
@@ -387,7 +551,7 @@ function isGenerationModel(modelsApiEntry) {
 module.exports = {
   // catalog
   loadCatalog, catalogVersion, CatalogValidationError,
-  DEFAULT_CATALOG_PATH, KNOWN_SOURCES, isKnownSource, isKnownValue,
+  REPO_CATALOG_PATH, PACKAGED_CATALOG_PATH, KNOWN_SOURCES, isKnownSource, isKnownValue,
   // rules
   selectCandidates, classifyError, retryDecision, reasoningParams, isGenerationModel,
 };

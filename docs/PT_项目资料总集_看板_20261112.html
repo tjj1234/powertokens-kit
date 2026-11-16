@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>PT 项目资料总集 · 完整版 v2.4 · 2026-11-16</title>
+<title>PT 项目资料总集 · 完整版 v2.5 · 2026-11-16</title>
 <style>
   :root{
     --bg:#f7f8fa; --card:#ffffff; --ink:#1f2937; --muted:#6b7280;
@@ -105,12 +105,13 @@
 <div class="wrap">
 
 <header>
-  <h1>PT 项目资料总集 <span class="badge">完整版 v2.4 · 已发布</span><span class="badge b">12/12 全答</span><span class="badge b">§15 已固化</span><span class="badge b">C4/R1 已裁决</span></h1>
+  <h1>PT 项目资料总集 <span class="badge">完整版 v2.5 · 已发布</span><span class="badge b">12/12 全答</span><span class="badge b">§16 已固化</span><span class="badge b">C4/R1/U10 已裁决</span></h1>
   <div class="sub">2026-11-12 · 仓库 <code>tjj1234/powertokens-kit</code> ·
     <b>本版把 v1.0「开工前决策摘要」补全为全量资料</b>：逐条问答、问题→影响功能映射、PT 原表、冲突裁决、真机结果、落地清单、文档索引<br>
     主文档 <code>docs/PT_项目资料总集_20261112.md</code>（SSOT） ·
     <b>详细逐条版 <code>docs/PT_问题_答复_影响功能_全量对照_20261112.md</code></b> ·
     发布报告 <code>docs/PT_发布与测试报告_20261112.html</code><br>
+  <b>v2.5（2026-11-16 中午）</b>：北极星交付 1 的 3 项 P0 落地 —— <code>selectCandidates</code> 支持 <code>pinnedModel</code>、<code>retryDecision</code> 支持 <code>pinned</code> 五规则、用途按 <code>routing.recommended</code> 兜底；<b>U10 裁决</b>（PT 确认以实扣为准，<code>wan3.0-video</code> 0.20 → 0.50 verified）；<code>npm pack</code> 自包含 tgz 附 Release 并给 SHA-256。见 <a href="#s14">§14</a> 与 SSOT §16。<br>
   <b>v2.4（2026-11-16 上午）</b>：用户批准单次 1.5 USD，用账户 B 跑一次 5 秒 <code>wan3.0-video</code> 真生成，实扣 <b>500 credits（＄0.5）</b>。<b>C4 视频侧</b>产物落 PT 自有 R2 公共桶（无签名、公开可读、<code>immutable</code> 1y），<b>R1 异步</b> request_id 只在 <code>X-Oneapi-Request-Id</code>；另登记单价三方冲突与 usage 日汇总延迟。见 <a href="#s13">§13</a> 与 SSOT §15。
     <b>v2.3（2026-11-13 傍晚）</b>：收到《powertokens-kit catalog 补充需求》13 条，P0 已落地 —— Node 核心包 / 双版本账户客户端 / auto_policy 补 3 种用途 / limits 子键 / 一键复核脚本 / CI，逐条固化进 <a class="doc" href="PT_项目资料总集_20261112.md">SSOT §14</a> → 见本看板 <a href="#s12">§12</a>。三项阻塞（模板缺失、limits 无来源、7 主力需花钱实测）如实登记。<br>
     <b>v2.2（2026-11-13 下午）</b>：PT 丰富 <code>GET /v1/models</code> 后两批答复已固化进 <a class="doc" href="PT_项目资料总集_20261112.md">SSOT §13</a>，真机影子对账推翻 <b>FIXLIST F1</b> 并修正 <code>sync()</code> 下架语义 → 见本看板 <a href="#s11">§11</a></div>
@@ -120,7 +121,7 @@
   <div class="kpi g"><div class="n">12 / 12</div><div class="l">发给 PT 的 10 必问 + 2 条件项全答</div></div>
   <div class="kpi"><div class="n">Q8 + R11 + S3</div><div class="l">22 个编号问题全部闭环</div></div>
   <div class="kpi v"><div class="n">6 条</div><div class="l">真机硬结论推翻/收紧书面口径（+C4 视频侧/R1 异步/单价）</div></div>
-  <div class="kpi t"><div class="n">287 / 287</div><div class="l">离线测试 PASS · 校验器 169 项 · Node 26/26（0.8.1）</div></div>
+  <div class="kpi t"><div class="n">287 / 287</div><div class="l">离线测试 PASS · 校验器全过 · Node 35/35（0.8.2）</div></div>
   <div class="kpi g"><div class="n">8 + 5</div><div class="l">errors 订正 8 处 · 新增字段组 5 组</div></div>
   <div class="kpi a"><div class="n">C1 已裁决</div><div class="l">2026-11-13 真机：账户域裸值鉴权</div></div>
   <div class="kpi r"><div class="n">F1 作废</div><div class="l">可见视图 ≠ 全量清单 · sync() 已修</div></div>
@@ -157,7 +158,7 @@
   <a href="#s3">3 逐批答复</a><a href="#s4">4 问题→影响功能</a><a href="#s5">5 D4 正式答复</a>
   <a href="#s6">6 冲突裁决</a><a href="#s7">7 真机 T0–T8</a><a href="#s8">8 落地清单</a>
   <a href="#s9">9 文档索引</a><a href="#s10">10 未决项</a><a href="#s11">11 /v1/models 上线</a>
-  <a href="#s12">12 补充需求 0.8.0</a><a href="#s13">13 付费真机实测</a>
+  <a href="#s12">12 补充需求 0.8.0</a><a href="#s13">13 付费真机实测</a><a href="#s14">14 交付1 P0 0.8.2</a>
 </nav>
 
 <section id="s0">
@@ -414,7 +415,7 @@
   <div class="grid2">
     <div class="box b"><h3><a class="doc" href="PT_项目资料总集_20261112.md">PT_项目资料总集_20261112.md</a> · SSOT</h3><div class="sm">事实与口径<b>唯一入口</b>。§2 事实卡 · §3 冲突 9 处 · §4 编号对账 · §6 开工清单 · §10 执行回写。<b>改代码前先看这份。</b></div></div>
     <div class="box v"><h3><a class="doc" href="PT_问题_答复_影响功能_全量对照_20261112.md">PT_问题_答复_影响功能_全量对照_20261112.md</a> · 本轮新增</h3><div class="sm"><b>详细逐条版</b>：Q/R/S 与 10+2 逐条问答、<b>§3 问题→影响功能总映射</b>、§4 PT 原表（9 行矩阵 / 8 行对比表 / Q8 七行 / 12 条口述）、§8 文档全量索引、§10 补漏清单。</div></div>
-    <div class="box t"><h3>本文件 · 完整版看板 v2.4</h3><div class="sm">11 节 · 六批时间线 · 22 项编号对账 · 影响功能筛选 · D4 逐条 · 冲突裁决 · T0–T9 · 落地清单 · 文档索引 · <b>§11 /v1/models 上线与 F1 作废</b>。<b>v1.0 为开工前决策摘要，保留在 git 历史。</b></div></div>
+    <div class="box t"><h3>本文件 · 完整版看板 v2.5</h3><div class="sm">11 节 · 六批时间线 · 22 项编号对账 · 影响功能筛选 · D4 逐条 · 冲突裁决 · T0–T9 · 落地清单 · 文档索引 · <b>§11 /v1/models 上线与 F1 作废</b>。<b>v1.0 为开工前决策摘要，保留在 git 历史。</b></div></div>
     <div class="box g"><h3><a class="doc" href="PT_发布与测试报告_20261112.html">PT_发布与测试报告_20261112.html</a></h3><div class="sm">G1→G6 时间线、T0–T8 逐项、三条真机裁决、改动清单与验收、发布边界、遗留项。</div></div>
   </div>
   <h3>9.2 审计轨迹与逐批看板</h3>
@@ -469,7 +470,7 @@
     <tr><td><b>P2 pricing</b></td><td>catalog 价格字段；<code>limits</code> 子字段形状</td><td><span class="tag t-void">🔄 P2</span></td><td>需模板全文</td></tr>
     <tr><td><b>flaky</b></td><td><code>test_contract_http</code> 回环服务偶发断连</td><td><span class="tag t-void">🔄 既有</span></td><td>与本轮改动无关</td></tr>
     <tr><td><b>U1–U6</b></td><td><code>dola-seedream</code> 输出模态冲突 / 5 个 vision 归属 / 20 个 <code>web_search=conditional</code> / <code>reasoning_effort</code> 关闭取值 / <code>thinking_param</code> 收敛 / 无定价规则模型是否入列</td><td><span class="tag t-part">🔬 本轮新增</span></td><td>详见 <a href="#s11">§11 未决表</a> 与 SSOT §13.8</td></tr>
-    <tr><td><b>本轮落地</b></td><td>看板 v2.4 + SSOT §15 + 详细版 v1.4 + CHANGELOG 0.8.1 + <b>catalog 观测节与三道守门员</b>，已提交并推送 <code>origin/main</code></td><td><span class="tag t-ok">✅ 已完成</span></td><td>169 项 / 287-287 / Node 26-26 全绿；commit 号以 <code>git log -1 --oneline</code> 为准</td></tr>
+    <tr><td><b>本轮落地</b></td><td>看板 v2.5 + SSOT §16 + 详细版 v1.5 + CHANGELOG 0.8.2 + <b>pinned 规则 / U10 订正 / npm pack 自包含</b>，已提交并推送 <code>origin/main</code></td><td><span class="tag t-ok">✅ 已完成</span></td><td>校验器全过 / 287-287 / Node 35-35 全绿；commit 号以 <code>git log -1 --oneline</code> 为准</td></tr>
   </table></div>
   <div class="good"><b>结论</b>：向 PT 提问这条线已收口（12/12）；G1–G6 全部完成并发布；2026-11-13 上午用真实凭证裁掉 C1、验成 T6，下午又抓到 <code>/v1/models</code> 上线并作废 F1（见 <a href="#s11">§11</a>）。剩下的是「需额度的实测（C4 视频侧 / R1 异步）」「官方字段待裁决项 U1–U6」与「按决策后置的功能」，<b>都不是资料缺口</b>。</div>
 </section>
@@ -557,7 +558,7 @@
   <h3>12.1 本轮交付（0.8.0）</h3>
   <table>
     <tr><th>层</th><th>内容</th><th>验收</th></tr>
-    <tr><td><b>Node 核心包</b></td><td><code>node/index.js</code>：<code>loadCatalog</code> / <code>selectCandidates</code> / <code>classifyError</code> / <code>retryDecision</code> / <code>reasoningParams</code>，零依赖不发请求</td><td><span class="tag t-ok">✅ 26/26</span></td></tr>
+    <tr><td><b>Node 核心包</b></td><td><code>node/index.js</code>：<code>loadCatalog</code> / <code>selectCandidates</code>（含 <code>pinnedModel</code> 与 routing 兜底）/ <code>classifyError</code> / <code>retryDecision</code>（含 <code>pinned</code>）/ <code>reasoningParams</code>，零依赖不发请求，npm pack 自包含</td><td><span class="tag t-ok">✅ 35/35</span></td></tr>
     <tr><td><b>账户客户端</b></td><td>Python <code>account_client.py</code> + Node <code>account-client.js</code>：裸 <code>pt_live_</code>、数字 <code>key_id</code>、以响应体 <code>code</code> 为准、不保存凭证</td><td><span class="tag t-ok">✅ 双版本</span></td></tr>
     <tr><td><b>兼容层修复</b></td><td><code>account_query</code> 委托新客户端；修掉 <code>mcp.py</code> 自调用<b>无限递归</b>的既有 bug；<code>/account/logs</code> 改按 ID 精查</td><td><span class="tag t-ok">✅ 已修</span></td></tr>
     <tr><td><b>catalog</b></td><td><code>auto_policy.purposes</code> 2 → <b>5 种用途</b>；7 主力 <code>limits</code> 补 2 个子键；新增 <code>limits_probe</code>；86 个模型能力档案 0 改动</td><td><span class="tag t-ok">✅ 160 项</span></td></tr>
@@ -636,28 +637,71 @@
   <div class="sm"><code>logs.billing</code> 全文口径：<code>pricing_mode=calculator</code> · <code>billing_unit=per_second</code> ·
     <code>unit_quota=100 credits/秒</code> · <code>formula = 5s × 100 + 0 图 × 0 = 500 credits</code>。
     <code>charging.estimate_vs_actual = "以实际扣费为主"</code> 再次坐实。<br>
-    <b>处置</b>：写入 <code>catalog.json:live_billing_observations</code>（观测 + 5 条冲突），
-    <b>86 个模型单价一条未改</b>；是否订正 <code>0.20 → 0.50</code> 需你拍板（会动价格表与三道守门员，登记 U10）。</div>
+    <b>处置</b>：写入 <code>catalog.json:live_billing_observations</code>（观测 + 5 条冲突）保留审计轨迹。
+    <b>U10 已裁决</b>（PT 2026-11-16「以实际扣费为准」）：0.8.2 仅将 <code>wan3.0-video</code>
+    <code>0.20 → 0.50</code> 订正为 <code>verified</code>，其他视频模型未实测不批量改；
+    新增 <code>pricing_policy</code> 注明「预估可能偏高，只作参考」。</div>
 
   <h3>13.5 新偏差与未决</h3>
   <div class="scroll"><table>
     <tr><th style="width:14%">编号</th><th style="width:56%">内容</th><th style="width:30%">前置条件</th></tr>
     <tr><td><b>N7</b></td><td><code>GET /v1/billing/usage</code> 当日 <code>total_cost=0</code> / <code>items=null</code>，<b>未实时计入</b>这 500 credits → 日汇总有延迟，<code>logs/query</code> 才是实时真相源</td><td>已登记，无需复测</td></tr>
     <tr><td><b>U9</b></td><td>视频产物对象实际保留时长（14 天 vs immutable 1 年）</td><td>跨周复测同一 URL（零成本）</td></tr>
-    <tr><td><b>U10</b></td><td>是否订正 <code>wan3.0-video</code> 单价 0.20 → 0.50</td><td><b>需你拍板</b></td></tr>
+    <tr><td><b>U10</b></td><td>是否订正 <code>wan3.0-video</code> 单价 0.20 → 0.50</td><td><b>✅ 已裁决：以实扣为准，0.8.2 已订正 0.5（verified）</b></td></tr>
     <tr><td><b>U1–U8 / S3</b></td><td>§13.8 遗留项；未签协议账户跑 Seedance / <code>asset://</code> 的真实拒绝行为</td><td>需 PT 答复或一次尝试</td></tr>
   </table></div>
 
-  <div class="good"><b>验收与安全</b>：<code>validate_catalog.py</code> <b>169 项 PASS</b> · <code>run_tests.py</code> <b>287/287 PASS</b> ·
-    <code>node --test</code> <b>26/26 PASS</b>（退出码全 0）。<code>pt_video.py</code> 生成链路 <b>0 行改动</b>；
+  <div class="good"><b>验收与安全</b>：<code>validate_catalog.py</code> 全通过 · <code>run_tests.py</code> <b>287/287 PASS</b> ·
+    <code>node --test</code> <b>35/35 PASS</b>（退出码全 0）。0.8.2 新增 pinned 指定模型 / 用途兜底 / npm pack 自包含。
+    <code>pt_video.py</code> 生成链路 <b>0 行改动</b>；
     凭证只在内存 / 本机 Temp 且用完即删，URL 只记域名与参数名、签名值不入库，远程提交独立核验 <b>SECRET_LEAK=NONE</b>。</div>
 </section>
 
+<section id="s14">
+  <h2 class="g">14. 北极星交付 1 · P0 指定模型 / U10 裁决 / npm pack（0.8.2）</h2>
+  <div class="sub">2026-11-16 中午 · 用户 3 项 P0（交付 1 直接用）+ U10 单价裁决。全部在 Node 核心包与 catalog 数据层，<code>pt_video.py</code> 生成链路 0 行改动。</div>
+
+  <h3>14.1 pinned：用户指定模型只判定、不自动换</h3>
+  <div class="scroll"><table>
+    <tr><th style="width:30%">场景</th><th style="width:30%">AUTO 未指定</th><th style="width:40%">pinned 指定模型</th></tr>
+    <tr><td>429 / 5xx / 超时</td><td>重试，3 次后换模型</td><td>只重试同一模型，耗尽后 <code>stop</code>，<b>不返回换模型</b></td></tr>
+    <tr><td>不可用 / 无权限 / 参数不支持</td><td>直接换下一个</td><td><code>user_choice</code>，不自动换</td></tr>
+    <tr><td>带图片但模型不能看图</td><td>选能看图的模型</td><td>发送前 <code>unsupported</code>（<code>before_send:true</code>），交用户定</td></tr>
+    <tr><td>工具调用实测 <code>null</code></td><td>照常使用</td><td>照常使用，<code>untested:['tool_calling']</code> 标未实测</td></tr>
+    <tr><td>401 / 402</td><td><code>stop</code></td><td><code>stop</code></td></tr>
+  </table></div>
+  <div class="sm"><code>selectCandidates(purpose, keyModels, {pinnedModel})</code> 返回
+    <code>{pinned, available, reasons, checks, candidate}</code>；不可用原因 code：
+    <code>not_in_key_view</code>（不在该 Key 可见列表）/ <code>vision_unsupported</code> /
+    <code>tool_calling_not_verified</code> / <code>delisted</code> 等，<code>null</code> 一律不判不可用。
+    <code>retryDecision({pinned:true, model})</code> 额外输出 <code>reason_code</code> / <code>needs_user_choice</code> / <code>before_send</code> / <code>untested</code>。<br>
+    <b>用途兜底</b>：<code>purpose</code> 不在 <code>auto_policy.purposes</code> 时改按 <code>routing.recommended</code> 标签匹配（<code>matched_by:'routing.recommended'</code>），仍无匹配才 <code>unknown_purpose</code>。</div>
+
+  <h3>14.2 U10 裁决：以实际扣费为准，只订正一档</h3>
+  <div class="good"><b>PT 2026-11-16 确认</b>：单价冲突以<b>实际扣费</b>为准（实测 &gt; estimate &gt; 探测值）。
+    <code>wan3.0-video</code> 5s/720p <code>0.20 → 0.50 USD</code>，新增 <code>price_usd_5s_720p_source: verified</code>；
+    <b>其他视频模型未实测，单价一律未动</b>。新增顶层 <code>pricing_policy</code>（仅 1 档 verified），
+    <code>charging.estimate_vs_actual</code> 注明「预估可能偏高，只作参考」—— 坐实 estimate 1000 credits vs 实扣 500 credits 的差异。
+    <code>max_context_tokens</code> / <code>max_output_tokens</code> 仍 <code>null</code>（等 PT）。</div>
+
+  <h3>14.3 npm pack 自包含（vendor 离线分发）</h3>
+  <div class="box t"><h3>交付形态</h3><div class="sm">
+    新增包内 <code>catalog.snapshot.json</code>，脱离仓库自动回退读取；<code>package.json</code> 加 <code>files</code> 白名单。
+    产物 <code>dist/powertokens-kit-core-0.8.2.tgz</code>（33,171 B），<b>SHA-256</b>
+    <code>81e678ba48c7083584f59e30686db4446cd4c667900f8725af9eda552d53d89d</code>，附 GitHub Release。
+    解包后 <code>package/</code> 放 <code>vendor/</code> 即开箱即用，不依赖 <code>pt-gateway/</code>。
+    校验器 + Node 单测各加一条快照一致性守门。
+  </div></div>
+  <div class="good"><b>验收（0.8.2）</b>：校验器全通过 · <code>run_tests.py</code> 287/287 · <code>node --test</code> 35/35；
+    tgz 解包到临时 <code>vendor/</code> 目录实跑 pinned / 用途兜底 / 重试规则 / 单价全对，0 花费。</div>
+</section>
+
 <div class="foot">
-  PT 项目资料总集看板 <b>v2.4 完整版</b> · 2026-11-12 建 / 11-13 账户域实测 / 11-13 下午 <code>/v1/models</code> 上线回写 / 11-16 付费真机定案 C4·R1 ·
+  PT 项目资料总集看板 <b>v2.5 完整版</b> · 2026-11-12 建 / 11-13 账户域实测 / 11-13 下午 <code>/v1/models</code> 上线回写 / 11-16 付费真机定案 C4·R1 / 11-16 交付1 P0 + U10 裁决 ·
   v1.0 为开工前决策摘要版（7 节 / 264 行），保留于 git 历史<br>
   SSOT <code>docs/PT_项目资料总集_20261112.md</code> · 详细逐条版 <code>docs/PT_问题_答复_影响功能_全量对照_20261112.md</code><br>
-  自证（0.8.1）：<code>validate_catalog.py</code> <b>169 项 PASS</b> · <code>run_tests.py</code> <b>287/287 PASS</b> · <code>node --test</code> <b>26/26 PASS</b> · 唯一付费调用 500 credits（＄0.5，上限 ＄1.5）<br>
+  自证（0.8.2）：校验器全通过 · <code>run_tests.py</code> <b>287/287 PASS</b> · <code>node --test</code> <b>35/35 PASS</b> · 唯一付费调用 500 credits（＄0.5，上限 ＄1.5）<br>
+  npm pack <code>powertokens-kit-core-0.8.2.tgz</code> SHA-256 <code>81e678ba48c7083584f59e30686db4446cd4c667900f8725af9eda552d53d89d</code><br>
   未含任何 Key / 令牌 / 签名值 · 所有响应示例已脱敏
 </div>
 

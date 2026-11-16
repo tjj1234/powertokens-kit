@@ -289,7 +289,9 @@
   "models": {
     "wan3.0-video": {
       "kind": "video",
-      "price_usd_5s_720p": 0.2,
+      "price_usd_5s_720p": 0.5,
+      "price_usd_5s_720p_source": "verified",
+      "price_verified_note": "0.8.1 付费真机实测（2026-11-16）：logs.billing 给出 per_second × 100 credits/秒 × 5s = 500 credits = 0.5 USD（1000 credits/USD）。PT 已确认「以实际扣费为准」（U10 裁决）。原值 0.2 USD 系 PT 预扣单价探测，已被实扣推翻；其余视频模型未实测，不批量订正。",
       "max_duration_s": 10,
       "resolutions": [
         "720p",
@@ -2616,12 +2618,27 @@
       "note": "⚠️ 与 async_task 相反：这类「失败」是扣费的。不要按 status=failed 对账，同步链路没有该终态。"
     },
     "task_id_recheck": "完全安全：Fetch 端点只读（DB + 上游 FetchTask），不触发 Submit / Refund / Settle；不会重新生成、不会二次扣费。",
-    "estimate_vs_actual": "以实际扣费为主（预估可能有偏差）。"
+    "estimate_vs_actual": "以实际扣费为准（PT 2026-11-16 确认，U10 裁决）。POST /v1/billing/estimate 只是试算：0.8.1 实测 wan3.0-video 5s 预估 1000 credits，实扣 500 credits，预估可能偏高，只作参考，勿据此定价或对账。"
+  },
+  "pricing_policy": {
+    "_source": "verified",
+    "_checked_at": "2026-11-16",
+    "authority": "实际扣费（logs.billing / logs/query）> POST /v1/billing/estimate 预估 > catalog 预扣单价探测值",
+    "estimate_caveat": "预估可能偏高，只作参考：estimate 与实扣不一致时以实扣为准，不批量订正未实测模型。",
+    "verified_models": [
+      {
+        "model": "wan3.0-video",
+        "price_usd_5s_720p": 0.5,
+        "credits_5s_720p": 500,
+        "source": "verified",
+        "note": "仅此模型此档位（5s/720p）经真机验证；其他分辨率/时长与其它视频模型未实测。"
+      }
+    ]
   },
   "live_billing_observations": {
     "_source": "verified",
     "observed_at": "2026-11-16T01:51Z",
-    "note": "真机实扣与产物持久化观测。不覆盖 models[].price_usd_5s_720p —— 该字段与实测存在冲突，按 P0「冲突必须登记、不静默选边」留待拍板，详见 SSOT §15.4。",
+    "note": "真机实扣与产物持久化观测。U10 已由 PT 于 2026-11-16 裁决「以实际扣费为准」：仅 wan3.0-video 5s/720p 单价据实扣订正为 0.5 USD 并标 source=verified；其他视频模型未实测，不批量改。冲突记录保留作审计轨迹，详见 SSOT §15.4。",
     "currency": "credits",
     "credits_per_usd": 1000,
     "cases": [
@@ -2681,8 +2698,8 @@
       }
     ],
     "conflicts_registered": [
-      "catalog models.wan3.0-video.price_usd_5s_720p=0.20 USD vs 真机实扣 0.50 USD（500 credits）",
-      "上轮 POST /v1/billing/estimate 试算 1000 credits vs 实扣 500 credits（estimate_vs_actual 口径再次坐实）",
+      "【U10 已裁决 2026-11-16】catalog models.wan3.0-video.price_usd_5s_720p 原 0.20 USD vs 真机实扣 0.50 USD（500 credits）；PT 确认以实扣为准，已订正为 0.5 并标 source=verified",
+      "【U10 口径】POST /v1/billing/estimate 试算 1000 credits vs 实扣 500 credits：预估偏高只作参考，estimate_vs_actual 已注明",
       "D4 §4 称 PT 自有 /v1/videos/{task_id}/content 且需带 PT token 鉴权 vs 实测 R2 公共桶、无需鉴权",
       "D5:476 称 14 天 + 字节 TOS 域名 vs 实测 r2.dev 域名、任务对象无 TTL 字段",
       "GET /v1/billing/usage 当日汇总 total_cost=0 / items=null，未实时计入该笔 500 credits"
