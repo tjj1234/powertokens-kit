@@ -5,7 +5,7 @@
 所以 Agent 侧不需要另存一份模型能力表。模型调用请求仍由 DSH 自己的供应商层发出。
 
 ```bash
-cd node && npm test          # node --test，35 条离线用例，0 花费
+cd node && npm test          # node --test，48 条离线用例，0 花费
 ```
 
 ## index.js —— 五条规则 API
@@ -66,16 +66,45 @@ const e = retryDecision({ status: 403, pinned: true, model: 'gpt-5.2' });
 改按模型的 `routing.recommended` 标签匹配，`detail:true` 时返回 `matched_by: 'routing.recommended'`；
 仍无匹配才 `unknown_purpose`。标签无序、不宣称优先级。
 
+### 0.8.3（北极星 Codex 复核修复）
+
+- **`maxRetries: 0` 是合法值**（不重试）：只在参数未传时才用默认 3；传 0 时可重试错误
+  第一次就返回 `switch` / `stop`，绝不返回 `retry`。
+- **受理状态未知**：`status` 为 0 / `undefined` / `ETIMEDOUT`（客户端超时 / 断网）时返回
+  `action:'stop'` + `reason_code:'acceptance_unknown'` + `accepted:'unknown'`，**不返回
+  retry / switch** —— PT 可能已受理并扣费，重发会二次扣费；先用 `logs/query` 确认。
+  发送前的视觉拦截优先于此分支（请求还没发，不存在受理未知）。
+- **上下文超长 → `compact`**：`400 + context_length_exceeded` 返回 `action:'compact'`
+  （先压缩上下文或缩减输入再发），禁止原样重试。
+- **搜索候选分组（A4）**：搜索用途只有 `works===true` 且 `returns_sources===true` 才进
+  `candidates`；值为 `null`（未实测）的进 `pending_verification` 分组。当前 3 个搜索
+  候选全 null：`candidates` 空、`pending_verification` 3 个。
+- **`catalogVersion()`**：新增 `kit_version`（包版本），与 catalog `updated` 一起透出，
+  方便与 CHANGELOG 对账。
+
+`account-client.js` 同步加严（B1-B3）：
+
+- **B1**：账户域 2xx 必须是**合法 JSON 对象且带 PT `code` 字段**才算成功；HTML / 空串 /
+  截断 JSON / 缺 `code` 一律返回 `error.category:'invalid_response'`。生成域 `/v1/models`
+  是 OpenAI 风格 `{data:[...]}`，只要求合法 JSON 对象。
+- **B2**：`data_as_of` / `is_cached` 只**原样透传**响应里的服务端统计时间与缓存状态；
+  PT 没返回时为 `null`，不编造。
+- **B3**：所有方法接受 `{signal}`（`AbortSignal`，与内部超时合并，取消返回
+  `category:'aborted'`）；响应大小上限 `maxResponseBytes`（默认 1 MiB 可配），超限返回
+  `response_too_large`。
+
 ### 打包（npm pack / vendor 离线使用）
 
 ```bash
-cd node && npm pack              # 生成 dist/powertokens-kit-core-0.8.2.tgz
-sha256sum dist/powertokens-kit-core-0.8.2.tgz
+cd node && npm pack              # 生成 dist/powertokens-kit-core-0.8.3.tgz
+sha256sum dist/powertokens-kit-core-0.8.3.tgz
 ```
 
-tgz 含 `index.js` / `account-client.js` / `catalog.snapshot.json` / `README.md` / `package.json`，
-**自包含**。把解包后的 `package/` 整个放进 DSH 的 `vendor/` 目录即可，无需 `pt-gateway/` 目录：
+tgz 含 `index.js` / `account-client.js` / `catalog.snapshot.json` /
+`catalog.schema.snapshot.json` / `README.md` / `package.json`，**自包含**。
+把解包后的 `package/` 整个放进 DSH 的 `vendor/` 目录即可，无需 `pt-gateway/` 目录：
 `loadCatalog()` 检测不到仓库内 catalog 时自动读包内快照。校验器会守门快照与主 catalog 内容一致。
+空目录 `npm install <tgz>` 后 `require('@powertokens/kit-core').loadCatalog()` 同样可读可校验（已实测）。
 
 ## account-client.js —— 账户只读客户端
 

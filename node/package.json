@@ -1,21 +1,23 @@
 {
   "name": "@powertokens/kit-core",
-  "version": "0.8.2",
+  "version": "0.8.3",
   "private": true,
   "description": "Zero-dependency Node core for powertokens-kit: reads the same pt-gateway/catalog.json as the Python tools. Does NOT send requests.",
   "type": "commonjs",
- "main": "index.js",
- "exports": {
-  ".": "./index.js",
-  "./account-client": "./account-client.js",
-  "./catalog": "./catalog.snapshot.json"
- },
- "files": [
-  "index.js",
-  "account-client.js",
-  "catalog.snapshot.json",
-  "README.md"
- ],
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./account-client": "./account-client.js",
+    "./catalog": "./catalog.snapshot.json",
+    "./catalog-schema": "./catalog.schema.snapshot.json"
+  },
+  "files": [
+    "index.js",
+    "account-client.js",
+    "catalog.snapshot.json",
+    "catalog.schema.snapshot.json",
+    "README.md"
+  ],
   "engines": {
     "node": ">=18"
   },

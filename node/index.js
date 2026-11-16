@@ -141,7 +141,18 @@ function _catalog(options) {
 
 function catalogVersion(catalog) {
   const c = catalog || (_cached || loadCatalog());
-  return { schema: c.schema, updated: c.updated, path: _cachedPath || _defaultCatalogPath() };
+  // C2：把 kit 包版本与 catalog updated 一起透出，三处（package.json / CHANGELOG /
+  // catalogVersion）可对账。require 自身包内 package.json，零依赖、不发请求。
+  let kitVersion = null;
+  try {
+    kitVersion = require('./package.json').version || null;
+  } catch (_) { kitVersion = null; }
+  return {
+    schema: c.schema,
+    updated: c.updated,
+    kit_version: kitVersion,
+    path: _cachedPath || _defaultCatalogPath(),
+  };
 }
 
 /** 需求 §7：来源可信 / null 一律按未知处理。 */
@@ -270,8 +281,14 @@ function selectCandidates(purpose, keyModels, options = {}) {
   }
   const skipped = [];
   const candidates = [];
+  // A4：搜索用途只有 works===true 且 returns_sources===true 才是可投入使用候选；
+  // 值为 null（未实测）的进 pending_verification，绝不进 candidates。
+  const pendingVerification = [];
   if (!list) {
-    const empty = { purpose, candidates, skipped, reason: 'unknown_purpose', matched_by: null };
+    const empty = {
+      purpose, candidates, skipped, pending_verification: pendingVerification,
+      reason: 'unknown_purpose', matched_by: null,
+    };
     return options.detail ? empty : candidates;
   }
   list.forEach((id, position) => {
@@ -279,13 +296,36 @@ function selectCandidates(purpose, keyModels, options = {}) {
     if (!e) { skipped.push({ id, reason: 'not_in_catalog' }); return; }
     const skip = _skipReason(id, e, ctx);
     if (skip) { skipped.push({ id, reason: skip }); return; }
+    if (ctx.searchLike) {
+      const w = e.web_search_detail;
+      const works = w ? w.works : undefined;
+      const sources = w ? w.returns_sources : undefined;
+      if (works === true && sources === true) {
+        candidates.push({
+          id, position,
+          kind: e.kind || null,
+          channel: (e.capabilities && e.capabilities.channel) || null,
+        });
+      } else {
+        // null / 缺字段：未实测，不投入使用也不判死，等真机验证。
+        pendingVerification.push({
+          id, position,
+          works: works === undefined ? null : works,
+          returns_sources: sources === undefined ? null : sources,
+          reason: 'pending_verification',
+        });
+      }
+      return;
+    }
     candidates.push({
       id, position,
       kind: e.kind || null,
       channel: (e.capabilities && e.capabilities.channel) || null,
     });
   });
-  if (options.detail) return { purpose, candidates, skipped, matched_by: matchedBy };
+  if (options.detail) {
+    return { purpose, candidates, skipped, pending_verification: pendingVerification, matched_by: matchedBy };
+  }
   return candidates;
 }
 
@@ -303,7 +343,8 @@ function _actionFlags(agentAction) {
   switch (agentAction) {
     case 'retry': return { retryable: true, switch_model: false };
     case 'switch_model': return { retryable: false, switch_model: true };
-    case 'compress_context': return { retryable: true, switch_model: true };
+    // A3：上下文超长不能原样重试 —— 必须先压缩上下文 / 缩减输入再发。
+    case 'compress_context': return { retryable: false, switch_model: false, compact: true };
     case 'stop': return { retryable: false, switch_model: false };
     default: return { retryable: false, switch_model: false };
   }
@@ -376,9 +417,16 @@ function retryDecision(input = {}, options = {}) {
   const cls = input.category && input.matched_by
     ? input
     : classifyError(input.status, input.body, options);
-  const status = Number(input.status || cls.http_status || 0);
+  const rawStatus = input.status !== undefined && input.status !== null && input.status !== ''
+    ? input.status : cls.http_status;
+  const hasNumericStatus = rawStatus !== undefined && rawStatus !== null && rawStatus !== '' &&
+    Number.isFinite(Number(rawStatus)) && Number(rawStatus) !== 0;
+  const status = hasNumericStatus ? Number(rawStatus) : 0;
   const attempt = Math.max(1, Number(input.attempt || 1));
-  const maxRetries = Number(options.maxRetries || 3);
+  // A1：maxRetries=0 是合法值（不重试），只有 undefined 才用默认 3。
+  const rawMax = options.maxRetries;
+  const maxRetries = rawMax === undefined ? 3
+    : (Number.isFinite(Number(rawMax)) ? Number(rawMax) : 3);
   const finishReason = input.finishReason || null;
   const midstreamBad = ['error', 'timeout', 'abort'].includes(finishReason);
   const pinned = input.pinned === true;
@@ -425,8 +473,9 @@ function retryDecision(input = {}, options = {}) {
   let needsUserChoice = false;
   let beforeSend = false;
 
-  if (visionUnsupported && !(status >= 200 && status < 300)) {
-    // 发送前拦截：带图片但指定模型不能看图。AUTO 选能看图的；PINNED 交给用户。
+  // 发送前拦截（优先于一切响应态分支）：带图片但模型不能看图。
+  // AUTO 选能看图的；PINNED 交给用户。此时请求还没发出，不存在"受理未知"问题。
+  if (visionUnsupported) {
     beforeSend = true;
     if (pinned) {
       action = 'unsupported'; reasonCode = 'vision_unsupported';
@@ -436,6 +485,20 @@ function retryDecision(input = {}, options = {}) {
       action = 'switch'; reasonCode = 'vision_unsupported_auto_switch';
       reason = '请求带图片，当前模型不能看图；自动改为选能看图的模型';
     }
+  } else if (!hasNumericStatus) {
+    // A2：受理状态未知（无有效 HTTP 状态码：客户端超时 / 断网 / 连接被重置）。
+    // 没收到响应 ≠ PT 返回非 2xx；PT 可能已受理并扣费，重发会二次扣费。
+    // 绝不是 retry / switch。
+    accepted = 'unknown'; settled = false; charged = false;
+    action = 'stop'; reasonCode = 'acceptance_unknown';
+    needsUserChoice = true;
+    reason = '未收到有效 HTTP 状态码（客户端超时 / 断网 / 连接重置）：PT 可能已受理并扣费，'
+      + '不重发、不换模型；需用户用 request_id / task_id 查 logs/query 确认受理状态';
+  } else if (cls.agent_action === 'compress_context' || cls.compact === true) {
+    // A3：上下文超长 —— 先压缩上下文或缩减输入再发，禁止原样重试。
+    action = 'compact'; reasonCode = 'context_too_long';
+    reason = '上下文超长（400 context_length_exceeded）：先压缩上下文或缩减输入再发，不原样重试；'
+      + '各模型上下文上限见 limits（未实测为 null，不猜）';
   } else if (pinned && PINNED_STOP_CATEGORIES.has(cls.category)) {
     action = 'stop'; reasonCode = 'pinned_stop';
     reason = `category=${cls.category} 不可重试（换 Key / 充值 / 告知用户）`;

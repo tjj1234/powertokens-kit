@@ -31,6 +31,26 @@ test('loadCatalog: 包内 catalog.snapshot.json 存在且与主 catalog 一致�
   assert.equal(snapCat.models['wan3.0-video'].price_usd_5s_720p, 0.5);
 });
 
+test('C1: 包内 catalog.schema.snapshot.json 存在且与 pt-gateway 版本一致', () => {
+  const snap = path.join(__dirname, '..', 'catalog.schema.snapshot.json');
+  assert.ok(fs.existsSync(snap), 'schema 快照应存在');
+  const snapSchema = JSON.parse(fs.readFileSync(snap, 'utf8'));
+  const main = path.join(__dirname, '..', 'pt-gateway', 'catalog.schema.json');
+  if (fs.existsSync(main)) {
+    const mainSchema = JSON.parse(fs.readFileSync(main, 'utf8'));
+    assert.deepEqual(snapSchema, mainSchema, 'schema 快照应与 pt-gateway/catalog.schema.json 完全一致');
+  }
+  assert.equal(snapSchema.properties && typeof snapSchema.properties, 'object');
+});
+
+test('C2: catalogVersion 透出 kit 包版本，与 package.json / CHANGELOG 可对账', () => {
+  const v = catalogVersion(cat);
+  const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
+  assert.equal(v.kit_version, pkg.version, 'kit_version 应等于 package.json 的 version');
+  assert.ok(/^\d+\.\d+\.\d+$/.test(String(v.kit_version)));
+  assert.ok(v.updated, 'catalog updated 应透出');
+});
+
 test('loadCatalog: schema 不匹配 / 坏 JSON 一律抛错（不降级使用坏数据）', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pt-cat-'));
   const p = path.join(dir, 'catalog.json');
@@ -43,9 +63,15 @@ test('loadCatalog: schema 不匹配 / 坏 JSON 一律抛错（不降级使用坏
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test('selectCandidates: 按 auto_policy 顺序返回，且候选跨 >= 2 渠道', () => {
+test('selectCandidates: 按 auto_policy 顺序返回，且候选跨 >= 2 渠道（search 除外，见 A4）', () => {
   for (const use of Object.keys(cat.auto_policy.purposes)) {
     const list = selectCandidates(use, null, { catalog: cat });
+    if (use === 'search') {
+      // A4（0.8.3）：3 个搜索候选的 works/returns_sources 全是 null（未实测），
+      // candidates 必须为空、进 pending_verification，绝不把未实测模型当可用。
+      assert.equal(list.length, 0, 'search 全 null 时候选必须为空');
+      continue;
+    }
     assert.ok(list.length >= 2, `${use} 至少 2 个候选`);
     assert.equal(list[0].id, cat.auto_policy.purposes[use][0]);
     assert.ok(new Set(list.map((x) => x.channel)).size >= 2 || list.length >= 2);
@@ -279,4 +305,87 @@ test('retryDecision.pinned: 工具调用实测 null → 照常用并标 untested
     pinned: true, model: 'glm-4.7' }, { catalog: cat }).action, 'stop');
   assert.equal(retryDecision({ status: 402, body: { error: { code: 'pre_consume_token_quota_failed' } },
     pinned: true, model: 'glm-4.7' }, { catalog: cat }).action, 'stop');
+});
+
+// ---- 北极星 Codex 复核（0.8.3）A1-A4 ----
+
+test('A1: maxRetries=0 是合法值不被默认 3 覆盖；可重试错误第一次就返回 switch', () => {
+  for (const input of [
+    { status: 503 },
+    { status: 429, body: { message: 'rate limited' } },
+    { status: 500, body: { error: { message: 'upstream' } } },
+  ]) {
+    const r = retryDecision(input, { catalog: cat, maxRetries: 0 });
+    assert.equal(r.max_retries, 0, 'maxRetries:0 必须原样保留');
+    assert.notEqual(r.action, 'retry', 'maxRetries:0 时绝不返回 retry');
+    assert.equal(r.action, 'switch', `maxRetries:0 应直接换模型：${JSON.stringify(input)}`);
+  }
+  // 不传时仍是默认 3
+  assert.equal(retryDecision({ status: 503 }, { catalog: cat }).max_retries, 3);
+  // 非法值回退 3
+  assert.equal(retryDecision({ status: 503 }, { catalog: cat, maxRetries: 'abc' }).max_retries, 3);
+});
+
+test('A2: 受理状态未知（status 0 / undefined / ETIMEDOUT）→ stop + acceptance_unknown，绝不 retry/switch', () => {
+  for (const input of [
+    { status: 0 },
+    {},
+    { status: undefined },
+    { error: { code: 'ETIMEDOUT' } },
+    { error: 'socket hang up' },
+    { status: null },
+  ]) {
+    const r = retryDecision(input, { catalog: cat });
+    assert.equal(r.action, 'stop', `无状态码应 stop：${JSON.stringify(input)}`);
+    assert.equal(r.reason_code, 'acceptance_unknown');
+    assert.equal(r.accepted, 'unknown');
+    assert.equal(r.retryable, false);
+    assert.equal(r.switch_model, false, '受理未知绝不返回换模型重发');
+  }
+  // pinned 同样先走受理未知（不重试也不换）
+  const p = retryDecision({ status: 0, pinned: true, model: 'glm-4.7' }, { catalog: cat });
+  assert.equal(p.action, 'stop');
+  assert.equal(p.reason_code, 'acceptance_unknown');
+});
+
+test('A3: 400 context_length_exceeded → compact，不原样重试', () => {
+  const body = { error: { code: 'context_length_exceeded', message: 'too long' } };
+  const r = retryDecision({ status: 400, body }, { catalog: cat });
+  assert.equal(r.category, 'context_too_long');
+  assert.equal(r.action, 'compact');
+  assert.equal(r.retryable, false, '上下文超长禁止原样重试');
+  assert.equal(r.switch_model, false);
+  assert.equal(r.reason_code, 'context_too_long');
+  // pinned 也一样：compact 优先于 user_choice
+  const p = retryDecision({ status: 400, body, pinned: true, model: 'glm-4.7' }, { catalog: cat });
+  assert.equal(p.action, 'compact');
+});
+
+test('A4: 搜索用途只有 works===true 且 returns_sources===true 才是候选；null 进 pending_verification', () => {
+  const d = selectCandidates('search', null, { catalog: cat, detail: true });
+  // 当前 3 个搜索候选的 works / returns_sources 全是 null → candidates 为空、pending 3 个
+  assert.equal(d.candidates.length, 0, '全 null 时搜索候选必须为空，不能把未实测模型当可用');
+  assert.equal(d.pending_verification.length, 3);
+  for (const p of d.pending_verification) {
+    assert.equal(p.reason, 'pending_verification');
+    assert.equal(p.works, null);
+    assert.equal(p.returns_sources, null);
+  }
+  // 非 detail 模式返回空数组（向后兼容）
+  assert.deepEqual(selectCandidates('search', null, { catalog: cat }), []);
+  // 用注入 catalog 验证 works/returns_sources 都为 true 才进 candidates
+  const fake = JSON.parse(JSON.stringify(cat));
+  for (const id of fake.auto_policy.purposes.search) {
+    fake.models[id].web_search_detail.works = true;
+    fake.models[id].web_search_detail.returns_sources = true;
+  }
+  const ok = selectCandidates('search', null, { catalog: fake, detail: true });
+  assert.equal(ok.candidates.length, 3);
+  assert.equal(ok.pending_verification.length, 0);
+  // 一个 false 一个 true → 既不在候选也不进 pending（被 skip 规则判死）
+  fake.models[fake.auto_policy.purposes.search[0]].web_search_detail.works = false;
+  const mixed = selectCandidates('search', null, { catalog: fake, detail: true });
+  assert.equal(mixed.candidates.length, 2);
+  assert.equal(mixed.pending_verification.length, 0);
+  assert.ok(mixed.skipped.some((s) => s.reason === 'web_search_unusable'));
 });

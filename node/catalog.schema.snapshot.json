@@ -1,0 +1,692 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PowerTokens Kit catalog.json (schema v2)",
+  "description": "给 Agent / 使用方的格式说明（不是运行时强校验器；离线校验由 validate_catalog.py 与 tests/test_unit_catalog.py 承担）。v2 只加字段、不改已有字段。空值语义（A3）：null = 不知道；[] = 确认没有；false = 确认不支持。来源 _source 统一 8 值（A5），其中 product 仅用于顶层 auto_policy。kinds 只保留当前可调用的 5 类（B1）；未上线能力写在顶层 capability_gaps，不得混入 kinds。 v2.1（2026-11-12）追加：errors 8 处数据订正、顶层 retry_policy（4+1 受理/重试规则）与 charging（异步/同步分链路扣费）、kinds.seedance 的 interface_variants / result_persistence，currency.notes 补汇率 C3 说明。仅加字段 + 已列明的数据订正，原有值不动。",
+  "type": "object",
+  "required": [
+    "schema",
+    "updated",
+    "kinds",
+    "models"
+  ],
+  "properties": {
+    "schema": {
+      "description": "目录格式版本；v2 = 2",
+      "const": 2
+    },
+    "updated": {
+      "description": "目录最后更新日（YYYY-MM-DD）",
+      "type": "string"
+    },
+    "note": {
+      "description": "原有顶层说明，v2 保持不动",
+      "type": "array"
+    },
+    "kinds": {
+      "description": "当前可调用的能力类型；只允许 image / video / seedance / audio / chat 五类",
+      "type": "object",
+      "required": [
+        "image",
+        "video",
+        "seedance",
+        "audio",
+        "chat"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "image": {
+          "type": "object"
+        },
+        "video": {
+          "type": "object"
+        },
+        "audio": {
+          "type": "object"
+        },
+        "chat": {
+          "type": "object"
+        },
+        "seedance": {
+          "type": "object",
+          "description": "v2.1 追加 interface_variants / result_persistence；原有 execution / submit / poll / requires / note 保持不变。",
+          "properties": {
+            "interface_variants": {
+              "$ref": "#/definitions/interfaceVariants"
+            },
+            "result_persistence": {
+              "$ref": "#/definitions/resultPersistence"
+            }
+          }
+        }
+      }
+    },
+    "models": {
+      "description": "模型档案表；key = 模型 ID。v2 在主力模型上追加 limits / tool_calling / web_search_detail / routing 四组",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/definitions/modelEntry"
+      }
+    },
+    "multimodal_source": {
+      "description": "原有顶层声明，v2 保持不动",
+      "type": "string"
+    },
+    "currency": {
+      "description": "顶层计费换算；credits_per_usd = 1000（official, PT API 2.0.0 /v1/billing/estimate）。pricing / charging 属 P2，本轮未落地。",
+      "type": "object",
+      "properties": {
+        "credits_per_usd": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "_source": {
+          "$ref": "#/definitions/source"
+        },
+        "_checked_at": {
+          "$ref": "#/definitions/checkedAt"
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "auto_policy": {
+      "description": "AUTO 两层之第一层：purposes 是按用途的有序候选列表，决定候选与顺序；_source 恒为 product。routing.recommended 是第二层（无序标签），仅在 purposes 未覆盖的用途时兜底。",
+      "type": "object",
+      "required": [
+        "_source",
+        "purposes"
+      ],
+      "properties": {
+        "_source": {
+          "const": "product"
+        },
+        "_checked_at": {
+          "$ref": "#/definitions/checkedAt"
+        },
+        "purposes": {
+          "type": "object",
+          "description": "key = 用途名；value = 有序模型 ID 列表，>= 2 个且跨渠道。0.8.0 起覆盖 general / agent / search / long_report / vision 五种用途",
+          "additionalProperties": {
+            "type": "array",
+            "minItems": 2,
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "skip_rules": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "errors": {
+      "description": "生成域错误码字典，恰好 9 类。每类含 http_status / agent_action(retry|switch_model|stop|compress_context) / examples / _source / _checked_at。账户域状态码表（含 500、无 402）不得混入。",
+      "type": "object",
+      "required": [
+        "rate_limited",
+        "upstream_error",
+        "timeout",
+        "auth_invalid",
+        "insufficient_balance",
+        "model_unavailable",
+        "param_unsupported",
+        "content_filtered",
+        "context_too_long"
+      ],
+      "additionalProperties": {
+        "$ref": "#/definitions/errorCategory"
+      }
+    },
+    "capability_gaps": {
+      "description": "当前不可通过 catalog 调用、但产品需要的能力缺口；每项 in_kinds 恒为 false，且不得进 kinds。",
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "in_kinds",
+          "_source"
+        ],
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "in_kinds": {
+            "const": false
+          },
+          "callable_now": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "notes": {
+            "type": "string"
+          },
+          "_source": {
+            "$ref": "#/definitions/source"
+          },
+          "_checked_at": {
+            "$ref": "#/definitions/checkedAt"
+          }
+        }
+      }
+    },
+    "retry_policy": {
+      "$ref": "#/definitions/retryPolicy"
+    },
+    "charging": {
+      "$ref": "#/definitions/charging"
+    },
+    "pricing_policy": {
+      "description": "价格真相源口径（0.8.2 / U10 裁决）：实际扣费 > estimate 预估 > catalog 探测值。只登记真机验证过的模型档位，未实测不批量订正。",
+      "type": "object",
+      "required": ["_source", "authority", "estimate_caveat", "verified_models"],
+      "properties": {
+        "_source": { "$ref": "#/definitions/source" },
+        "authority": { "type": "string" },
+        "estimate_caveat": { "type": "string" },
+        "verified_models": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["model", "price_usd_5s_720p", "credits_5s_720p", "source"],
+            "properties": {
+              "model": { "type": "string" },
+              "price_usd_5s_720p": { "type": "number", "minimum": 0 },
+              "credits_5s_720p": { "type": "integer", "minimum": 0 },
+              "source": { "$ref": "#/definitions/source" },
+              "note": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "live_billing_observations": {
+      "description": "真机计费/产物持久化观测（0.8.1；0.8.2 起 U10 单价已裁决，仅经实扣验证的模型档位订正，其余仍登记冲突作审计轨迹）。",
+      "type": "object",
+      "required": ["_source", "observed_at", "cases"]
+    },
+    "models_api_contract": {
+      "type": "object",
+      "description": "GET /v1/models 官方结构化字段契约与影子对账观测（2026-11-13）。_source 恒为 models_api；记录字段口径、能力判定规则、视图范围与实测统计。不得当作计费单价或下架判定的真相源。",
+      "required": [
+        "_source",
+        "endpoint",
+        "scope",
+        "capability_rules"
+      ],
+      "properties": {
+        "_source": {
+          "$ref": "#/definitions/source"
+        },
+        "_checked_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "endpoint": {
+          "type": "string"
+        },
+        "scope": {
+          "type": "string"
+        },
+        "compatibility": {
+          "type": "string"
+        },
+        "fields": {
+          "type": "object"
+        },
+        "capability_rules": {
+          "type": "object"
+        },
+        "not_a_truth_source_for": {
+          "type": "array"
+        },
+        "observed": {
+          "type": "object"
+        }
+      }
+    }
+  },
+  "definitions": {
+    "source": {
+      "description": "_source 九值枚举（A5，2026-11-13 增 models_api）：人工确认的 verified > official / documented > 自动探测 > inferred；configured 等同 inferred；verified(unmapped) 当作已知；product 仅用于 auto_policy；models_api 表示来自 GET /v1/models 官方结构化字段的 Key/分组视图快照。",
+      "enum": [
+        "official",
+        "documented",
+        "verified",
+        "official+verified",
+        "inferred",
+        "configured",
+        "verified(unmapped)",
+        "product",
+        "models_api"
+      ]
+    },
+    "checkedAt": {
+      "description": "该字段组最后一次核对日期；YYYY-MM-DD 或 null",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "modelEntry": {
+      "type": "object",
+      "description": "原有字段（kind / execution / submit / poll / capabilities / params_observed / vendor_endpoint）全部保留；v2 追加四组",
+      "properties": {
+        "limits": {
+          "$ref": "#/definitions/p0Group"
+        },
+        "tool_calling": {
+          "$ref": "#/definitions/toolCalling"
+        },
+        "web_search_detail": {
+          "$ref": "#/definitions/webSearchDetail"
+        },
+        "routing": {
+          "$ref": "#/definitions/routing"
+        }
+      }
+    },
+    "p0Group": {
+      "type": "object",
+      "description": "通用 P0 组；每组带 _source / _checked_at。limits 的 max_context_tokens / max_output_tokens 子键形状来自补充需求 §0，值允许 null（无官方来源时不编数值）。",
+      "required": [
+        "_source",
+        "_checked_at"
+      ],
+      "properties": {
+        "_source": {
+          "$ref": "#/definitions/source"
+        },
+        "_checked_at": {
+          "$ref": "#/definitions/checkedAt"
+        },
+        "notes": {
+          "type": "string"
+        },
+        "max_context_tokens": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "上下文窗口上限（token）；无官方来源时为 null"
+        },
+        "max_output_tokens": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "单次最大输出（token）；无官方来源时为 null"
+        }
+      }
+    },
+    "toolCalling": {
+      "type": "object",
+      "required": [
+        "verified",
+        "_source"
+      ],
+      "properties": {
+        "verified": {
+          "description": "真机实测结论；本轮未测一律 null（A3）。A1 跳过规则只在显式 false 时触发。",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "_source": {
+          "$ref": "#/definitions/source"
+        },
+        "_checked_at": {
+          "$ref": "#/definitions/checkedAt"
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "webSearchDetail": {
+      "type": "object",
+      "description": "仅挂在 capabilities.web_search == \"conditional\" 的模型上（A4）。how_to_enable 从 capabilities.web_search_param 原样复制。",
+      "required": [
+        "how_to_enable",
+        "works",
+        "returns_sources",
+        "_source"
+      ],
+      "properties": {
+        "how_to_enable": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "works": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "returns_sources": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "_source": {
+          "$ref": "#/definitions/source"
+        },
+        "_checked_at": {
+          "$ref": "#/definitions/checkedAt"
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "routing": {
+      "type": "object",
+      "required": [
+        "recommended",
+        "_source"
+      ],
+      "properties": {
+        "recommended": {
+          "description": "无序用途标签；A5 规定 product 仅用于 auto_policy，故此处 _source 用 configured",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "_source": {
+          "const": "configured"
+        },
+        "_checked_at": {
+          "$ref": "#/definitions/checkedAt"
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "errorCategory": {
+      "type": "object",
+      "required": [
+        "agent_action",
+        "examples",
+        "_source"
+      ],
+      "properties": {
+        "http_status": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "integer"
+          }
+        },
+        "agent_action": {
+          "enum": [
+            "retry",
+            "switch_model",
+            "stop",
+            "compress_context"
+          ]
+        },
+        "examples": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "message": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "_source": {
+                "$ref": "#/definitions/source"
+              },
+              "note": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "_source": {
+          "$ref": "#/definitions/source"
+        },
+        "_checked_at": {
+          "$ref": "#/definitions/checkedAt"
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "retryPolicy": {
+      "type": "object",
+      "description": "D4 §3：没有单一专用受理信号，按 HTTP 码 + 响应体形态 + finish_reason + error.code 组合判定。",
+      "required": [
+        "_source",
+        "rules"
+      ],
+      "properties": {
+        "_source": {
+          "$ref": "#/definitions/source"
+        },
+        "_checked_at": {
+          "$ref": "#/definitions/checkedAt"
+        },
+        "signal": {
+          "const": "no_single_dedicated_signal"
+        },
+        "request_id_header": {
+          "const": "X-Oneapi-Request-Id"
+        },
+        "request_id_header_note": {
+          "type": "string"
+        },
+        "note": {
+          "type": "string"
+        },
+        "rules": {
+          "type": "array",
+          "minItems": 5,
+          "maxItems": 5,
+          "items": {
+            "type": "object",
+            "required": [
+              "observe",
+              "auto_retry"
+            ],
+            "properties": {
+              "observe": {
+                "type": "string"
+              },
+              "accepted": {
+                "type": "boolean"
+              },
+              "settled": {
+                "type": "boolean"
+              },
+              "charged": {
+                "type": "boolean"
+              },
+              "refund": {
+                "type": "string"
+              },
+              "auto_retry": {
+                "type": "boolean"
+              },
+              "note": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "rate_limit": {
+          "type": "object"
+        },
+        "request_id_success_body_field": {
+          "const": "id",
+          "description": "R1 实测：成功响应 body 的 request_id 字段名。"
+        },
+        "request_id_observed": {
+          "type": "object"
+        }
+      }
+    },
+    "charging": {
+      "type": "object",
+      "description": "D4 §2 / §10：预扣 → settle 同一条链的两个出口；RefundTaskQuota 只服务异步任务。",
+      "required": [
+        "_source",
+        "async_task",
+        "sync_chat_stream"
+      ],
+      "properties": {
+        "_source": {
+          "$ref": "#/definitions/source"
+        },
+        "_checked_at": {
+          "$ref": "#/definitions/checkedAt"
+        },
+        "note": {
+          "type": "string"
+        },
+        "async_task": {
+          "type": "object",
+          "required": [
+            "charged_on_failure",
+            "charged_on_timeout"
+          ],
+          "properties": {
+            "charged_on_failure": {
+              "const": false
+            },
+            "charged_on_timeout": {
+              "const": false
+            }
+          }
+        },
+        "sync_chat_stream": {
+          "type": "object",
+          "required": [
+            "charged_on_midstream_failure"
+          ],
+          "properties": {
+            "charged_on_midstream_failure": {
+              "const": true
+            },
+            "http_status": {
+              "const": 200
+            }
+          }
+        },
+        "task_id_recheck": {
+          "type": "string"
+        },
+        "estimate_vs_actual": {
+          "type": "string"
+        }
+      }
+    },
+    "interfaceVariants": {
+      "type": "object",
+      "description": "Seedance 双接口；字段名刻意避开「透传」二字（仓库已有 6+ 种语义）。",
+      "required": [
+        "_source",
+        "active",
+        "openai_standard",
+        "vendor_compatible"
+      ],
+      "properties": {
+        "_source": {
+          "$ref": "#/definitions/source"
+        },
+        "_checked_at": {
+          "$ref": "#/definitions/checkedAt"
+        },
+        "active": {
+          "const": "openai_standard"
+        },
+        "note": {
+          "type": "string"
+        },
+        "openai_standard": {
+          "type": "object"
+        },
+        "vendor_compatible": {
+          "type": "object"
+        },
+        "agreement_required_both": {
+          "const": true
+        },
+        "agreement_note": {
+          "type": "string"
+        }
+      }
+    },
+    "resultPersistence": {
+      "type": "object",
+      "description": "标准接口永久 / 供应商兼容接口 24h；C4 冲突待真机 T5 核验。",
+      "required": [
+        "_source",
+        "openai_standard",
+        "vendor_compatible"
+      ],
+      "properties": {
+        "_source": {
+          "$ref": "#/definitions/source"
+        },
+        "_checked_at": {
+          "$ref": "#/definitions/checkedAt"
+        },
+        "note": {
+          "type": "string"
+        },
+        "openai_standard": {
+          "type": "object"
+        },
+        "vendor_compatible": {
+          "type": "object"
+        },
+        "default_strategy": {
+          "type": "string"
+        },
+        "image_sync_observed": {
+          "type": "object",
+          "description": "图像同步接口真机实测：上游 OSS 签名 URL、TTL 24h（C4 裁决）。",
+          "required": [
+            "_source",
+            "ttl_seconds",
+            "url_kind"
+          ]
+        }
+      }
+    }
+  }
+}

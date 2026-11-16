@@ -6,6 +6,58 @@
 
 ---
 
+## 0.8.3 — 2026-11-16 · 北极星 Codex 源码复核 9 项修复（A1-A4 / B1-B3 / C1-C2 补强）
+
+**来源**：北极星主程 Codex 对 0.8.1 `node/` 的源码复核，4 个问题已在 905e7a3 实际运行复现。
+
+**A. 重试与选模（`node/index.js`）**：
+
+- **A1 `maxRetries:0` 不再被默认值 3 覆盖**：仅在参数未传（`undefined`）时才用默认 3；
+  `0` 是合法值（不重试），可重试错误第一次就返回 `switch` / `stop`，不返回 `retry`。
+- **A2 受理状态未知独立分支**：无有效 HTTP 状态码（`status:0` / `undefined` / `ETIMEDOUT` /
+  断网）时返回 `action:'stop'` + `reason_code:'acceptance_unknown'` + `accepted:'unknown'`，
+  **绝不返回 retry / switch** —— 客户端没收到响应 ≠ PT 返回非 2xx，PT 可能已受理并扣费。
+  发送前的视觉拦截（带图不能看图）优先于此分支（请求尚未发出，不存在受理未知）。
+- **A3 上下文超长 → `compact`**：`400 + context_length_exceeded` 归类 `context_too_long`，
+  返回 `action:'compact'`（先压缩上下文或缩减输入再发），`_actionFlags` 不再把它标成可重试。
+- **A4 搜索候选分组**：搜索用途只有 `works===true 且 returns_sources===true` 才进
+  `candidates`；值为 `null`（未实测）的进新分组 `pending_verification`（不投入使用也不判死）。
+  当前 3 个搜索候选全 null：`candidates` 为空、`pending_verification` 3 个。
+- **A5 / A6（重复项，0.8.2 已完成，本轮只核验未重做）**：`pinnedModel` 判定与 5 行规则表、
+  `routing.recommended` 用途兜底。
+
+**B. 账户客户端（`node/account-client.js`）**：
+
+- **B1 严格响应校验**：账户域 2xx 响应必须是**合法 JSON 对象且带 PT `code` 字段**、
+  code 表示成功才算成功，否则返回 `error.category:'invalid_response'`（HTML / 空串 /
+  截断 JSON 全部失败，不再退回 `{message:text}` 当成功）。生成域 `/v1/models` 是
+  OpenAI 风格 `{data:[...]}`，只要求合法 JSON 对象。
+- **B2 不编造统计口径**：`data_as_of` / `is_cached` 只**原样透传**响应里服务端返回的
+  统计时间与缓存状态（顶层或 `data` 内的 `data_as_of`/`as_of`/`updated_at`/`server_time`/
+  `timestamp`/`generated_at` 与 `is_cached`/`cached`）；PT 没返回时为 `null`
+  （此前固定填「现在」与 `false`，属于编造，已改）。
+- **B3 AbortSignal + 响应大小上限**：调用方可传 `AbortSignal`（各方法 `{signal}` 或
+  构造器 `cfg.signal`，与内部超时合并，外部取消返回 `category:'aborted'` 区别于
+  `timeout`）；响应读取设上限 `maxResponseBytes`（默认 1 MiB 可配），content-length
+  预检 + 流式边读边限 + text 长度兜底，超限中止并返回 `response_too_large`。
+
+**C. 打包（`node/package.json`）**：
+
+- **C1 补强**：`catalog.schema.snapshot.json` 一并入包（`./catalog-schema` 导出），
+  tgz 在空目录单独安装（不克隆仓库）`loadCatalog()` 可正常读取并通过校验（已实测）。
+- **C2 补强**：`catalogVersion()` 新增 `kit_version`（读包内 `package.json`），与
+  `updated` 一起透出；包版本 0.8.3 / CHANGELOG 0.8.3 / `catalogVersion().kit_version`
+  三处可对账。
+
+**验收**：Node `--test` **48/48**（新增 A1/A2/A3/A4/B1/B2/B3/C1/C2 用例，全部模拟响应
+零真实调用）；`validate_catalog.py` 全通过；Python `run_tests.py` **287/287**；
+空目录 `npm install <tgz>` 干净安装实跑通过。生成链路 `pt_video.py` 0 行改动；
+catalog 模型数据未动（U10 已在 0.8.2 订正）。
+产物 `dist/powertokens-kit-core-0.8.3.tgz`，已附 GitHub Release（含 tgz 与包内
+catalog.json 的 SHA-256）。
+
+---
+
 ## 0.8.2 — 2026-11-16 · 北极星交付 1：pinned 指定模型 / 用途兜底 / U10 订正 / npm pack 自包含
 
 **P0（交付 1 要用）**：

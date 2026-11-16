@@ -13,10 +13,24 @@
  *   - logs/query 必须带 request_id / task_id / consume_id 三者之一，返回单条而非列表
  *   - estimate 不扣费，但不支持对话模型
  *   - 业务判断以响应体 code 为准（无效凭证会返回 HTTP 200 + code=500）
+ *
+ * 0.8.3（北极星 Codex 复核 B1-B3）：
+ *   - B1 严格校验：账户域 2xx 响应必须是合法 JSON 对象且带 PT 的 code 字段，
+ *     code 表示成功才算成功；否则返回 invalid_response（HTML / 空串 / 截断 JSON 均失败）。
+ *     生成域 /v1/models 是 OpenAI 风格 {data:[...]}，只要求合法 JSON 对象。
+ *   - B2 不编造：data_as_of / is_cached 只透传服务端返回的统计时间与缓存状态，
+ *     PT 没返回时为 null（此前固定填"现在"与 false，属于编造，已改）。
+ *   - B3 调用方可传 AbortSignal（与内部超时合并）；响应读取有大小上限
+ *     （默认 1 MiB，maxResponseBytes 可配），超限中止并返回 response_too_large。
  */
 
 const ACCOUNT_BASE_DEFAULT = 'https://powertokens.ai/api';
 const GENERATION_BASE_DEFAULT = 'https://api.powertokens.ai';
+const MAX_RESPONSE_BYTES_DEFAULT = 1048576; // 1 MiB
+
+/** 服务端统计时间 / 缓存状态候选字段。只原样透出，绝不编造。 */
+const SERVER_TIME_KEYS = ['data_as_of', 'as_of', 'updated_at', 'server_time', 'timestamp', 'generated_at'];
+const SERVER_CACHE_KEYS = ['is_cached', 'cached'];
 
 function classifyHttpStatus(status) {
   if (status === 401) return 'auth_invalid';
@@ -37,6 +51,40 @@ function toNumericKeyId(value) {
   return Number.isFinite(n) ? n : null;
 }
 
+/** B2：从响应体（顶层与 data 子对象）里找服务端统计时间与缓存状态；找不到为 null。 */
+function serverMeta(body) {
+  let time = null;
+  let cached = null;
+  const sources = [];
+  if (body && typeof body === 'object' && !Array.isArray(body)) {
+    sources.push(body);
+    const d = body.data;
+    if (d && typeof d === 'object' && !Array.isArray(d)) sources.push(d);
+  }
+  for (const src of sources) {
+    if (time === null) {
+      for (const k of SERVER_TIME_KEYS) {
+        if (src[k] !== undefined && src[k] !== null) { time = src[k]; break; }
+      }
+    }
+    if (cached === null) {
+      for (const k of SERVER_CACHE_KEYS) {
+        if (src[k] !== undefined && src[k] !== null) { cached = src[k]; break; }
+      }
+    }
+  }
+  return { data_as_of: time, is_cached: cached };
+}
+
+/** 统一失败结果（不编造 data_as_of / is_cached）。 */
+function failure(category, message, httpStatus = null) {
+  return {
+    ok: false, code: null, data: null,
+    error: { category, http_status: httpStatus, message: String(message).slice(0, 300) },
+    http_status: httpStatus, data_as_of: null, is_cached: null,
+  };
+}
+
 /** 把 PT 的 {code,data,msg} 统一成一种结果。HTTP 与 code 冲突时以 code 为准。 */
 function normalizeResult(raw, httpStatus, extras = {}) {
   const body = (raw && typeof raw === 'object') ? raw : {};
@@ -49,6 +97,7 @@ function normalizeResult(raw, httpStatus, extras = {}) {
   // code 存在时它是权威；code 缺失才退回 HTTP 判断。
   const ok = code !== null && code !== undefined ? codeOk : httpOk;
   const category = ok ? null : (classifyHttpStatus(httpStatus) || 'business_error');
+  const meta = serverMeta(body);
   return {
     ok,
     code,
@@ -60,8 +109,9 @@ function normalizeResult(raw, httpStatus, extras = {}) {
       message: String(message || (numericCode ? `code=${code}` : 'request failed')),
     },
     http_status: httpStatus,
-    data_as_of: new Date().toISOString(),
-    is_cached: false,
+    // B2：只透传服务端值，没有就 null，不编造
+    data_as_of: meta.data_as_of,
+    is_cached: meta.is_cached,
     ...extras,
   };
 }
@@ -74,6 +124,8 @@ class AccountClient {
    * @param {string} [cfg.baseUrl]
    * @param {string} [cfg.generationBaseUrl]
    * @param {number} [cfg.timeout]     ms
+   * @param {number} [cfg.maxResponseBytes] 响应大小上限（字节），默认 1 MiB（B3）
+   * @param {AbortSignal} [cfg.signal] 客户端级取消信号（B3，与内部超时合并）
    * @param {Function} [cfg.fetchImpl] 可注入，便于离线测试
    * @param {object} [cfg.catalog]     可选，用于拦截 chat 模型的 estimate
    */
@@ -83,6 +135,8 @@ class AccountClient {
     this.baseUrl = (cfg.baseUrl || ACCOUNT_BASE_DEFAULT).replace(/\/$/, '');
     this.generationBaseUrl = (cfg.generationBaseUrl || GENERATION_BASE_DEFAULT).replace(/\/$/, '');
     this.timeout = Number(cfg.timeout || 30000);
+    this.maxResponseBytes = Number(cfg.maxResponseBytes || MAX_RESPONSE_BYTES_DEFAULT);
+    this.signal = cfg.signal || null;
     this.fetchImpl = cfg.fetchImpl || globalThis.fetch;
     this.catalog = cfg.catalog || null;
   }
@@ -104,29 +158,51 @@ class AccountClient {
   }
 
   _credentialError() {
-    return {
-      ok: false, code: null, data: null,
-      error: {
-        category: 'credentials_required', http_status: null,
-        message: '账户接口需要 pt_live_ 个人访问令牌（不是模型 API Key）；'
-          + '构造 AccountClient 时传 token/keyId，或设置 PT_ACCESS_TOKEN / PT_KEY_ID。',
-      },
-      http_status: null, data_as_of: new Date().toISOString(), is_cached: false,
-    };
+    return failure('credentials_required',
+      '账户接口需要 pt_live_ 个人访问令牌（不是模型 API Key）；'
+      + '构造 AccountClient 时传 token/keyId，或设置 PT_ACCESS_TOKEN / PT_KEY_ID。');
   }
 
   _keyIdError() {
-    return {
-      ok: false, code: null, data: null,
-      error: {
-        category: 'invalid_key_id', http_status: null,
-        message: 'key_id 必填且必须是数字；PT 没有「用 API Key 反查 key_id」的接口，需调用方提供。',
-      },
-      http_status: null, data_as_of: new Date().toISOString(), is_cached: false,
-    };
+    return failure('invalid_key_id',
+      'key_id 必填且必须是数字；PT 没有「用 API Key 反查 key_id」的接口，需调用方提供。');
   }
 
-  async _request({ method = 'GET', path, params = null, body = null, auth = 'account', apiKey = null }) {
+  /**
+   * B3：读取响应体，带大小上限。超限返回 null（调用方据此报 response_too_large）。
+   * 优先用 content-length 预检；有可读流就边读边限；否则读完再查长度。
+   */
+  async _readBody(resp) {
+    const cap = this.maxResponseBytes;
+    const headers = resp && resp.headers;
+    if (headers && typeof headers.get === 'function') {
+      const cl = Number(headers.get('content-length'));
+      if (Number.isFinite(cl) && cl > cap) return null;
+    }
+    if (resp && resp.body && typeof resp.body.getReader === 'function') {
+      const reader = resp.body.getReader();
+      const chunks = [];
+      let total = 0;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const size = value ? value.length : 0;
+        total += size;
+        if (total > cap) {
+          try { reader.cancel(); } catch (_) { /* 已取消 */ }
+          return null;
+        }
+        chunks.push(value);
+      }
+      if (!chunks.length) return '';
+      return Buffer.concat(chunks).toString('utf-8');
+    }
+    const text = await resp.text();
+    if (typeof text === 'string' && text.length > cap) return null;
+    return text;
+  }
+
+  async _request({ method = 'GET', path, params = null, body = null, auth = 'account', apiKey = null, signal = null }) {
     if (auth === 'account' && !this._hasCredentials) return this._credentialError();
     const isGeneration = auth === 'generation';
     const base = isGeneration ? this.generationBaseUrl : this.baseUrl;
@@ -142,8 +218,20 @@ class AccountClient {
     if (isGeneration) headers.Authorization = 'Bearer ' + (apiKey || '');
     else headers.Authorization = this.token;      // 裸值，绝不加 Bearer
     if (body !== null) headers['Content-Type'] = 'application/json';
+
+    // B3：外部取消信号与内部超时合并。外部已取消时直接返回，不发请求。
+    const external = signal || this.signal || null;
+    if (external && external.aborted) {
+      return failure('aborted', '调用方在请求前已取消（AbortSignal aborted）。');
+    }
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.timeout);
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; controller.abort(); }, this.timeout);
+    let onAbort = null;
+    if (external) {
+      onAbort = () => controller.abort();
+      external.addEventListener('abort', onAbort, { once: true });
+    }
     try {
       const resp = await this.fetchImpl(url, {
         method,
@@ -151,59 +239,74 @@ class AccountClient {
         body: body === null ? undefined : JSON.stringify(body),
         signal: controller.signal,
       });
-      const text = await resp.text();
-      let parsed = {};
-      try { parsed = text ? JSON.parse(text) : {}; } catch (_) { parsed = { message: text }; }
+      const text = await this._readBody(resp);
+      if (text === null) {
+        return failure('response_too_large',
+          `响应超过大小上限 ${this.maxResponseBytes} 字节，已中止读取。`, resp.status);
+      }
+      // B1：必须是合法 JSON 对象。
+      let parsed;
+      try {
+        parsed = text ? JSON.parse(text) : undefined;
+      } catch (_) {
+        parsed = undefined;
+      }
+      if (parsed === undefined || parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        const preview = typeof text === 'string' ? text.slice(0, 120).replace(/\s+/g, ' ') : '(empty)';
+        return failure('invalid_response',
+          `HTTP ${resp.status} 响应不是合法 JSON 对象（可能是 HTML / 空串 / 截断 JSON）：${preview}`, resp.status);
+      }
+      // B1：账户域还必须有 PT 的 code 字段，以 code 判成功。
+      if (!isGeneration && !('code' in parsed)) {
+        return failure('invalid_response',
+          `HTTP ${resp.status} 响应是 JSON 但缺少 PT code 字段，无法判定业务结果。`, resp.status);
+      }
       return normalizeResult(parsed, resp.status);
     } catch (e) {
-      return {
-        ok: false, code: null, data: null,
-        error: {
-          category: e && e.name === 'AbortError' ? 'timeout' : 'network_error',
-          http_status: null,
-          // 绝不带出令牌：只保留错误类型与消息，且消息不包含 Authorization 头
-          message: String((e && e.message) || 'request failed').slice(0, 300),
-        },
-        http_status: null, data_as_of: new Date().toISOString(), is_cached: false,
-      };
+      const isAbort = e && e.name === 'AbortError';
+      const category = isAbort
+        ? (timedOut ? 'timeout' : (external && external.aborted ? 'aborted' : 'timeout'))
+        : 'network_error';
+      return failure(category,
+        // 绝不带出令牌：只保留错误类型与消息，且消息不包含 Authorization 头
+        (isAbort ? (category === 'aborted' ? '调用方取消了请求。' : '请求超时。') : String((e && e.message) || 'request failed')));
     } finally {
       clearTimeout(timer);
+      if (external && onAbort) {
+        try { external.removeEventListener('abort', onAbort); } catch (_) { /* noop */ }
+      }
     }
   }
 
   /** POST /v1/key/info —— 路径必须带 /v1，GET 或不带都是 404。 */
-  async getKeyStatus(keyId) {
+  async getKeyStatus(keyId, opts = {}) {
     const pre = this._precheck(); if (pre) return pre;
     const kid = keyId === undefined ? this.keyId : keyId;
     const n = toNumericKeyId(kid);
     if (n === null) return this._keyIdError();
-    return this._request({ method: 'POST', path: '/v1/key/info', body: { key_id: n } });
+    return this._request({ method: 'POST', path: '/v1/key/info', body: { key_id: n }, signal: opts.signal });
   }
 
   /** GET /v1/billing/balance?key_id=<数字> —— key_id 必填。金额保留 credits。 */
-  async getBalance() {
+  async getBalance(opts = {}) {
     const pre = this._precheck(); if (pre) return pre;
     const n = this._numericKeyId;
     if (n === null) return this._keyIdError();
-    return this._request({ path: '/v1/billing/balance', params: { key_id: n } });
+    return this._request({ path: '/v1/billing/balance', params: { key_id: n }, signal: opts.signal });
   }
 
   /** GET /v1/billing/usage?key_id=&start_date=&end_date= —— 三者都必填。 */
-  async listUsageRecords({ startDate, endDate, keyId } = {}) {
+  async listUsageRecords({ startDate, endDate, keyId, signal } = {}) {
     const pre = this._precheck(); if (pre) return pre;
     const n = keyId === undefined ? this._numericKeyId : toNumericKeyId(keyId);
     if (n === null) return this._keyIdError();
     if (!startDate || !endDate) {
-      return {
-        ok: false, code: null, data: null,
-        error: { category: 'missing_date_range', http_status: null,
-          message: 'start_date 与 end_date 都必填（YYYY-MM-DD）。' },
-        http_status: null, data_as_of: new Date().toISOString(), is_cached: false,
-      };
+      return failure('missing_date_range', 'start_date 与 end_date 都必填（YYYY-MM-DD）。');
     }
     return this._request({
       path: '/v1/billing/usage',
       params: { key_id: n, start_date: startDate, end_date: endDate },
+      signal,
     });
   }
 
@@ -211,62 +314,56 @@ class AccountClient {
    * GET /v1/logs/query —— 只能按 ID 精确查单条，不是分页列表。
    * 目前没有「按 Key 或时间列出」的接口（SSOT §12.5 / 需求 §5 待确认项）。
    */
-  async getUsageRecord({ requestId, taskId, consumeId } = {}) {
+  async getUsageRecord({ requestId, taskId, consumeId, signal } = {}) {
     const pre = this._precheck(); if (pre) return pre;
     const params = {};
     if (requestId) params.request_id = requestId;
     if (taskId) params.task_id = taskId;
     if (consumeId) params.consume_id = consumeId;
     if (!Object.keys(params).length) {
-      return {
-        ok: false, code: null, data: null,
-        error: { category: 'missing_record_id', http_status: null,
-          message: 'request_id / task_id / consume_id 必须带一个；该端点不支持列表查询。' },
-        http_status: null, data_as_of: new Date().toISOString(), is_cached: false,
-      };
+      return failure('missing_record_id',
+        'request_id / task_id / consume_id 必须带一个；该端点不支持列表查询。');
     }
-    return this._request({ path: '/v1/logs/query', params });
+    return this._request({ path: '/v1/logs/query', params, signal });
   }
 
   /** POST /v1/billing/estimate —— 不扣费（实测 80→80），但不支持对话模型。 */
-  async estimateCost({ model, endpoint, request, keyId, kind } = {}) {
+  async estimateCost({ model, endpoint, request, keyId, kind, signal } = {}) {
     const pre = this._precheck(); if (pre) return pre;
     const resolvedKind = kind || (this.catalog && this.catalog.models &&
       this.catalog.models[model] && this.catalog.models[model].kind) || null;
     if (resolvedKind === 'chat') {
-      return {
-        ok: false, code: null, data: null,
-        error: { category: 'unsupported', http_status: null,
-          message: '费用预估不支持对话模型（PT 实测口径）；对话费用以实际扣费为准。' },
-        http_status: null, data_as_of: new Date().toISOString(), is_cached: false,
-      };
+      return failure('unsupported',
+        '费用预估不支持对话模型（PT 实测口径）；对话费用以实际扣费为准。');
     }
     const n = keyId === undefined ? this._numericKeyId : toNumericKeyId(keyId);
     if (n === null) return this._keyIdError();
     return this._request({
       method: 'POST', path: '/v1/billing/estimate',
       body: { model, endpoint, key_id: n, request: request || {} },
+      signal,
     });
   }
 
   /** GET /v1/asset/agreement/status */
-  async getAgreementStatus() {
+  async getAgreementStatus(opts = {}) {
     const pre = this._precheck(); if (pre) return pre;
-    return this._request({ path: '/v1/asset/agreement/status' });
+    return this._request({ path: '/v1/asset/agreement/status', signal: opts.signal });
   }
 
   /**
    * 生成域：GET /v1/models —— 用模型 API Key 的 Bearer 鉴权。
    * 返回的是「本 Key / 分组可见视图」，不是平台全量清单（F1 已作废）。
+   * 响应是 OpenAI 风格 JSON 对象，不要求 PT code 字段（B1 只对账户域严格）。
    */
-  async getKeyModels(apiKey) {
+  async getKeyModels(apiKey, opts = {}) {
     return this._request({
-      path: '/v1/models', auth: 'generation', apiKey,
+      path: '/v1/models', auth: 'generation', apiKey, signal: opts.signal,
     });
   }
 }
 
 module.exports = {
-  AccountClient, normalizeResult, classifyHttpStatus, toNumericKeyId,
-  ACCOUNT_BASE_DEFAULT, GENERATION_BASE_DEFAULT,
+  AccountClient, normalizeResult, classifyHttpStatus, toNumericKeyId, serverMeta,
+  ACCOUNT_BASE_DEFAULT, GENERATION_BASE_DEFAULT, MAX_RESPONSE_BYTES_DEFAULT,
 };
