@@ -205,12 +205,25 @@ def main():
         lim = models.get(mid, {}).get("limits", {})
         r.check("max_context_tokens" in lim and "max_output_tokens" in lim,
                 "%s.limits 有 max_context_tokens / max_output_tokens 子键" % mid)
-        r.check(lim.get("max_context_tokens") is None and lim.get("max_output_tokens") is None,
-                "%s.limits 无官方来源，值保持 null 不编造" % mid)
+        r.check(isinstance(lim.get("max_context_tokens"), int) and lim["max_context_tokens"] > 0
+                and isinstance(lim.get("max_output_tokens"), int) and lim["max_output_tokens"] > 0,
+                "%s.limits 两个上限均为 /v1/models 实测正整数" % mid)
+        r.check(lim.get("_source") == "models_api", "%s.limits._source == models_api" % mid)
+    api_lims = [(mid, e["limits"]) for mid, e in models.items()
+                if isinstance(e, dict) and isinstance(e.get("limits"), dict)
+                and e["limits"].get("_source") == "models_api"]
+    r.check(len(api_lims) == 30, "恰好 30 个模型 limits 来自 models_api 官方字段（2026-11-17）")
+    r.check(all(isinstance(l["max_context_tokens"], int) and l["max_context_tokens"] > 0
+                and isinstance(l["max_output_tokens"], int) and l["max_output_tokens"] > 0
+                for _, l in api_lims), "所有 models_api limits 值均为正整数")
     lp = d.get("models_api_contract", {}).get("limits_probe", {})
     r.check(lp.get("_source") == "models_api", "limits_probe._source == models_api")
-    r.check(lp.get("limit_like_field_carriers") == 0 and lp.get("model_count") == 77,
-            "limits_probe 记录 77 模型 / 0 个上下限字段")
+    r.check(lp.get("limit_like_field_carriers") == 31 and lp.get("model_count") == 77,
+            "limits_probe 记录 77 模型 / 31 个上下限字段 carrier（2026-11-17）")
+    r.check(lp.get("has_max_context_tokens") is True and lp.get("has_max_output_tokens") is True,
+            "limits_probe.has_max_context_tokens / has_max_output_tokens 均为 true")
+    r.check(lp.get("top_level_context_length_consistent") is True,
+            "limits_probe 顶层 context_length 与 top_provider 逐模型一致")
 
     # --- v2.1：G1 errors 订正 + G2 新增节（依据资料总集 §6.3）--------------
     rp = d.get("retry_policy", {})

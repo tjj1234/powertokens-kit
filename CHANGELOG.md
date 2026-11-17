@@ -6,6 +6,39 @@
 
 ---
 
+## 0.8.5 — 2026-11-17 · /v1/models 上线上下文/输出上限 → limits 实测补值
+
+**来源**：PT 2026-11-17 发版，`GET https://api.powertokens.ai/v1/models` 在每个模型的
+`top_provider` 下新增 `context_length` / `max_completion_tokens` 两个整数 token 字段。
+0 花费只读实测（`实测 > 书面材料`），生成链路 `pt_video.py` 0 行改动。
+
+- **实测**：77 模型（本 Key 视图）中 31 个携带 `top_provider`；顶层 `context_length`
+  与 `top_provider.context_length` 逐模型一致（31/31）。用户贴出的样例
+  `{1048576, 393216}` 经实测确认为 `deepseek-flash`。
+- **补值**：按 `top_provider.context_length → limits.max_context_tokens`、
+  `top_provider.max_completion_tokens → limits.max_output_tokens` 映射，给 catalog 中
+  命中的 **30 个模型**补正整数上限（7 主力替换原 null + 23 个新增 limits），
+  `_source='models_api'`、`_checked_at='2026-11-17'`。31 个 carrier 中唯一未命中的
+  `mimo-v2.6-pro-ultraspeed` 不新增模型；其余 46 个模型无该字段，保持无 limits。
+- **`_source` 裁决**：用 schema 九值枚举中的 `models_api`（定义即"来自 GET /v1/models
+  官方结构化字段"），比笼统的 verified/official 更精确、可被 recheck 自动对账；
+  §14.5 B2 当时的"升为 official/documented/verified"为该场景出现前泛称，本轮以
+  `models_api` 为准，冲突登记于 SSOT §19.2。
+- **代码同步**：`validate_catalog.py` 删除"值必须 null"断言、改校验 30 个正整数；
+  `recheck.py --live-view` 从"不能补值"改为 `top_provider` 逐字段对账（一致→confirmed /
+  catalog null→suggestion / 不一致→conflict，不写回正文）；`catalog.schema.json`
+  描述、Python 单测、node/README 同步。
+- **不改**：`retryDecision` / `selectCandidates` 路由行为、chat 的
+  `works` / `returns_sources`、单价；"按上下文窗口事前预估 compact"仍属可选增强。
+- **验收**：Node 55/55 · Python 287/287 · validate_catalog 全过 · recheck 实测快照
+  limits confirmed 7 / conflicts 0 / suggestions 0（只遍历 chat 类模型）· 0 花费。
+
+产物 `dist/powertokens-kit-core-0.8.5.tgz`（43,755 B），SHA-256
+`e9683b9337e6365bb4964f78079fd52aa2e5adfeeb5fc8e32a3f60edbdb27386`；包内 catalog.json（catalog.snapshot.json）SHA-256
+`ada6498964adb639048496046129c1ac878dc2783981105e9d98bb531adc2892`（LF、0 个 CRLF，与主 catalog 逐字节一致）。附 GitHub Release v0.8.5。
+
+---
+
 ## 0.8.4 — 2026-11-16 · 北极星 Codex 复核第二轮：2 项边界情况（D1 / D2）+ LF 行尾固定
 
 **来源**：北极星主程 Codex 对 0.8.3 `c35ee5b` 的源码复核，产品侧已在 c35ee5b 实际运行复现。

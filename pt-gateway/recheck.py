@@ -109,15 +109,32 @@ def offline_reconcile(cat, live_rows, registry, report, selected):
                     "catalog": vision, "models_api": "input 含 image 且 output 仅 text",
                     "note": "按 PT 判定规则应属理解类；vision 归属待人工裁决（SSOT §13.8 U2）。",
                 })
-        # limits：官方接口没有上下限字段，不能自动补值
+        # limits：/v1/models top_provider 官方上下限字段对账（2026-11-17 PT 上线）
+        # 映射：top_provider.context_length      -> limits.max_context_tokens
+        #       top_provider.max_completion_tokens -> limits.max_output_tokens
+        tp = live.get("top_provider") or {}
+        api_ctx, api_out = tp.get("context_length"), tp.get("max_completion_tokens")
         lim = entry.get("limits")
-        if lim and lim.get("max_context_tokens") is None:
-            report["suggestions"].append({
+        if isinstance(api_ctx, int) and isinstance(api_out, int):
+            cur_ctx = lim.get("max_context_tokens") if lim else None
+            cur_out = lim.get("max_output_tokens") if lim else None
+            item = {
                 "model": mid, "field": "limits.max_context_tokens / max_output_tokens",
-                "current": None, "suggested": None,
-                "note": "无官方来源（/v1/models 77 个模型 0 个上下限字段 carrier），"
-                        "保持 null；需 PT 提供或查官方模型文档，禁止从模型名推断。",
-            })
+                "catalog": {"max_context_tokens": cur_ctx, "max_output_tokens": cur_out,
+                            "_source": lim.get("_source") if lim else None},
+                "models_api": {"context_length": api_ctx, "max_completion_tokens": api_out},
+            }
+            if cur_ctx == api_ctx and cur_out == api_out:
+                item["note"] = "与 /v1/models top_provider 官方字段一致。"
+                report["confirmed"].append(item)
+            elif cur_ctx is None or cur_out is None:
+                item["note"] = "catalog 有 null，建议按 top_provider 官方字段补值"
+                item["note"] += "（_source=models_api）；禁止从模型名推断。"
+                report["suggestions"].append(item)
+            else:
+                item["note"] = "与 /v1/models top_provider 官方字段不一致，需人工裁决；"
+                item["note"] += "探测不覆盖 verified / official / documented 的值。"
+                report["conflicts"].append(item)
 
     # 新上架模型（registry is_new=true）自动生成待复核清单
     for mid, flags in (registry or {}).items():

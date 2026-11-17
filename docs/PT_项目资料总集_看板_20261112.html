@@ -105,12 +105,13 @@
 <div class="wrap">
 
 <header>
-  <h1>PT 项目资料总集 <span class="badge">完整版 v2.7 · 已发布</span><span class="badge b">12/12 全答</span><span class="badge b">§18 已固化</span><span class="badge b">C4/R1/U10 已裁决 + 0.8.4 复核</span></h1>
+  <h1>PT 项目资料总集 <span class="badge">完整版 v2.8 · 已发布</span><span class="badge b">12/12 全答</span><span class="badge b">§19 已固化</span><span class="badge b">C4/R1/U10 已裁决 + limits 实测补值</span></h1>
   <div class="sub">2026-11-12 · 仓库 <code>tjj1234/powertokens-kit</code> ·
     <b>本版把 v1.0「开工前决策摘要」补全为全量资料</b>：逐条问答、问题→影响功能映射、PT 原表、冲突裁决、真机结果、落地清单、文档索引<br>
     主文档 <code>docs/PT_项目资料总集_20261112.md</code>（SSOT） ·
     <b>详细逐条版 <code>docs/PT_问题_答复_影响功能_全量对照_20261112.md</code></b> ·
     发布报告 <code>docs/PT_发布与测试报告_20261112.html</code><br>
+  <b>v2.8（2026-11-17 中午）</b>：PT 在 <code>/v1/models</code> 上线 <code>top_provider.context_length</code> / <code>max_completion_tokens</code>（整数 token）。0 花费只读实测：77 模型中 31 个携带、顶层与 top_provider 逐模型一致、30 个命中 catalog；按映射给 30 个模型补 limits（7 主力替换 + 23 新增），<code>_source=models_api</code>。<b>"limits 无官方来源"阻塞关闭</b>。见 <a href="#s17">§17</a> 与 SSOT §19。<br>
   <b>v2.7（2026-11-16 下午）</b>：北极星 Codex 第二轮复核 2 项边界情况修复（0.8.4）—— D1 <code>code:null</code> 不再当成功（账户域只认明确成功码）、D2 2xx 已受理优先于上下文超长（HTTP 200 + 超长返回 <code>none</code>，避免重复扣费）；加 <code>.gitattributes</code> 固定 JSON 为 LF 消除对账哈希分歧。见 <a href="#s16">§16</a> 与 SSOT §18。<br>
   <b>v2.5（2026-11-16 中午）</b>：北极星交付 1 的 3 项 P0 落地 —— <code>selectCandidates</code> 支持 <code>pinnedModel</code>、<code>retryDecision</code> 支持 <code>pinned</code> 五规则、用途按 <code>routing.recommended</code> 兜底；<b>U10 裁决</b>（PT 确认以实扣为准，<code>wan3.0-video</code> 0.20 → 0.50 verified）；<code>npm pack</code> 自包含 tgz 附 Release 并给 SHA-256。见 <a href="#s14">§14</a> 与 SSOT §16。<br>
   <b>v2.4（2026-11-16 上午）</b>：用户批准单次 1.5 USD，用账户 B 跑一次 5 秒 <code>wan3.0-video</code> 真生成，实扣 <b>500 credits（＄0.5）</b>。<b>C4 视频侧</b>产物落 PT 自有 R2 公共桶（无签名、公开可读、<code>immutable</code> 1y），<b>R1 异步</b> request_id 只在 <code>X-Oneapi-Request-Id</code>；另登记单价三方冲突与 usage 日汇总延迟。见 <a href="#s13">§13</a> 与 SSOT §15。
@@ -122,7 +123,7 @@
   <div class="kpi g"><div class="n">12 / 12</div><div class="l">发给 PT 的 10 必问 + 2 条件项全答</div></div>
   <div class="kpi"><div class="n">Q8 + R11 + S3</div><div class="l">22 个编号问题全部闭环</div></div>
   <div class="kpi v"><div class="n">6 条</div><div class="l">真机硬结论推翻/收紧书面口径（+C4 视频侧/R1 异步/单价）</div></div>
-  <div class="kpi t"><div class="n">287 / 287</div><div class="l">离线测试 PASS · 校验器全过 · Node 55/55（0.8.4）</div></div>
+  <div class="kpi t"><div class="n">287 / 287</div><div class="l">离线测试 PASS · 校验器全过 · Node 55/55（0.8.5）· limits 30 模型已补值</div></div>
   <div class="kpi g"><div class="n">8 + 5</div><div class="l">errors 订正 8 处 · 新增字段组 5 组</div></div>
   <div class="kpi a"><div class="n">C1 已裁决</div><div class="l">2026-11-13 真机：账户域裸值鉴权</div></div>
   <div class="kpi r"><div class="n">F1 作废</div><div class="l">可见视图 ≠ 全量清单 · sync() 已修</div></div>
@@ -159,7 +160,7 @@
   <a href="#s3">3 逐批答复</a><a href="#s4">4 问题→影响功能</a><a href="#s5">5 D4 正式答复</a>
   <a href="#s6">6 冲突裁决</a><a href="#s7">7 真机 T0–T8</a><a href="#s8">8 落地清单</a>
   <a href="#s9">9 文档索引</a><a href="#s10">10 未决项</a><a href="#s11">11 /v1/models 上线</a>
-  <a href="#s12">12 补充需求 0.8.0</a><a href="#s13">13 付费真机实测</a><a href="#s14">14 交付1 P0 0.8.2</a><a href="#s15">15 Codex 复核 0.8.3</a><a href="#s16">16 Codex 复核 0.8.4</a>
+  <a href="#s12">12 补充需求 0.8.0</a><a href="#s13">13 付费真机实测</a><a href="#s14">14 交付1 P0 0.8.2</a><a href="#s15">15 Codex 复核 0.8.3</a><a href="#s16">16 Codex 复核 0.8.4</a><a href="#s17">17 limits 补值 0.8.5</a>
 </nav>
 
 <section id="s0">
@@ -742,8 +743,49 @@
     <b>不改</b>：生成链路 <code>pt_video.py</code>、catalog 模型数据；对话模型的上下文/输出上限待 PT 更新 <code>/v1/models</code> 后另发一版写进 limits。</div>
 </section>
 
+<section id="s17">
+  <h2 class="g">17. `/v1/models` 上线上下文/输出上限 → limits 实测补值（0.8.5）</h2>
+  <div class="sub">2026-11-17 · PT 发版在模型对象 <code>top_provider</code> 下新增
+    <code>context_length</code> / <code>max_completion_tokens</code>（整数 token）。
+    0 花费只读实测，实测 &gt; 书面材料；生成链路 <code>pt_video.py</code> 0 行改动。</div>
+
+  <h3>17.1 实测对账</h3>
+  <div class="scroll"><table>
+    <tr><th style="width:20%">项</th><th>结论</th></tr>
+    <tr><td>字段形态</td><td><code>top_provider: {context_length, max_completion_tokens}</code>，整数 token；用户贴的样例 <code>{1048576, 393216}</code> 实测为 <code>deepseek-flash</code></td></tr>
+    <tr><td>顶层 vs top_provider</td><td>顶层 <code>context_length</code> 与 <code>top_provider.context_length</code> <b>31/31 逐模型一致</b>，按 top_provider 路径取值</td></tr>
+    <tr><td>视图与命中</td><td>77 模型（本 Key 裸名视图）中 31 个携带；30 个命中 catalog（7 主力 + 23 新增），唯一未命中 <code>mimo-v2.6-pro-ultraspeed</code> 不新增模型；其余 46 个（视频/图像/音频）无字段保持无 limits</td></tr>
+    <tr><td><code>_source</code> 裁决</td><td>用 schema 九值枚举专用值 <code>models_api</code>（来自 /v1/models 官方结构化字段、可 recheck 对账）；§14.5 B2 的 official/documented/verified 为出现前泛称，冲突登记 SSOT §19.2 不静默选边</td></tr>
+    <tr><td>阻塞</td><td><b>"limits 数值无官方来源"关闭</b>：官方字段上线并实测补值</td></tr>
+  </table></div>
+
+  <h3>17.2 30 个模型补值（节选 7 主力）</h3>
+  <div class="scroll"><table>
+    <tr><th>模型</th><th>max_context_tokens</th><th>max_output_tokens</th></tr>
+    <tr><td><code>glm-4.7</code></td><td>204800</td><td>131072</td></tr>
+    <tr><td><code>deepseek-v4-pro</code></td><td>1048576</td><td>393216</td></tr>
+    <tr><td><code>qwen3.8-flash</code></td><td>1000000</td><td>131072</td></tr>
+    <tr><td><code>seed-2-0-pro-260328</code></td><td>262144</td><td>131072</td></tr>
+    <tr><td><code>MiniMax-M3</code></td><td>1048576</td><td>512000</td></tr>
+    <tr><td><code>glm-5.2</code></td><td>1048576</td><td>943718</td></tr>
+    <tr><td><code>mimo-v2.6-pro</code></td><td>1050000</td><td>131072</td></tr>
+  </table></div>
+  <div class="sub">完整 30 个清单见 SSOT §19.3。另 23 个原无 limits 的对话模型同步补齐；
+    <code>_source=models_api</code>、<code>_checked_at=2026-11-17</code>。</div>
+
+  <div class="good"><b>验收（0.8.5）</b>：Node <b>55/55</b> · Python <b>287/287</b> ·
+    validate_catalog 全过 · recheck 实测快照 limits confirmed 7 / conflicts 0 / suggestions 0（0 花费，
+    只遍历 chat 类模型）。<code>validate_catalog.py</code> 删除"值必须 null"断言改校验正整数；
+    <code>recheck.py --live-view</code> 从"不能补值"改 top_provider 逐字段对账（不写回正文）。<br>
+    产物 <code>dist/powertokens-kit-core-0.8.5.tgz</code>（43,755 B），SHA-256
+    <code>e9683b9337e6365bb4964f78079fd52aa2e5adfeeb5fc8e32a3f60edbdb27386</code>；包内 catalog.json SHA-256 <code>ada6498964adb639048496046129c1ac878dc2783981105e9d98bb531adc2892</code>
+    （LF，0 CRLF，与主 catalog 逐字节一致）。附 GitHub Release v0.8.5。<br>
+    <b>不改</b>：路由行为、chat 的 works/returns_sources、单价、生成链路；
+    "按上下文窗口事前预估 compact"仍属可选增强。</div>
+</section>
+
 <div class="foot">
-  PT 项目资料总集看板 <b>v2.7 完整版</b> · 2026-11-12 建 / 11-13 账户域实测 / 11-13 下午 <code>/v1/models</code> 上线回写 / 11-16 付费真机定案 C4·R1 / 11-16 交付1 P0 + U10 裁决 / 11-16 Codex 复核两轮（0.8.3 + 0.8.4） ·
+  PT 项目资料总集看板 <b>v2.8 完整版</b> · 2026-11-12 建 / 11-13 账户域实测 / 11-13 下午 <code>/v1/models</code> 上线回写 / 11-16 付费真机定案 C4·R1 / 11-16 交付1 P0 + U10 裁决 / 11-16 Codex 复核两轮（0.8.3 + 0.8.4） / 11-17 <code>/v1/models</code> 上下限字段上线回写 limits（0.8.5） ·
   v1.0 为开工前决策摘要版（7 节 / 264 行），保留于 git 历史<br>
   SSOT <code>docs/PT_项目资料总集_20261112.md</code> · 详细逐条版 <code>docs/PT_问题_答复_影响功能_全量对照_20261112.md</code><br>
   自证（0.8.2）：校验器全通过 · <code>run_tests.py</code> <b>287/287 PASS</b> · <code>node --test</code> <b>35/35 PASS</b> · 唯一付费调用 500 credits（＄0.5，上限 ＄1.5）<br>

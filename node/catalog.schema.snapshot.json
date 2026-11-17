@@ -303,7 +303,7 @@
     },
     "p0Group": {
       "type": "object",
-      "description": "通用 P0 组；每组带 _source / _checked_at。limits 的 max_context_tokens / max_output_tokens 子键形状来自补充需求 §0，值允许 null（无官方来源时不编数值）。",
+      "description": "通用 P0 组；每组带 _source / _checked_at。limits 的 max_context_tokens / max_output_tokens 子键形状来自补充需求 §0。2026-11-17 起 PT /v1/models 在 top_provider 提供 context_length / max_completion_tokens 官方字段，30 个命中模型已按实测补正整数并标 _source=models_api；无该字段的模型仍为 null。",
       "required": [
         "_source",
         "_checked_at"
@@ -323,14 +323,14 @@
             "integer",
             "null"
           ],
-          "description": "上下文窗口上限（token）；无官方来源时为 null"
+          "description": "上下文窗口上限（token）；来自 /v1/models top_provider.context_length（_source=models_api）；无该官方字段时为 null"
         },
         "max_output_tokens": {
           "type": [
             "integer",
             "null"
           ],
-          "description": "单次最大输出（token）；无官方来源时为 null"
+          "description": "单次最大输出（token）；来自 /v1/models top_provider.max_completion_tokens（_source=models_api）；无该官方字段时为 null"
         }
       }
     },

@@ -696,17 +696,41 @@ class TestCatalogV080(unittest.TestCase):
             self.assertIs(True,
                           self.cat["models"][mid]["capabilities"]["multimodal"]["vision"], mid)
 
-    def test_limits_subkeys_present_but_null_without_official_source(self):
+    def test_limits_filled_from_models_api_top_provider(self):
+        """0.8.5：PT 上线 top_provider 官方上下限字段，按实测补值并标 models_api。"""
         probe = self.cat["models_api_contract"]["limits_probe"]
-        self.assertEqual(0, probe["limit_like_field_carriers"])
-        self.assertFalse(probe["has_max_context_tokens"])
-        for mid in ("glm-4.7", "deepseek-v4-pro", "qwen3.8-flash", "seed-2-0-pro-260328",
-                    "MiniMax-M3", "glm-5.2", "mimo-v2.6-pro"):
+        self.assertEqual(31, probe["limit_like_field_carriers"])
+        self.assertTrue(probe["has_max_context_tokens"])
+        self.assertTrue(probe["has_max_output_tokens"])
+        self.assertEqual("top_provider.context_length / top_provider.max_completion_tokens",
+                         probe["limits_field_path"])
+        self.assertTrue(probe["top_level_context_length_consistent"])
+        # 7 个主力：数值逐一对应 2026-11-17 实测
+        expected = {
+            "glm-4.7": (204800, 131072),
+            "deepseek-v4-pro": (1048576, 393216),
+            "qwen3.8-flash": (1000000, 131072),
+            "seed-2-0-pro-260328": (262144, 131072),
+            "MiniMax-M3": (1048576, 512000),
+            "glm-5.2": (1048576, 943718),
+            "mimo-v2.6-pro": (1050000, 131072),
+        }
+        for mid, (ctx, out) in expected.items():
             lim = self.cat["models"][mid]["limits"]
-            self.assertIn("max_context_tokens", lim, mid)
-            self.assertIn("max_output_tokens", lim, mid)
-            self.assertIsNone(lim["max_context_tokens"], mid)
-            self.assertIsNone(lim["max_output_tokens"], mid)
+            self.assertEqual(ctx, lim["max_context_tokens"], mid)
+            self.assertEqual(out, lim["max_output_tokens"], mid)
+            self.assertEqual("models_api", lim["_source"], mid)
+            self.assertEqual("2026-11-17", lim["_checked_at"], mid)
+        # 全部 models_api 来源的 limits 恰好 30 个，值均为正整数
+        api_lims = [(mid, e["limits"]) for mid, e in self.cat["models"].items()
+                    if isinstance(e.get("limits"), dict)
+                    and e["limits"].get("_source") == "models_api"]
+        self.assertEqual(30, len(api_lims))
+        for mid, lim in api_lims:
+            self.assertIsInstance(lim["max_context_tokens"], int, mid)
+            self.assertGreater(lim["max_context_tokens"], 0, mid)
+            self.assertIsInstance(lim["max_output_tokens"], int, mid)
+            self.assertGreater(lim["max_output_tokens"], 0, mid)
 
     def test_live_billing_observations(self):
         """0.8.1 真机观测：只登记证据与冲突，不擅自覆盖已锁定单价。"""

@@ -104,11 +104,25 @@ const e = retryDecision({ status: 403, pinned: true, model: 'gpt-5.2' });
   现在返回 `action:'none'`（加不加 `pinned` 都一样），绝不 compact/retry/switch，避免重复扣费；
   非 2xx（400/422）+ 上下文超长仍 `compact`。
 
+### 0.8.5（/v1/models 上线上下文/输出上限字段 → limits 实测补值）
+
+- PT 在 `GET /v1/models` 每个模型的 `top_provider` 下新增两个整数 token 字段：
+  `context_length` / `max_completion_tokens`。实测 77 模型中 31 个携带，顶层
+  `context_length` 与 `top_provider.context_length` 逐模型一致。
+- 按映射 `top_provider.context_length → limits.max_context_tokens`、
+  `top_provider.max_completion_tokens → limits.max_output_tokens`，给 catalog 中命中的
+  **30 个模型**补上正整数上限，`_source='models_api'`、`_checked_at='2026-11-17'`。
+  无该官方字段的模型 `limits` 仍为 `null`（视频/图像等本就不吃上下文窗口）。
+- 本版只补数据，**不改** `retryDecision` / `selectCandidates` 的路由行为；
+  "按上下文窗口事前预估 compact"仍属可选增强，未纳入。
+- `recheck.py --live-view <models.json>` 现在会对账 `top_provider` 上下限字段
+  （一致→confirmed，catalog null→suggestion，不一致→conflict，不自动写回正文）。
+
 ### 打包（npm pack / vendor 离线使用）
 
 ```bash
-cd node && npm pack              # 生成 dist/powertokens-kit-core-0.8.4.tgz
-sha256sum dist/powertokens-kit-core-0.8.4.tgz
+cd node && npm pack              # 生成 dist/powertokens-kit-core-0.8.5.tgz
+sha256sum dist/powertokens-kit-core-0.8.5.tgz
 ```
 
 tgz 含 `index.js` / `account-client.js` / `catalog.snapshot.json` /

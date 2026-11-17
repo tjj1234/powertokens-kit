@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "updated": "2026-11-16",
+  "updated": "2026-11-17",
   "note": [
     "PT 统一媒体能力目录：agent 通过 list_capabilities 读取，无需再翻文档查模型能力。",
     "execution: sync=一次调用直接返回结果; async=提交拿 task_id 后轮询 task_status。",
@@ -15,33 +15,51 @@
     "scope": "本 Key / 分组可见模型视图，按「Key 模型限额 → 分组启用模型 → HasPricingRuleCandidateForModel + IsModelNameListed 双重过滤」生成；不是平台全量清单，不在列表不等于下架",
     "compatibility": "只增不改：OpenAI 原生字段 id/object/created/owned_by 语义不变；扩展字段 omitempty 纯增量；object=list / success=true 是网关外层包裹，非本次新增；无分页，全量返回",
     "fields": {
-      "always": ["id", "object", "created", "owned_by", "name", "supported_endpoint_types", "architecture"],
-      "architecture": ["modality", "input_modalities", "output_modalities"],
-      "optional": ["supported_parameters", "reasoning", "pricing"]
-    },
-    "limits_probe": {
-      "_source": "models_api",
-      "_checked_at": "2026-11-13",
-      "date": "2026-11-13",
-      "endpoint": "GET https://api.powertokens.ai/v1/models",
-      "http": 200,
-      "cost_usd": 0,
-      "model_count": 77,
-      "field_union": [
+      "always": [
         "id",
         "object",
         "created",
         "owned_by",
         "name",
         "supported_endpoint_types",
-        "architecture",
+        "architecture"
+      ],
+      "architecture": [
+        "modality",
+        "input_modalities",
+        "output_modalities"
+      ],
+      "optional": [
         "supported_parameters",
         "reasoning",
         "pricing"
+      ]
+    },
+    "limits_probe": {
+      "_source": "models_api",
+      "_checked_at": "2026-11-17",
+      "date": "2026-11-17",
+      "endpoint": "GET https://api.powertokens.ai/v1/models",
+      "http": 200,
+      "cost_usd": 0,
+      "model_count": 77,
+      "field_union": [
+        "architecture",
+        "context_length",
+        "created",
+        "id",
+        "name",
+        "object",
+        "owned_by",
+        "pricing",
+        "reasoning",
+        "supported_endpoint_types",
+        "supported_parameters",
+        "top_provider"
       ],
-      "limit_like_field_carriers": 0,
-      "has_max_context_tokens": false,
-      "has_max_output_tokens": false,
+      "limit_like_field_carriers": 31,
+      "has_max_context_tokens": true,
+      "has_max_output_tokens": true,
       "main_models": {
         "glm-4.7": {
           "endpoint_types": [
@@ -133,7 +151,11 @@
           "web_search_options": false
         }
       },
-      "notes": "0 花费只读探测结论：7 个主力模型全部在本 Key 可见视图内；其中 6 个带 reasoning_effort 且 reasoning.default_enabled=true（不传参也会开思考），mimo-v2.6-pro 无 reasoning 字段。只有 qwen3.8-flash 带 web_search_options，而 catalog 里 glm-4.7 的 how_to_enable 仍是 tools:[{type:web_search}]，两者写法冲突且都未经真机验证，故本轮不改写 how_to_enable，登记为待实测项（SSOT §14）。/v1/models 完全没有上下文/输出上限字段，所以 limits 的两个子键只能保持 null，不能从该接口补值。"
+      "notes": "0 花费只读探测（2026-11-17）：PT 已在 /v1/models 增加 top_provider.context_length / top_provider.max_completion_tokens 两个整数 token 字段；77 个模型中 31 个携带，顶层 context_length 与 top_provider.context_length 逐模型一致。31 个 carrier 中 30 个命中 catalog（唯一未命中 mimo-v2.6-pro-ultraspeed，不新增模型）。已按此给 30 个模型补 limits，_source=models_api。2026-11-13 的 0 carrier 观测保留在 main_models 作历史轨迹。",
+      "limits_field_path": "top_provider.context_length / top_provider.max_completion_tokens",
+      "limits_carrier_count": 31,
+      "limits_matched_in_catalog": 30,
+      "top_level_context_length_consistent": true
     },
     "capability_rules": {
       "generation_vs_understanding": "output_modalities 含 image/video/audio → 生成类，input_modalities 是素材输入；output 仅 text 且 input 含 image/video/audio/file → 理解类。判生成类看 output，判理解类看 input，不另加字段",
@@ -825,6 +847,13 @@
           "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
           "thinking": "仅 qwen3 系列 / qwq 系列支持"
         }
+      },
+      "limits": {
+        "max_context_tokens": 262144,
+        "max_output_tokens": 131072,
+        "_source": "models_api",
+        "_checked_at": "2026-11-17",
+        "notes": "【0.8.5 实测新增】来源同上：GET /v1/models 官方字段 top_provider.context_length / max_completion_tokens（2026-11-17）。此前该模型无 limits 键；_source=models_api。"
       }
     },
     "qwen3.6-plus": {
@@ -852,6 +881,13 @@
           "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
           "thinking": "仅 qwen3 系列 / qwq 系列支持"
         }
+      },
+      "limits": {
+        "max_context_tokens": 1000000,
+        "max_output_tokens": 65536,
+        "_source": "models_api",
+        "_checked_at": "2026-11-17",
+        "notes": "【0.8.5 实测新增】来源同上：GET /v1/models 官方字段 top_provider.context_length / max_completion_tokens（2026-11-17）。此前该模型无 limits 键；_source=models_api。"
       }
     },
     "qwen3.7-max": {
@@ -879,6 +915,13 @@
           "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
           "thinking": "仅 qwen3 系列 / qwq 系列支持"
         }
+      },
+      "limits": {
+        "max_context_tokens": 1000000,
+        "max_output_tokens": 131072,
+        "_source": "models_api",
+        "_checked_at": "2026-11-17",
+        "notes": "【0.8.5 实测新增】来源同上：GET /v1/models 官方字段 top_provider.context_length / max_completion_tokens（2026-11-17）。此前该模型无 limits 键；_source=models_api。"
       }
     },
     "qwen3.7-plus": {
@@ -906,6 +949,13 @@
           "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
           "thinking": "仅 qwen3 系列 / qwq 系列支持"
         }
+      },
+      "limits": {
+        "max_context_tokens": 1000000,
+        "max_output_tokens": 131072,
+        "_source": "models_api",
+        "_checked_at": "2026-11-17",
+        "notes": "【0.8.5 实测新增】来源同上：GET /v1/models 官方字段 top_provider.context_length / max_completion_tokens（2026-11-17）。此前该模型无 limits 键；_source=models_api。"
       }
     },
     "qwen3.8-flash": {
@@ -935,11 +985,11 @@
         }
       },
       "limits": {
-        "max_context_tokens": null,
-        "max_output_tokens": null,
-        "_source": "inferred",
-        "_checked_at": "2026-11-13",
-        "notes": "【0.8.0 结构补齐】键名按《powertokens-kit catalog 补充需求》§0 P0 指定（模板第 2 节）。数值一律 null：2026-11-13 真机 GET /v1/models（77 个模型）字段并集只有 id/object/created/owned_by/name/supported_endpoint_types/architecture/supported_parameters/reasoning/pricing，无任何上下文或输出上限字段（0 个 carrier），PT 2.0.0 文档亦未提供；按 A3「不知道填 null，不猜」处理。待 PT 给出上限或官方模型文档到位后补值并把 _source 升为 official/documented/verified。结构补齐不等于需求 1 完成，见 models_api_contract.limits_probe 与 SSOT §14。"
+        "max_context_tokens": 1000000,
+        "max_output_tokens": 131072,
+        "_source": "models_api",
+        "_checked_at": "2026-11-17",
+        "notes": "【0.8.5 实测补值】2026-11-17 GET /v1/models 官方结构化字段 top_provider.context_length / max_completion_tokens；顶层 context_length 与 top_provider.context_length 在 31 个 carrier 上逐模型一致。_source=models_api。0.8.0 时该接口 0 carrier、占位 null，现按实测替换。"
       },
       "tool_calling": {
         "verified": null,
@@ -990,6 +1040,13 @@
           "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
           "thinking": "仅 qwen3 系列 / qwq 系列支持"
         }
+      },
+      "limits": {
+        "max_context_tokens": 262144,
+        "max_output_tokens": 131072,
+        "_source": "models_api",
+        "_checked_at": "2026-11-17",
+        "notes": "【0.8.5 实测新增】来源同上：GET /v1/models 官方字段 top_provider.context_length / max_completion_tokens（2026-11-17）。此前该模型无 limits 键；_source=models_api。"
       }
     },
     "deepseek-v3-2-251201": {
@@ -1044,6 +1101,13 @@
           "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
           "thinking": "需客户端显式传参；上游是否生效以渠道文档/实测为准"
         }
+      },
+      "limits": {
+        "max_context_tokens": 1048576,
+        "max_output_tokens": 393216,
+        "_source": "models_api",
+        "_checked_at": "2026-11-17",
+        "notes": "【0.8.5 实测新增】来源同上：GET /v1/models 官方字段 top_provider.context_length / max_completion_tokens（2026-11-17）。此前该模型无 limits 键；_source=models_api。"
       }
     },
     "dola-seed-2-1-turbo-260628": {
@@ -1235,11 +1299,11 @@
         }
       },
       "limits": {
-        "max_context_tokens": null,
-        "max_output_tokens": null,
-        "_source": "inferred",
-        "_checked_at": "2026-11-13",
-        "notes": "【0.8.0 结构补齐】键名按《powertokens-kit catalog 补充需求》§0 P0 指定（模板第 2 节）。数值一律 null：2026-11-13 真机 GET /v1/models（77 个模型）字段并集只有 id/object/created/owned_by/name/supported_endpoint_types/architecture/supported_parameters/reasoning/pricing，无任何上下文或输出上限字段（0 个 carrier），PT 2.0.0 文档亦未提供；按 A3「不知道填 null，不猜」处理。待 PT 给出上限或官方模型文档到位后补值并把 _source 升为 official/documented/verified。结构补齐不等于需求 1 完成，见 models_api_contract.limits_probe 与 SSOT §14。"
+        "max_context_tokens": 262144,
+        "max_output_tokens": 131072,
+        "_source": "models_api",
+        "_checked_at": "2026-11-17",
+        "notes": "【0.8.5 实测补值】2026-11-17 GET /v1/models 官方结构化字段 top_provider.context_length / max_completion_tokens；顶层 context_length 与 top_provider.context_length 在 31 个 carrier 上逐模型一致。_source=models_api。0.8.0 时该接口 0 carrier、占位 null，现按实测替换。"
       },
       "tool_calling": {
         "verified": null,
@@ -1289,6 +1353,13 @@
         "notes": {
           "web_search": "DeepSeek 官方 API 无联网搜索能力"
         }
+      },
+      "limits": {
+        "max_context_tokens": 1048576,
+        "max_output_tokens": 393216,
+        "_source": "models_api",
+        "_checked_at": "2026-11-17",
+        "notes": "【0.8.5 实测新增】来源同上：GET /v1/models 官方字段 top_provider.context_length / max_completion_tokens（2026-11-17）。此前该模型无 limits 键；_source=models_api。"
       }
     },
     "deepseek-v4-pro": {
@@ -1317,11 +1388,11 @@
         }
       },
       "limits": {
-        "max_context_tokens": null,
-        "max_output_tokens": null,
-        "_source": "inferred",
-        "_checked_at": "2026-11-13",
-        "notes": "【0.8.0 结构补齐】键名按《powertokens-kit catalog 补充需求》§0 P0 指定（模板第 2 节）。数值一律 null：2026-11-13 真机 GET /v1/models（77 个模型）字段并集只有 id/object/created/owned_by/name/supported_endpoint_types/architecture/supported_parameters/reasoning/pricing，无任何上下文或输出上限字段（0 个 carrier），PT 2.0.0 文档亦未提供；按 A3「不知道填 null，不猜」处理。待 PT 给出上限或官方模型文档到位后补值并把 _source 升为 official/documented/verified。结构补齐不等于需求 1 完成，见 models_api_contract.limits_probe 与 SSOT §14。"
+        "max_context_tokens": 1048576,
+        "max_output_tokens": 393216,
+        "_source": "models_api",
+        "_checked_at": "2026-11-17",
+        "notes": "【0.8.5 实测补值】2026-11-17 GET /v1/models 官方结构化字段 top_provider.context_length / max_completion_tokens；顶层 context_length 与 top_provider.context_length 在 31 个 carrier 上逐模型一致。_source=models_api。0.8.0 时该接口 0 carrier、占位 null，现按实测替换。"
       },
       "tool_calling": {
         "verified": null,
@@ -1363,6 +1434,13 @@
           "web_search": "mimo 不支持联网搜索",
           "thinking": "网关无专门字段处理，仅透传 thinking，需上游实测"
         }
+      },
+      "limits": {
+        "max_context_tokens": 1050000,
+        "max_output_tokens": 131072,
+        "_source": "models_api",
+        "_checked_at": "2026-11-17",
+        "notes": "【0.8.5 实测新增】来源同上：GET /v1/models 官方字段 top_provider.context_length / max_completion_tokens（2026-11-17）。此前该模型无 limits 键；_source=models_api。"
       }
     },
     "mimo-v2.6-pro": {
@@ -1392,11 +1470,11 @@
         }
       },
       "limits": {
-        "max_context_tokens": null,
-        "max_output_tokens": null,
-        "_source": "inferred",
-        "_checked_at": "2026-11-13",
-        "notes": "【0.8.0 结构补齐】键名按《powertokens-kit catalog 补充需求》§0 P0 指定（模板第 2 节）。数值一律 null：2026-11-13 真机 GET /v1/models（77 个模型）字段并集只有 id/object/created/owned_by/name/supported_endpoint_types/architecture/supported_parameters/reasoning/pricing，无任何上下文或输出上限字段（0 个 carrier），PT 2.0.0 文档亦未提供；按 A3「不知道填 null，不猜」处理。待 PT 给出上限或官方模型文档到位后补值并把 _source 升为 official/documented/verified。结构补齐不等于需求 1 完成，见 models_api_contract.limits_probe 与 SSOT §14。"
+        "max_context_tokens": 1050000,
+        "max_output_tokens": 131072,
+        "_source": "models_api",
+        "_checked_at": "2026-11-17",
+        "notes": "【0.8.5 实测补值】2026-11-17 GET /v1/models 官方结构化字段 top_provider.context_length / max_completion_tokens；顶层 context_length 与 top_provider.context_length 在 31 个 carrier 上逐模型一致。_source=models_api。0.8.0 时该接口 0 carrier、占位 null，现按实测替换。"
       },
       "tool_calling": {
         "verified": null,
@@ -1437,6 +1515,13 @@
         "notes": {
           "web_search": "MiniMax chat 官方仅保障基础字段"
         }
+      },
+      "limits": {
+        "max_context_tokens": 198000,
+        "max_output_tokens": 176947,
+        "_source": "models_api",
+        "_checked_at": "2026-11-17",
+        "notes": "【0.8.5 实测新增】来源同上：GET /v1/models 官方字段 top_provider.context_length / max_completion_tokens（2026-11-17）。此前该模型无 limits 键；_source=models_api。"
       }
     },
     "MiniMax-M2.5-highspeed": {
@@ -1463,6 +1548,13 @@
         "notes": {
           "web_search": "MiniMax chat 官方仅保障基础字段"
         }
+      },
+      "limits": {
+        "max_context_tokens": 1048576,
+        "max_output_tokens": 512000,
+        "_source": "models_api",
+        "_checked_at": "2026-11-17",
+        "notes": "【0.8.5 实测新增】来源同上：GET /v1/models 官方字段 top_provider.context_length / max_completion_tokens（2026-11-17）。此前该模型无 limits 键；_source=models_api。"
       }
     },
     "MiniMax-M2.7": {
@@ -1489,6 +1581,13 @@
         "notes": {
           "web_search": "MiniMax chat 官方仅保障基础字段"
         }
+      },
+      "limits": {
+        "max_context_tokens": 196608,
+        "max_output_tokens": 176947,
+        "_source": "models_api",
+        "_checked_at": "2026-11-17",
+        "notes": "【0.8.5 实测新增】来源同上：GET /v1/models 官方字段 top_provider.context_length / max_completion_tokens（2026-11-17）。此前该模型无 limits 键；_source=models_api。"
       }
     },
     "MiniMax-M2.7-highspeed": {
@@ -1515,6 +1614,13 @@
         "notes": {
           "web_search": "MiniMax chat 官方仅保障基础字段"
         }
+      },
+      "limits": {
+        "max_context_tokens": 1048576,
+        "max_output_tokens": 512000,
+        "_source": "models_api",
+        "_checked_at": "2026-11-17",
+        "notes": "【0.8.5 实测新增】来源同上：GET /v1/models 官方字段 top_provider.context_length / max_completion_tokens（2026-11-17）。此前该模型无 limits 键；_source=models_api。"
       }
     },
     "MiniMax-M3": {
@@ -1543,11 +1649,11 @@
         }
       },
       "limits": {
-        "max_context_tokens": null,
-        "max_output_tokens": null,
-        "_source": "inferred",
-        "_checked_at": "2026-11-13",
-        "notes": "【0.8.0 结构补齐】键名按《powertokens-kit catalog 补充需求》§0 P0 指定（模板第 2 节）。数值一律 null：2026-11-13 真机 GET /v1/models（77 个模型）字段并集只有 id/object/created/owned_by/name/supported_endpoint_types/architecture/supported_parameters/reasoning/pricing，无任何上下文或输出上限字段（0 个 carrier），PT 2.0.0 文档亦未提供；按 A3「不知道填 null，不猜」处理。待 PT 给出上限或官方模型文档到位后补值并把 _source 升为 official/documented/verified。结构补齐不等于需求 1 完成，见 models_api_contract.limits_probe 与 SSOT §14。"
+        "max_context_tokens": 1048576,
+        "max_output_tokens": 512000,
+        "_source": "models_api",
+        "_checked_at": "2026-11-17",
+        "notes": "【0.8.5 实测补值】2026-11-17 GET /v1/models 官方结构化字段 top_provider.context_length / max_completion_tokens；顶层 context_length 与 top_provider.context_length 在 31 个 carrier 上逐模型一致。_source=models_api。0.8.0 时该接口 0 carrier、占位 null，现按实测替换。"
       },
       "tool_calling": {
         "verified": null,
@@ -1588,6 +1694,13 @@
         "notes": {
           "web_search": "MiniMax chat 官方仅保障基础字段"
         }
+      },
+      "limits": {
+        "max_context_tokens": 1048576,
+        "max_output_tokens": 524288,
+        "_source": "models_api",
+        "_checked_at": "2026-11-17",
+        "notes": "【0.8.5 实测新增】来源同上：GET /v1/models 官方字段 top_provider.context_length / max_completion_tokens（2026-11-17）。此前该模型无 limits 键；_source=models_api。"
       }
     },
     "glm-4.5-air": {
@@ -1615,6 +1728,13 @@
           "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
           "thinking": "需客户端显式传参；上游是否生效以渠道文档/实测为准"
         }
+      },
+      "limits": {
+        "max_context_tokens": 131072,
+        "max_output_tokens": 98304,
+        "_source": "models_api",
+        "_checked_at": "2026-11-17",
+        "notes": "【0.8.5 实测新增】来源同上：GET /v1/models 官方字段 top_provider.context_length / max_completion_tokens（2026-11-17）。此前该模型无 limits 键；_source=models_api。"
       }
     },
     "glm-4.7": {
@@ -1644,11 +1764,11 @@
         }
       },
       "limits": {
-        "max_context_tokens": null,
-        "max_output_tokens": null,
-        "_source": "inferred",
-        "_checked_at": "2026-11-13",
-        "notes": "【0.8.0 结构补齐】键名按《powertokens-kit catalog 补充需求》§0 P0 指定（模板第 2 节）。数值一律 null：2026-11-13 真机 GET /v1/models（77 个模型）字段并集只有 id/object/created/owned_by/name/supported_endpoint_types/architecture/supported_parameters/reasoning/pricing，无任何上下文或输出上限字段（0 个 carrier），PT 2.0.0 文档亦未提供；按 A3「不知道填 null，不猜」处理。待 PT 给出上限或官方模型文档到位后补值并把 _source 升为 official/documented/verified。结构补齐不等于需求 1 完成，见 models_api_contract.limits_probe 与 SSOT §14。"
+        "max_context_tokens": 204800,
+        "max_output_tokens": 131072,
+        "_source": "models_api",
+        "_checked_at": "2026-11-17",
+        "notes": "【0.8.5 实测补值】2026-11-17 GET /v1/models 官方结构化字段 top_provider.context_length / max_completion_tokens；顶层 context_length 与 top_provider.context_length 在 31 个 carrier 上逐模型一致。_source=models_api。0.8.0 时该接口 0 carrier、占位 null，现按实测替换。"
       },
       "tool_calling": {
         "verified": null,
@@ -1699,6 +1819,13 @@
           "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
           "thinking": "需客户端显式传参；上游是否生效以渠道文档/实测为准"
         }
+      },
+      "limits": {
+        "max_context_tokens": 200000,
+        "max_output_tokens": 117964,
+        "_source": "models_api",
+        "_checked_at": "2026-11-17",
+        "notes": "【0.8.5 实测新增】来源同上：GET /v1/models 官方字段 top_provider.context_length / max_completion_tokens（2026-11-17）。此前该模型无 limits 键；_source=models_api。"
       }
     },
     "glm-5": {
@@ -1726,6 +1853,13 @@
           "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
           "thinking": "需客户端显式传参；上游是否生效以渠道文档/实测为准"
         }
+      },
+      "limits": {
+        "max_context_tokens": 204800,
+        "max_output_tokens": 131072,
+        "_source": "models_api",
+        "_checked_at": "2026-11-17",
+        "notes": "【0.8.5 实测新增】来源同上：GET /v1/models 官方字段 top_provider.context_length / max_completion_tokens（2026-11-17）。此前该模型无 limits 键；_source=models_api。"
       }
     },
     "glm-5-turbo": {
@@ -1753,6 +1887,13 @@
           "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
           "thinking": "需客户端显式传参；上游是否生效以渠道文档/实测为准"
         }
+      },
+      "limits": {
+        "max_context_tokens": 202752,
+        "max_output_tokens": 131072,
+        "_source": "models_api",
+        "_checked_at": "2026-11-17",
+        "notes": "【0.8.5 实测新增】来源同上：GET /v1/models 官方字段 top_provider.context_length / max_completion_tokens（2026-11-17）。此前该模型无 limits 键；_source=models_api。"
       }
     },
     "glm-5.1": {
@@ -1780,6 +1921,13 @@
           "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
           "thinking": "需客户端显式传参；上游是否生效以渠道文档/实测为准"
         }
+      },
+      "limits": {
+        "max_context_tokens": 204800,
+        "max_output_tokens": 182476,
+        "_source": "models_api",
+        "_checked_at": "2026-11-17",
+        "notes": "【0.8.5 实测新增】来源同上：GET /v1/models 官方字段 top_provider.context_length / max_completion_tokens（2026-11-17）。此前该模型无 limits 键；_source=models_api。"
       }
     },
     "glm-5.2": {
@@ -1809,11 +1957,11 @@
         }
       },
       "limits": {
-        "max_context_tokens": null,
-        "max_output_tokens": null,
-        "_source": "inferred",
-        "_checked_at": "2026-11-13",
-        "notes": "【0.8.0 结构补齐】键名按《powertokens-kit catalog 补充需求》§0 P0 指定（模板第 2 节）。数值一律 null：2026-11-13 真机 GET /v1/models（77 个模型）字段并集只有 id/object/created/owned_by/name/supported_endpoint_types/architecture/supported_parameters/reasoning/pricing，无任何上下文或输出上限字段（0 个 carrier），PT 2.0.0 文档亦未提供；按 A3「不知道填 null，不猜」处理。待 PT 给出上限或官方模型文档到位后补值并把 _source 升为 official/documented/verified。结构补齐不等于需求 1 完成，见 models_api_contract.limits_probe 与 SSOT §14。"
+        "max_context_tokens": 1048576,
+        "max_output_tokens": 943718,
+        "_source": "models_api",
+        "_checked_at": "2026-11-17",
+        "notes": "【0.8.5 实测补值】2026-11-17 GET /v1/models 官方结构化字段 top_provider.context_length / max_completion_tokens；顶层 context_length 与 top_provider.context_length 在 31 个 carrier 上逐模型一致。_source=models_api。0.8.0 时该接口 0 carrier、占位 null，现按实测替换。"
       },
       "tool_calling": {
         "verified": null,
@@ -1864,6 +2012,13 @@
           "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
           "thinking": "需客户端显式传参；上游是否生效以渠道文档/实测为准"
         }
+      },
+      "limits": {
+        "max_context_tokens": 1048576,
+        "max_output_tokens": 943718,
+        "_source": "models_api",
+        "_checked_at": "2026-11-17",
+        "notes": "【0.8.5 实测新增】来源同上：GET /v1/models 官方字段 top_provider.context_length / max_completion_tokens（2026-11-17）。此前该模型无 limits 键；_source=models_api。"
       }
     },
     "glm-5.3-flash": {
@@ -1891,6 +2046,13 @@
           "web_search": "网关不注入；需客户端显式传参；实际可用模型由上游白名单决定（非所有模型都支持）",
           "thinking": "需客户端显式传参；上游是否生效以渠道文档/实测为准"
         }
+      },
+      "limits": {
+        "max_context_tokens": 1048576,
+        "max_output_tokens": 131072,
+        "_source": "models_api",
+        "_checked_at": "2026-11-17",
+        "notes": "【0.8.5 实测新增】来源同上：GET /v1/models 官方字段 top_provider.context_length / max_completion_tokens（2026-11-17）。此前该模型无 limits 键；_source=models_api。"
       }
     },
     "qwen-image-3.0-pro": {
@@ -1972,7 +2134,14 @@
       "execution": "sync",
       "submit": "/v1/images/generations",
       "poll": null,
-      "kind": "image"
+      "kind": "image",
+      "limits": {
+        "max_context_tokens": 262144,
+        "max_output_tokens": 131072,
+        "_source": "models_api",
+        "_checked_at": "2026-11-17",
+        "notes": "【0.8.5 实测新增】来源同上：GET /v1/models 官方字段 top_provider.context_length / max_completion_tokens（2026-11-17）。此前该模型无 limits 键；_source=models_api。"
+      }
     },
     "viduq2": {
       "params_observed": [],
@@ -2121,7 +2290,14 @@
       "execution": "async",
       "submit": "/v1/videos",
       "poll": "/v1/videos/{task_id}",
-      "kind": "video"
+      "kind": "video",
+      "limits": {
+        "max_context_tokens": 1048576,
+        "max_output_tokens": 512000,
+        "_source": "models_api",
+        "_checked_at": "2026-11-17",
+        "notes": "【0.8.5 实测新增】来源同上：GET /v1/models 官方字段 top_provider.context_length / max_completion_tokens（2026-11-17）。此前该模型无 limits 键；_source=models_api。"
+      }
     },
     "MiniMax-H3-Max": {
       "params_observed": [],
@@ -2129,7 +2305,14 @@
       "execution": "async",
       "submit": "/v1/videos",
       "poll": "/v1/videos/{task_id}",
-      "kind": "video"
+      "kind": "video",
+      "limits": {
+        "max_context_tokens": 1048576,
+        "max_output_tokens": 512000,
+        "_source": "models_api",
+        "_checked_at": "2026-11-17",
+        "notes": "【0.8.5 实测新增】来源同上：GET /v1/models 官方字段 top_provider.context_length / max_completion_tokens（2026-11-17）。此前该模型无 limits 键；_source=models_api。"
+      }
     },
     "MiniMax-Hailuo-02": {
       "params_observed": [],
