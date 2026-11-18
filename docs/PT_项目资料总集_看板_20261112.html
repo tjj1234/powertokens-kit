@@ -105,13 +105,13 @@
 <div class="wrap">
 
 <header>
-  <h1>PT 项目资料总集 <span class="badge">完整版 v2.8 · 已发布</span><span class="badge b">12/12 全答</span><span class="badge b">§19 已固化</span><span class="badge b">C4/R1/U10 已裁决 + limits 实测补值</span></h1>
+  <h1>PT 项目资料总集 <span class="badge">完整版 v2.9 · 已发布</span><span class="badge b">12/12 全答</span><span class="badge b">§20 已固化</span><span class="badge b">C4/R1/U10 已裁决 + 未查到二级判定</span></h1>
   <div class="sub">2026-11-12 · 仓库 <code>tjj1234/powertokens-kit</code> ·
     <b>本版把 v1.0「开工前决策摘要」补全为全量资料</b>：逐条问答、问题→影响功能映射、PT 原表、冲突裁决、真机结果、落地清单、文档索引<br>
     主文档 <code>docs/PT_项目资料总集_20261112.md</code>（SSOT） ·
     <b>详细逐条版 <code>docs/PT_问题_答复_影响功能_全量对照_20261112.md</code></b> ·
     发布报告 <code>docs/PT_发布与测试报告_20261112.html</code><br>
-  <b>v2.8（2026-11-17 中午）</b>：PT 在 <code>/v1/models</code> 上线 <code>top_provider.context_length</code> / <code>max_completion_tokens</code>（整数 token）。0 花费只读实测：77 模型中 31 个携带、顶层与 top_provider 逐模型一致、30 个命中 catalog；按映射给 30 个模型补 limits（7 主力替换 + 23 新增），<code>_source=models_api</code>。<b>"limits 无官方来源"阻塞关闭</b>。见 <a href="#s17">§17</a> 与 SSOT §19。<br>
+  <b>v2.9（2026-11-18）</b>：消费记录「未查到」二级判定（0.8.6）—— PT 优化为 500+record not found，真机实测确认；与既有 200+空壳形态并存；getUsageRecord 输出结构化 found/category，record_not_found / empty_record 分类可区分，found:false 不可当零扣费或重发依据。<b>v2.8（2026-11-17 中午）</b>：PT 在 <code>/v1/models</code> 上线 <code>top_provider.context_length</code> / <code>max_completion_tokens</code>（整数 token）。0 花费只读实测：77 模型中 31 个携带、顶层与 top_provider 逐模型一致、30 个命中 catalog；按映射给 30 个模型补 limits（7 主力替换 + 23 新增），<code>_source=models_api</code>。<b>"limits 无官方来源"阻塞关闭</b>。见 <a href="#s17">§17</a><a href="#s18">§18</a> 与 SSOT §19。<br>
   <b>v2.7（2026-11-16 下午）</b>：北极星 Codex 第二轮复核 2 项边界情况修复（0.8.4）—— D1 <code>code:null</code> 不再当成功（账户域只认明确成功码）、D2 2xx 已受理优先于上下文超长（HTTP 200 + 超长返回 <code>none</code>，避免重复扣费）；加 <code>.gitattributes</code> 固定 JSON 为 LF 消除对账哈希分歧。见 <a href="#s16">§16</a> 与 SSOT §18。<br>
   <b>v2.5（2026-11-16 中午）</b>：北极星交付 1 的 3 项 P0 落地 —— <code>selectCandidates</code> 支持 <code>pinnedModel</code>、<code>retryDecision</code> 支持 <code>pinned</code> 五规则、用途按 <code>routing.recommended</code> 兜底；<b>U10 裁决</b>（PT 确认以实扣为准，<code>wan3.0-video</code> 0.20 → 0.50 verified）；<code>npm pack</code> 自包含 tgz 附 Release 并给 SHA-256。见 <a href="#s14">§14</a> 与 SSOT §16。<br>
   <b>v2.4（2026-11-16 上午）</b>：用户批准单次 1.5 USD，用账户 B 跑一次 5 秒 <code>wan3.0-video</code> 真生成，实扣 <b>500 credits（＄0.5）</b>。<b>C4 视频侧</b>产物落 PT 自有 R2 公共桶（无签名、公开可读、<code>immutable</code> 1y），<b>R1 异步</b> request_id 只在 <code>X-Oneapi-Request-Id</code>；另登记单价三方冲突与 usage 日汇总延迟。见 <a href="#s13">§13</a> 与 SSOT §15。
@@ -123,7 +123,7 @@
   <div class="kpi g"><div class="n">12 / 12</div><div class="l">发给 PT 的 10 必问 + 2 条件项全答</div></div>
   <div class="kpi"><div class="n">Q8 + R11 + S3</div><div class="l">22 个编号问题全部闭环</div></div>
   <div class="kpi v"><div class="n">6 条</div><div class="l">真机硬结论推翻/收紧书面口径（+C4 视频侧/R1 异步/单价）</div></div>
-  <div class="kpi t"><div class="n">287 / 287</div><div class="l">离线测试 PASS · 校验器全过 · Node 55/55（0.8.5）· limits 30 模型已补值</div></div>
+  <div class="kpi t"><div class="n">287 / 287</div><div class="l">离线测试 PASS · 校验器全过 · Node 62/62（0.8.6）· limits 30 模型已补值</div></div>
   <div class="kpi g"><div class="n">8 + 5</div><div class="l">errors 订正 8 处 · 新增字段组 5 组</div></div>
   <div class="kpi a"><div class="n">C1 已裁决</div><div class="l">2026-11-13 真机：账户域裸值鉴权</div></div>
   <div class="kpi r"><div class="n">F1 作废</div><div class="l">可见视图 ≠ 全量清单 · sync() 已修</div></div>
@@ -784,8 +784,28 @@
     "按上下文窗口事前预估 compact"仍属可选增强。</div>
 </section>
 
+
+<section id="s18">
+  <h2>18. 2026-11-18 消费记录「未查到」二级判定（0.8.6）</h2>
+  <div class="h2sub">PT 答复 + 两组凭证真机实测（只读 0 花费）· 两种「没查到」形态并存、互不替代 · 详见 SSOT §20</div>
+  <div class="grid3">
+    <div class="card"><h3>① Key 信息接口</h3><p>PT 确认 <code>POST /v1/key/info</code> + body 整数 <code>key_id</code>。与 kit 现状一致，<b>代码不改</b>，排除 GET+body（fetch 不支持）的坑。</p></div>
+    <div class="card"><h3>② 空消费记录</h3><p>PT 已优化：内部 newAPI 判存在，false→500 / true→200。真机实测确认新形态，<code>getUsageRecord</code> 加二级判定。</p></div>
+    <div class="card"><h3>③ 请求 ID</h3><p>PT 暂未回复。保留既有证据边界（仅流式 chat + 本次模型已验证），不推广、等回复。</p></div>
+  </div>
+  <div class="note"><b>两种形态并存</b>：<b>A 新</b>（2026-11-18 实测）HTTP 200 + <code>{code:500, data:null, msg:"record not found"}</code>（两组凭证、consume_id/request_id 三查询一致，令牌脱敏、用完即删）；<b>B 旧</b>（§12.5 N1 / §15.3）<code>code=200</code> 但标识/模型/状态全空、金额零。二者不能互相替代。</div>
+  <div class="good"><b>getUsageRecord 返回契约（0.8.6，仅此接口）</b>：对账只读结构化 <code>found</code> / <code>error.category</code>，<b>不解析 PT 的 msg</b>。<br>
+    有效记录 → <code>ok:true, found:true</code>（金额零但标识/状态完整仍是有效记录）·
+    明确未找到 → <code>found:false, category:'record_not_found'</code> ·
+    200 空壳 → <code>found:false, category:'empty_record'</code>（与前者不同分类）·
+    其他错误 → 原分类不变，<code>found:null</code>（未判定）。<br>
+    <b>关键边界</b>：<code>found:false</code> 仅表示本次未查到，<b>不代表未扣费 / 最终无记录，不可据此重发</b>（重发由 <code>retryDecision</code> 独立控制）。<br>
+    <b>验收</b>：Node <b>62/62</b>（新增 7 例：明确未找到/无效 token/参数错/文案不匹配/200 空壳/金额零有效记录/其他接口不带 found）· Python 287/287 · 校验器全过。<br>
+    产物 <code>dist/powertokens-kit-core-0.8.6.tgz</code>；Release v0.8.6（SHA-256 见 SSOT §20.4 / CHANGELOG）。生成链路与 catalog 模型数据 0 改动。</div>
+</section>
+
 <div class="foot">
-  PT 项目资料总集看板 <b>v2.8 完整版</b> · 2026-11-12 建 / 11-13 账户域实测 / 11-13 下午 <code>/v1/models</code> 上线回写 / 11-16 付费真机定案 C4·R1 / 11-16 交付1 P0 + U10 裁决 / 11-16 Codex 复核两轮（0.8.3 + 0.8.4） / 11-17 <code>/v1/models</code> 上下限字段上线回写 limits（0.8.5） ·
+  PT 项目资料总集看板 <b>v2.9 完整版</b> · 2026-11-12 建 / 11-13 账户域实测 / 11-13 下午 <code>/v1/models</code> 上线回写 / 11-16 付费真机定案 C4·R1 / 11-16 交付1 P0 + U10 裁决 / 11-16 Codex 复核两轮（0.8.3 + 0.8.4） / 11-17 <code>/v1/models</code> 上下限字段上线回写 limits（0.8.5） / 11-18 消费记录「未查到」二级判定（0.8.6） ·
   v1.0 为开工前决策摘要版（7 节 / 264 行），保留于 git 历史<br>
   SSOT <code>docs/PT_项目资料总集_20261112.md</code> · 详细逐条版 <code>docs/PT_问题_答复_影响功能_全量对照_20261112.md</code><br>
   自证（0.8.2）：校验器全通过 · <code>run_tests.py</code> <b>287/287 PASS</b> · <code>node --test</code> <b>35/35 PASS</b> · 唯一付费调用 500 credits（＄0.5，上限 ＄1.5）<br>

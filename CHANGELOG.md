@@ -6,6 +6,30 @@
 
 ---
 
+## 0.8.6 — 2026-11-18 · 消费记录查询「未查到」二级判定
+
+**来源**：用户转发 PT 答复 + 两组账户凭证真机实测（只读 0 花费）。
+
+- **① Key 信息接口**：PT 确认 `POST /v1/key/info` + body 整数 `key_id`，与 kit 现状一致，代码不改。
+- **② 空消费记录**：PT 已优化为「内部 newAPI 判存在，false→code=500 / true→200」。
+  2026-11-18 真机实测确认新形态：HTTP 200 + `{code:500, data:null, msg:"record not found"}`
+  （两组凭证、consume_id/request_id 三条查询逐字段一致；令牌脱敏、用完即删、不落盘）。
+- **`getUsageRecord` 二级判定**（仅此接口，`normalizeResult` 不变）：输出结构化 `found` /
+  `error.category` —— 有效记录 `found:true`；明确未找到 `found:false` +
+  `record_not_found`；200 空壳 `found:false` + `empty_record`（与前者不同分类）；
+  其他错误 `found:null` 保持原分类，绝不归为「未查到」。两种「没查到」形态并存、
+  互不替代（旧 200+空壳仍在 SSOT §12.5 N1 / §15.3）。
+- **契约边界**：对账只读结构化字段、不解析 PT 的 msg；`found:false` 仅表示本次未查到，
+  不代表未扣费 / 最终无记录，更不可据此重发生成请求；金额零但标识状态完整的记录是
+  有效记录（`found:true`）。
+- **③ 请求 ID**：PT 暂未回复，保留既有证据边界，另行处理。
+- **不改**：生成链路 `pt_video.py`、catalog 模型数据、路由行为、单价。
+
+验收：Node `--test` **62/62**（新增 7 例：明确未找到/无效 token/参数错/文案不匹配/
+200 空壳/金额零有效记录/其他接口不带 found）；Python 287/287；validate_catalog 全过。
+产物 `dist/powertokens-kit-core-0.8.6.tgz`，tgz SHA-256 `7d617f0f308db97aa718f2cf2cc09e9c23b6c4f1dc6b5bdfca64bd7336baa25b`；包内 catalog.json
+SHA-256 `ada6498964adb639048496046129c1ac878dc2783981105e9d98bb531adc2892`（LF、0 CRLF，与主 catalog 逐字节一致）。附 GitHub Release v0.8.6。
+
 ## 0.8.5 — 2026-11-17 · /v1/models 上线上下文/输出上限 → limits 实测补值
 
 **来源**：PT 2026-11-17 发版，`GET https://api.powertokens.ai/v1/models` 在每个模型的

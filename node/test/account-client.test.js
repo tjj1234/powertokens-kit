@@ -318,3 +318,85 @@ test('B3: 流式响应在上限内正常读取并按 B1 校验', async () => {
   assert.equal(r.ok, true);
   assert.deepEqual(r.data, { quota: 80 });
 });
+
+// ==========================================================================
+// 0.8.6：getUsageRecord 二级判定 —— 两种「没查到」+ 通用兜底 + 有效记录
+// 全部用模拟响应，零 PT 真实调用。
+// ==========================================================================
+
+function usageClient(payload, status = 200) {
+  return new AccountClient({
+    token: 'pt_live_TEST_ONLY', keyId: 123456,
+    fetchImpl: fakeFetch(status, payload),
+  });
+}
+
+test('0.8.6-① 明确未找到：500 + data:null + msg=record not found → ok:false found:false category=record_not_found', async () => {
+  const r = await usageClient({ code: 500, data: null, msg: 'record not found' }).getUsageRecord({ consumeId: 'CONS_MISSING' });
+  assert.equal(r.ok, false);
+  assert.equal(r.found, false);
+  assert.equal(r.error.category, 'record_not_found');
+  // 实测就是 HTTP 200 + body code=500；http_status 仍要如实透出
+  assert.equal(r.http_status, 200);
+  assert.equal(r.code, 500);
+  // 大小写 / 首尾空格容错，仍归同一类
+  const r2 = await usageClient({ code: 500, data: null, msg: '  Record Not Found  ' }).getUsageRecord({ requestId: 'REQ_MISSING' });
+  assert.equal(r2.found, false);
+  assert.equal(r2.error.category, 'record_not_found');
+});
+
+test('0.8.6-② 无效 token：500 + token not found → 保持 business_error，found:null（不归为未查到）', async () => {
+  const r = await usageClient({ code: 500, data: null, msg: 'token not found' }).getUsageRecord({ consumeId: 'CONS_X' });
+  assert.equal(r.ok, false);
+  assert.equal(r.found, null);
+  assert.equal(r.error.category, 'business_error');
+  assert.equal(r.error.message, 'token not found');
+});
+
+test('0.8.6-③ 参数错：500 + Parameter error → 保持 business_error，found:null', async () => {
+  const r = await usageClient({ code: 500, data: null, msg: 'Parameter error' }).getUsageRecord({ consumeId: 'CONS_X' });
+  assert.equal(r.ok, false);
+  assert.equal(r.found, null);
+  assert.equal(r.error.category, 'business_error');
+});
+
+test('0.8.6-④ 文案不匹配：500 + 近似但不同的 msg → 不归为未查到，保持 business_error found:null', async () => {
+  for (const msg of ['record is not found here', 'no record found', 'record not found!', '记录不存在']) {
+    const r = await usageClient({ code: 500, data: null, msg }).getUsageRecord({ consumeId: 'CONS_X' });
+    assert.equal(r.found, null, msg);
+    assert.equal(r.error.category, 'business_error', msg);
+  }
+});
+
+test('0.8.6-⑤ 200 空记录：code=200 但标识/模型/状态全空 → ok:false found:false category=empty_record，不当零扣费', async () => {
+  const empty = { request_id: null, task_id: '', consume_id: null, model: null, model_name: '', status: null, quota: 0 };
+  const r = await usageClient({ code: 200, data: empty, msg: 'success' }).getUsageRecord({ requestId: 'REQ_OLD' });
+  assert.equal(r.ok, false);
+  assert.equal(r.found, false);
+  assert.equal(r.error.category, 'empty_record');
+  assert.equal(r.data, null, '空壳不能带出当有效数据');
+  assert.equal(r.code, 200, '原始 code 如实保留');
+  // data:null 占位也归空壳
+  const r2 = await usageClient({ code: 200, data: null, msg: 'success' }).getUsageRecord({ requestId: 'REQ_OLD2' });
+  assert.equal(r2.found, false);
+  assert.equal(r2.error.category, 'empty_record');
+  // 与「明确未找到」用不同 category，契约中可区分
+  assert.notEqual(r.error.category, 'record_not_found');
+});
+
+test('0.8.6-⑥ 有效记录：标识/状态完整，金额零 → ok:true found:true，不当空壳', async () => {
+  const record = { request_id: 'req-1', task_id: 'task-1', consume_id: 'COS_1', model: 'glm-4.7', status: 'success', quota: 0 };
+  const r = await usageClient({ code: 200, data: record, msg: 'success' }).getUsageRecord({ consumeId: 'COS_1' });
+  assert.equal(r.ok, true);
+  assert.equal(r.found, true);
+  assert.equal(r.error, null);
+  assert.deepEqual(r.data, record);
+  assert.equal(r.data.quota, 0, '金额零但有效，不能当零扣费依据被吞掉');
+});
+
+test('0.8.6-⑦ 判定只作用于 getUsageRecord，其他接口返回不带 found 字段', async () => {
+  const r = await usageClient({ code: 500, data: null, msg: 'record not found' }).getBalance();
+  assert.equal(r.ok, false);
+  assert.equal(r.error.category, 'business_error');
+  assert.equal('found' in r, false, 'normalizeResult 语义不变，D1 不误伤');
+});

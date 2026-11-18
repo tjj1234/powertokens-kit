@@ -27,6 +27,18 @@
  *   - D1 账户域只有 code 明确是成功值（200/'200'/0/'0'）才算成功；code=null/''/'abc'/
  *     缺失时即使 HTTP 200 也返回 invalid_response，绝不按 HTTP 状态兜底当成成功。
  *     生成域 /v1/models 规则不变（无 code 时按 HTTP 判断）。
+ *
+ * 0.8.6（消费记录查询「未查到」二级判定，仅 getUsageRecord）：
+ *   - PT 2026-11-18 优化：不存在的 ID 由「code=200 + 空壳记录」改为
+ *     「HTTP 200 + body code=500 + msg='record not found' + data=null」。两种形态都保留，
+ *     互不替代（旧形态在旧服务端 / 历史数据里仍存在）。
+ *   - getUsageRecord 在 normalizeResult 之后做二级判定，输出结构化 found/category：
+ *       found:true  有效记录（含金额零但标识/状态完整的真实记录）
+ *       found:false 本次未查到有效记录 —— record_not_found（明确）或 empty_record（200 空壳）
+ *       found:null  未判定（token 无效 / 参数错 / 文案不匹配 / 网络等），保持原分类
+ *   - 对账方只读 found/category，不解析 PT 的 msg；不匹配的失败绝不归为「未查到」。
+ *   - found:false 只表示本次未查到有效记录，不代表未扣费 / 最终无记录，更不能据此重发
+ *     生成请求（重发由 retryDecision 控制，与此处无关）。
  */
 
 const ACCOUNT_BASE_DEFAULT = 'https://powertokens.ai/api';
@@ -93,6 +105,68 @@ function failure(category, message, httpStatus = null) {
 /** 明确成功 code 白名单：账户域唯一可信的成功依据。 */
 function isSuccessCode(code) {
   return code === 200 || code === '200' || code === 0 || code === '0';
+}
+
+/**
+ * 0.8.6：PT 实测的「明确未找到」文案（2026-11-18 两组凭证实测：record not found）。
+ * 只在 getUsageRecord 的二级判定里用；仅匹配 msg，绝不用于其他接口。
+ * 放宽为大小写不敏感 + 允许首尾空格，但必须是这条短语，避免把 "token not found" 等误判。
+ */
+const RECORD_NOT_FOUND_MSG_RE = /^record\s+not\s+found$/i;
+
+/** 消费记录里代表「有效记录」的字段（标识 / 模型 / 状态）。全空即 200 空壳占位。 */
+const RECORD_IDENTITY_KEYS = ['request_id', 'task_id', 'consume_id', 'id', 'model', 'model_name', 'status'];
+
+function isBlankValue(v) {
+  return v === null || v === undefined || v === '' || (typeof v === 'string' && v.trim() === '');
+}
+
+/** 是否「200 空壳记录」：data 非对象，或标识/模型/状态全为空。金额零但有标识的记录不算空壳。 */
+function isEmptyRecordData(data) {
+  if (data === null || data === undefined) return true;
+  if (typeof data !== 'object' || Array.isArray(data)) return false;
+  const keys = Object.keys(data);
+  if (!keys.length) return true;
+  return RECORD_IDENTITY_KEYS.every(k => isBlankValue(data[k]));
+}
+
+/**
+ * 0.8.6 二级判定：只在 getUsageRecord 里调用，把 logs/query 的两种「没查到」和真实记录区分开。
+ * 输入是 normalizeResult 的结果。只读结构化字段，对账方无需解析 PT 的 msg。
+ * found 三态：true=有效记录 / false=本次未查到有效记录 / null=未判定（错误与没查到无关）。
+ */
+function interpretUsageRecord(res) {
+  if (!res || typeof res !== 'object') return res;
+
+  // 分支 1：明确未找到 —— code=500 + data=null + msg 实测文案（PT 2026-11-18 优化后的形态）
+  if (!res.ok && res.code === 500 && res.data === null) {
+    const msg = (res.error && res.error.message) || '';
+    if (RECORD_NOT_FOUND_MSG_RE.test(String(msg).trim())) {
+      return { ...res, found: false, error: { ...res.error, category: 'record_not_found' } };
+    }
+  }
+
+  // 分支 2：200 空壳记录 —— 旧形态，PT 未改造前的历史响应；标识/模型/状态全空，不能当零扣费
+  if (res.ok && isEmptyRecordData(res.data)) {
+    return {
+      ...res,
+      ok: false,
+      found: false,
+      data: null,
+      code: res.code,
+      error: {
+        category: 'empty_record',
+        http_status: res.http_status,
+        message: 'code=200 但记录标识/模型/状态全空，判定为无有效记录（不能作为零扣费依据）',
+      },
+    };
+  }
+
+  // 分支 3：有效记录（含金额零但标识/状态完整）
+  if (res.ok) return { ...res, found: true };
+
+  // 分支 4：其他失败（无效 token / 参数错 / 文案不匹配 / 网络等）—— 保持原分类，未判定
+  return { ...res, found: null };
 }
 
 /** code 形态是否合法：非 null / undefined / 空串，且能转成有限数字。畸形 code 无法判定业务结果。 */
@@ -352,6 +426,13 @@ class AccountClient {
   /**
    * GET /v1/logs/query —— 只能按 ID 精确查单条，不是分页列表。
    * 目前没有「按 Key 或时间列出」的接口（SSOT §12.5 / 需求 §5 待确认项）。
+   *
+   * 0.8.6：返回结构化的 found / error.category（见文件头与 interpretUsageRecord）：
+   *   found:true            有效记录（ok:true；金额零但标识/状态完整仍是有效记录）
+   *   found:false, ok:false 本次未查到有效记录 —— category='record_not_found'（PT 优化后的
+   *                         500+record not found）或 'empty_record'（200+空壳记录）
+   *   found:null,  ok:false 未判定：无效 token / 参数错 / 文案不匹配 / 网络错误，保持原分类
+   * 注意：found:false 不代表未扣费或最终无记录，更不可据此重发生成请求；对账只读结构化字段。
    */
   async getUsageRecord({ requestId, taskId, consumeId, signal } = {}) {
     const pre = this._precheck(); if (pre) return pre;
@@ -363,7 +444,8 @@ class AccountClient {
       return failure('missing_record_id',
         'request_id / task_id / consume_id 必须带一个；该端点不支持列表查询。');
     }
-    return this._request({ path: '/v1/logs/query', params, signal });
+    const res = await this._request({ path: '/v1/logs/query', params, signal });
+    return interpretUsageRecord(res);
   }
 
   /** POST /v1/billing/estimate —— 不扣费（实测 80→80），但不支持对话模型。 */
@@ -404,5 +486,6 @@ class AccountClient {
 
 module.exports = {
   AccountClient, normalizeResult, classifyHttpStatus, toNumericKeyId, serverMeta,
+  interpretUsageRecord, isEmptyRecordData,
   ACCOUNT_BASE_DEFAULT, GENERATION_BASE_DEFAULT, MAX_RESPONSE_BYTES_DEFAULT,
 };

@@ -118,11 +118,28 @@ const e = retryDecision({ status: 403, pinned: true, model: 'gpt-5.2' });
 - `recheck.py --live-view <models.json>` 现在会对账 `top_provider` 上下限字段
   （一致→confirmed，catalog null→suggestion，不一致→conflict，不自动写回正文）。
 
+
+### 0.8.6（getUsageRecord「未查到」二级判定）
+
+- PT 2026-11-18 优化：不存在的 ID 由「code=200 + 空壳」改为「HTTP 200 + body
+  `code=500` + `msg="record not found"` + `data:null`」（真机实测：两组凭证、
+  consume_id/request_id 三条查询一致）。两种形态并存、互不替代。
+- `getUsageRecord` 在 `normalizeResult` 之后做二级判定（**仅此接口**，其他方法返回不变）：
+  - 有效记录 → `ok:true, found:true`（金额零但标识/状态完整仍是有效记录）
+  - 500 + `data:null` + msg=`record not found` → `ok:false, found:false,
+    error.category:'record_not_found'`
+  - code=200 + 标识/模型/状态全空 → `ok:false, found:false,
+    error.category:'empty_record'`（与前者不同分类）
+  - 其他错误（token 无效/参数错/文案不匹配/网络）→ 原分类不变，`found:null`（未判定）
+- **契约**：对账只读 `found` / `error.category`，不解析 PT 的 msg；`found:false`
+  仅表示本次未查到，**不代表未扣费 / 最终无记录，不可据此重发**（重发由
+  `retryDecision` 独立控制）。`interpretUsageRecord` / `isEmptyRecordData` 可单独引入测试。
+
 ### 打包（npm pack / vendor 离线使用）
 
 ```bash
-cd node && npm pack              # 生成 dist/powertokens-kit-core-0.8.5.tgz
-sha256sum dist/powertokens-kit-core-0.8.5.tgz
+cd node && npm pack              # 生成 dist/powertokens-kit-core-0.8.6.tgz
+sha256sum dist/powertokens-kit-core-0.8.6.tgz
 ```
 
 tgz 含 `index.js` / `account-client.js` / `catalog.snapshot.json` /
