@@ -119,6 +119,16 @@ const e = retryDecision({ status: 403, pinned: true, model: 'gpt-5.2' });
   （一致→confirmed，catalog null→suggestion，不一致→conflict，不自动写回正文）。
 
 
+### 0.8.7（请求 ID 官方确认，纯文档）
+
+- PT 官方确认：`X-Oneapi-Request-Id` 响应头与消费记录 `request_id` **同值**（可查
+  `logs/query?request_id=<header 值>`），且**全场景必返回**（中间件在路由前执行，
+  与流式 / 错误无关）。证据边界从实测升为官方实现层保证，非逐模型实测。
+- **代码 / catalog 不改**：`getUsageRecord()` 本就透传 `requestId` → `params.request_id`；
+  `retry_policy.request_id_header_note`「不是受理 / 重试信号」核心更成立，仅说明补强。
+  注意 `X-Oneapi-Request-Id`==`request_id`，别混 chat 同步 `X-Request-Id`（== body `id`）
+  与视频异步 body `id`（== `task_id`）。
+
 ### 0.8.6（getUsageRecord「未查到」二级判定）
 
 - PT 2026-11-18 优化：不存在的 ID 由「code=200 + 空壳」改为「HTTP 200 + body
@@ -138,8 +148,8 @@ const e = retryDecision({ status: 403, pinned: true, model: 'gpt-5.2' });
 ### 打包（npm pack / vendor 离线使用）
 
 ```bash
-cd node && npm pack              # 生成 dist/powertokens-kit-core-0.8.6.tgz
-sha256sum dist/powertokens-kit-core-0.8.6.tgz
+cd node && npm pack              # 生成 dist/powertokens-kit-core-0.8.7.tgz
+sha256sum dist/powertokens-kit-core-0.8.7.tgz
 ```
 
 tgz 含 `index.js` / `account-client.js` / `catalog.snapshot.json` /
@@ -168,6 +178,8 @@ const bal = await acct.getBalance();      // { ok, code, data, error, data_as_of
 - 业务成功以响应体 `code` 为准 —— 无效凭证会返回 **HTTP 200 + `code=500`**。
 - `key_id` 请求侧必须是数字；余额/账单响应里的 `key_id` 目前仍可能是脱敏串。
 - `getUsageRecord()` 必须带 `request_id` / `task_id` / `consume_id` 之一，**不是列表接口**。
+  响应头 `X-Oneapi-Request-Id` 与消费记录 `request_id` 同值、全场景必返回（PT 官方确认），
+  可直接取其值作为查询参数；但它是定位用 ID，**不是受理 / 重试信号**。
 - `estimateCost()` 不扣费，但**不支持对话模型**（会在本地拦截，不发请求）。
 - 金额保留 `credits`，不换算 USD。
 

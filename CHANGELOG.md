@@ -6,6 +6,22 @@
 
 ---
 
+## 0.8.7 — 2026-11-18 · 请求 ID 官方确认，三项闭环（纯文档）
+
+**来源**：用户转发 PT 官方答复。闭合「接口确认」三项的最后一项（③ 请求 ID）。
+
+- PT 确认：`X-Oneapi-Request-Id` 与消费记录 `request_id` **代码中同值**，可作为
+  `logs/query?request_id=` 查询参数；响应头**一定返回**（中间件在路由前执行，
+  与是否流式 / 错误响应无关）。
+- 证据边界：从「仅流式 chat + 本次模型实测」升为「官方实现层保证、全场景适用」，
+  **不写成逐模型实测**。与 §15.3 / §15.x 实测互补。
+- **代码 / catalog 模型数据 / `pt_video.py` 0 改动**：`getUsageRecord` 本就透传
+  `requestId` → `params.request_id`，kit 不读响应头；catalog `request_id_header_note`
+  「不是受理 / 重试信号」核心更成立，仅作说明补强、非冲突。
+- 验收：Node 62/62、Python 287/287、校验器全过（与 0.8.6 一致）。
+- 产物 `dist/powertokens-kit-core-0.8.7.tgz`，Release v0.8.7：
+  tgz SHA-256 `69097f28a045e587ccf94d318f897d6fcd2e6ec687f90a0e5f45dc097a67e82f`；包内 catalog SHA-256 `ada6498964adb639048496046129c1ac878dc2783981105e9d98bb531adc2892`（LF，与 0.8.6 相同）。
+
 ## 0.8.6 — 2026-11-18 · 消费记录查询「未查到」二级判定
 
 **来源**：用户转发 PT 答复 + 两组账户凭证真机实测（只读 0 花费）。

@@ -105,7 +105,7 @@
 <div class="wrap">
 
 <header>
-  <h1>PT 项目资料总集 <span class="badge">完整版 v2.9 · 已发布</span><span class="badge b">12/12 全答</span><span class="badge b">§20 已固化</span><span class="badge b">C4/R1/U10 已裁决 + 未查到二级判定</span></h1>
+  <h1>PT 项目资料总集 <span class="badge">完整版 v2.10 · 已发布</span><span class="badge b">12/12 全答</span><span class="badge b">§21 已固化</span><span class="badge b">三项全闭环 + 请求 ID 官方确认</span></h1>
   <div class="sub">2026-11-12 · 仓库 <code>tjj1234/powertokens-kit</code> ·
     <b>本版把 v1.0「开工前决策摘要」补全为全量资料</b>：逐条问答、问题→影响功能映射、PT 原表、冲突裁决、真机结果、落地清单、文档索引<br>
     主文档 <code>docs/PT_项目资料总集_20261112.md</code>（SSOT） ·
@@ -123,7 +123,7 @@
   <div class="kpi g"><div class="n">12 / 12</div><div class="l">发给 PT 的 10 必问 + 2 条件项全答</div></div>
   <div class="kpi"><div class="n">Q8 + R11 + S3</div><div class="l">22 个编号问题全部闭环</div></div>
   <div class="kpi v"><div class="n">6 条</div><div class="l">真机硬结论推翻/收紧书面口径（+C4 视频侧/R1 异步/单价）</div></div>
-  <div class="kpi t"><div class="n">287 / 287</div><div class="l">离线测试 PASS · 校验器全过 · Node 62/62（0.8.6）· limits 30 模型已补值</div></div>
+  <div class="kpi t"><div class="n">287 / 287</div><div class="l">离线测试 PASS · 校验器全过 · Node 62/62（0.8.7）· limits 30 模型已补值</div></div>
   <div class="kpi g"><div class="n">8 + 5</div><div class="l">errors 订正 8 处 · 新增字段组 5 组</div></div>
   <div class="kpi a"><div class="n">C1 已裁决</div><div class="l">2026-11-13 真机：账户域裸值鉴权</div></div>
   <div class="kpi r"><div class="n">F1 作废</div><div class="l">可见视图 ≠ 全量清单 · sync() 已修</div></div>
@@ -160,7 +160,7 @@
   <a href="#s3">3 逐批答复</a><a href="#s4">4 问题→影响功能</a><a href="#s5">5 D4 正式答复</a>
   <a href="#s6">6 冲突裁决</a><a href="#s7">7 真机 T0–T8</a><a href="#s8">8 落地清单</a>
   <a href="#s9">9 文档索引</a><a href="#s10">10 未决项</a><a href="#s11">11 /v1/models 上线</a>
-  <a href="#s12">12 补充需求 0.8.0</a><a href="#s13">13 付费真机实测</a><a href="#s14">14 交付1 P0 0.8.2</a><a href="#s15">15 Codex 复核 0.8.3</a><a href="#s16">16 Codex 复核 0.8.4</a><a href="#s17">17 limits 补值 0.8.5</a>
+  <a href="#s12">12 补充需求 0.8.0</a><a href="#s13">13 付费真机实测</a><a href="#s14">14 交付1 P0 0.8.2</a><a href="#s15">15 Codex 复核 0.8.3</a><a href="#s16">16 Codex 复核 0.8.4</a><a href="#s17">17 limits 补值 0.8.5</a><a href="#s18">18 未查到判定 0.8.6</a><a href="#s19">19 请求ID闭环 0.8.7</a>
 </nav>
 
 <section id="s0">
@@ -791,7 +791,7 @@
   <div class="grid3">
     <div class="card"><h3>① Key 信息接口</h3><p>PT 确认 <code>POST /v1/key/info</code> + body 整数 <code>key_id</code>。与 kit 现状一致，<b>代码不改</b>，排除 GET+body（fetch 不支持）的坑。</p></div>
     <div class="card"><h3>② 空消费记录</h3><p>PT 已优化：内部 newAPI 判存在，false→500 / true→200。真机实测确认新形态，<code>getUsageRecord</code> 加二级判定。</p></div>
-    <div class="card"><h3>③ 请求 ID</h3><p>PT 暂未回复。保留既有证据边界（仅流式 chat + 本次模型已验证），不推广、等回复。</p></div>
+    <div class="card"><h3>③ 请求 ID</h3><p>PT 官方确认：header 与 <code>request_id</code> 同值、全场景必返回。代码 / catalog 不改，见 §19。</p></div>
   </div>
   <div class="note"><b>两种形态并存</b>：<b>A 新</b>（2026-11-18 实测）HTTP 200 + <code>{code:500, data:null, msg:"record not found"}</code>（两组凭证、consume_id/request_id 三查询一致，令牌脱敏、用完即删）；<b>B 旧</b>（§12.5 N1 / §15.3）<code>code=200</code> 但标识/模型/状态全空、金额零。二者不能互相替代。</div>
   <div class="good"><b>getUsageRecord 返回契约（0.8.6，仅此接口）</b>：对账只读结构化 <code>found</code> / <code>error.category</code>，<b>不解析 PT 的 msg</b>。<br>
@@ -804,8 +804,20 @@
     产物 <code>dist/powertokens-kit-core-0.8.6.tgz</code>；Release v0.8.6（SHA-256 见 SSOT §20.4 / CHANGELOG）。生成链路与 catalog 模型数据 0 改动。</div>
 </section>
 
+<section id="s19">
+  <h2>19. 2026-11-18 请求 ID 官方确认，三项全闭环（0.8.7）</h2>
+  <div class="h2sub">用户转发 PT 官方答复 · 纯文档口径升级 · 代码与 catalog 模型数据 0 改动 · 详见 SSOT §21</div>
+  <div class="grid3">
+    <div class="card"><h3>同值关系</h3><p>PT 确认 <code>X-Oneapi-Request-Id</code> 与消费记录 <code>request_id</code> <b>代码中同一个值</b> → 可直接用于 <code>logs/query?request_id=&lt;header 值&gt;</code>。印证 kit 契约，<b>代码不改</b>。</p></div>
+    <div class="card"><h3>全场景必返回</h3><p>响应头<b>一定返回</b>，中间件在路由之前执行，与流式 / 错误响应无关。证据边界从「仅流式 chat 实测」升为「官方实现层保证」。</p></div>
+    <div class="card"><h3>三项全闭环</h3><p>① Key 信息（POST + body 整数）/ ② 空消费记录（二级判定）/ ③ 请求 ID（本节）全部闭合。kit、catalog、<code>pt_video.py</code> 0 改动。</p></div>
+  </div>
+  <div class="note"><b>边界</b>：官方声明来自<b>网关中间件实现层</b>，不是逐模型实测，不写成「每个模型已验证」。<code>X-Oneapi-Request-Id</code>==<code>request_id</code>；别混 chat 同步 <code>X-Request-Id</code>（==body <code>id</code>）与视频异步 body <code>id</code>（==<code>task_id</code>）。catalog <code>request_id_header_note</code>「不是受理 / 重试信号」核心更成立，仅说明补强、非冲突。</div>
+  <div class="good"><b>验收（0.8.7）</b>：Node <b>62/62</b> · Python 287/287 · 校验器全过（与 0.8.6 一致，纯文档）。产物 <code>dist/powertokens-kit-core-0.8.7.tgz</code>；Release v0.8.7（SHA-256 见 SSOT §21.3 / CHANGELOG）。</div>
+</section>
+
 <div class="foot">
-  PT 项目资料总集看板 <b>v2.9 完整版</b> · 2026-11-12 建 / 11-13 账户域实测 / 11-13 下午 <code>/v1/models</code> 上线回写 / 11-16 付费真机定案 C4·R1 / 11-16 交付1 P0 + U10 裁决 / 11-16 Codex 复核两轮（0.8.3 + 0.8.4） / 11-17 <code>/v1/models</code> 上下限字段上线回写 limits（0.8.5） / 11-18 消费记录「未查到」二级判定（0.8.6） ·
+  PT 项目资料总集看板 <b>v2.10 完整版</b> · 2026-11-12 建 / 11-13 账户域实测 / 11-13 下午 <code>/v1/models</code> 上线回写 / 11-16 付费真机定案 C4·R1 / 11-16 交付1 P0 + U10 裁决 / 11-16 Codex 复核两轮（0.8.3 + 0.8.4） / 11-17 <code>/v1/models</code> 上下限字段上线回写 limits（0.8.5） / 11-18 消费记录「未查到」二级判定（0.8.6） / 11-18 请求 ID 官方确认、三项全闭环（0.8.7） ·
   v1.0 为开工前决策摘要版（7 节 / 264 行），保留于 git 历史<br>
   SSOT <code>docs/PT_项目资料总集_20261112.md</code> · 详细逐条版 <code>docs/PT_问题_答复_影响功能_全量对照_20261112.md</code><br>
   自证（0.8.2）：校验器全通过 · <code>run_tests.py</code> <b>287/287 PASS</b> · <code>node --test</code> <b>35/35 PASS</b> · 唯一付费调用 500 credits（＄0.5，上限 ＄1.5）<br>
