@@ -10,17 +10,21 @@
   <a href="#13-integration-a-agent-skills">Agent Skills</a> ·
   <a href="#14-integration-b-mcp-server">MCP</a> ·
   <a href="#10-seedance-deep-dive-standalone-type">Seedance</a> ·
+  <a href="node/README.md">Node core</a> ·
   <a href="README.zh-CN.md">中文文档</a>
 </p>
 
 > 📘 This document is in English. [中文文档](README.zh-CN.md)
 >
-> **📦 This repository contains two capabilities**
+> **📦 This repository contains three capabilities**
 >
 > - **This page (`pt_video.py` + `mcp_server.py`)**: the image / video / Seedance generation engine and MCP integration.
 > - **`pt-gateway/` (production-grade unified gateway)**: builds on the engine to add **audio (TTS)** and **chat** (multimodal / web-search / thinking-mode capability labeling), with both HTTP and MCP interfaces, a capability catalog, and a three-tier test suite.
+> - **`node/` (zero-dependency Node core)**: a decision layer for agents — 5 rule APIs + 7 read-only account APIs (including **cost estimation**). It never sends generation requests. See [`node/README.md`](node/README.md).
 >
 > 👉 **chat / audio / gateway docs are NOT on this page** — see [`pt-gateway/README.md`](pt-gateway/README.md) (chat model capability labeling in **§9.1**, 38 models labeled one-by-one for vision / audio_in / video_in / web_search / thinking).
+>
+> 👉 **Node core usage & interface list**: [`node/README.md`](node/README.md) (quick start in Chinese) · [full capability list](docs/PT_Kit_使用与接口能力清单_20261118.md).
 
 ---
 
@@ -58,8 +62,9 @@
 - **Shell A · Agent Skills (`SKILL.md`)**: conforms to the open standard and is read directly by 40+ supporting agents (Claude Code, Cursor, GitHub Copilot, Codex, Trae, Zed, Kiro, Junie, Roo Code …).
 - **Shell B · MCP server (`mcp_server.py`)**: called as a "tool" by any MCP client (Claude Desktop, Cursor, Trae, VS Code, Windsurf, Cline, Zed …).
 - **Gateway `pt-gateway/`**: a unified HTTP + MCP entry point that adds **audio (TTS)** and **chat** (with multimodal / web-search / thinking-mode capability labeling) on top of the engine, plus a capability catalog and three-tier tests. Docs: [`pt-gateway/README.md`](pt-gateway/README.md).
+- **Node core `node/`**: a zero-dependency, **request-free decision layer** for agents — 5 rule APIs (`loadCatalog` / `selectCandidates` / `classifyError` / `retryDecision` / `reasoningParams`) + 7 read-only account APIs (including **cost estimation**). It reads the same `catalog.json` but never sends generation requests. Docs: [`node/README.md`](node/README.md).
 
-> All three shells share **the same engine**; all generation logic is maintained in one place (single source of truth).
+> The three shells above share **the same engine**; all generation logic is maintained in one place (single source of truth). The `node/` core is a separate read-only decision layer, not a fourth generation shell.
 
 **Official REST, no middle layer:**
 

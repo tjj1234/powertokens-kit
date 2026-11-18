@@ -5,8 +5,144 @@
 所以 Agent 侧不需要另存一份模型能力表。模型调用请求仍由 DSH 自己的供应商层发出。
 
 ```bash
-cd node && npm test          # node --test，48 条离线用例，0 花费
+cd node && npm test          # node --test，62 条离线用例，0 花费
 ```
+
+---
+
+## 快速上手与能力清单（中文 · 先看这里）
+
+> 本节是 [完整使用说明](../docs/PT_Kit_使用与接口能力清单_20261118.md) 的上手浓缩，让 agent 读到这里就知道「怎么用、能干吗」。下方英文部分是逐版本的技术细节。
+
+### 它是什么 / 能干什么
+
+**它不替你发模型请求，也不生成图片 / 视频。** 它是「**决策大脑 + 记账本**」，只做两件事：
+
+- **规则层**（`index.js`）：零依赖、不联网，只读 `catalog.json`，告诉 Agent「选哪个模型 / 报错怎么办 / 要不要重试 / 思考参数怎么传」。
+- **账户只读客户端**（`account-client.js` / `account_client.py`）：连 PT 查余额 / Key 状态 / 消费记录 / 可见模型 / **费用预估**——全部只读或计费探针，不发生成请求。
+
+模型调用由 DSH / 你自己的供应商层去做；kit 不是「发动机」。
+
+### 怎么装 / 怎么引入
+
+```js
+// 开发态（在仓库里）：规则层与账户客户端都从 ./node 引入
+const core = require('./node');
+const { AccountClient } = require('./node/account-client');
+```
+
+```bash
+cd node && npm pack     # 生成 dist/powertokens-kit-core-0.8.7.tgz，自包含
+```
+
+tgz 内含 `index.js` / `account-client.js` / `catalog.snapshot.json` / `catalog.schema.snapshot.json` / `README.md` / `package.json`。把解包后的 `package/` 整个放进 DSH 的 `vendor/` 即可，`loadCatalog()` 找不到仓库 catalog 时自动回退读包内快照。零运行时依赖，Node ≥ 18。
+
+### 凭证（两套域，不可混用）
+
+| 域 | 地址 | 鉴权 |
+|---|---|---|
+| 账户域 | `https://powertokens.ai/api` | 裸 `pt_live_...`（**不带 Bearer**）+ 数字 `key_id` |
+| 生成域 | `https://api.powertokens.ai/v1` | `Bearer <模型 API Key>` |
+
+- 凭证由调用方每次传入，客户端不读配置 / 不落盘 / 不写日志；`AccountClient.fromEnv()` 读 `PT_ACCESS_TOKEN` / `PT_KEY_ID`。
+- `key_id` 必须是数字；PT 没有「用 API Key 反查 key_id」的接口。
+- 账户域业务成功只看响应体 `code`——无效凭证返回 **HTTP 200 + `code=500`**，只看状态码会误判成功。
+
+### 规则层 5 条 API（`index.js`）
+
+| API | 作用 | 关键返回 |
+|---|---|---|
+| `loadCatalog({path, expectedSchema})` | 固定版本 + 格式校验，失败抛 `CatalogValidationError`（调用方应继续用上一版本） | catalog 对象 |
+| `selectCandidates(purpose, keyModels, opts)` | AUTO 按用途有序返回候选（4 条跳过规则）；PINNED 用户指定模型只判定可用性、绝不自动换 | AUTO 数组 / PINNED 判定对象 |
+| `classifyError(status, body, opts)` | HTTP 状态 + 响应体归入 `errors` 9 类；未收录按「不重试、换模型、上报」 | `{category, agent_action, retryable, switch_model, ...}` |
+| `retryDecision(input, opts)` | 重试 / 换模型 / 停止决策，支持 pinned / 退避 / 次数上限 | `{action, accepted, settled, charged, reason_code, ...}` |
+| `reasoningParams(model, effort, opts)` | 思考模式传参；`effort='none'` 返回 `needs_confirmation:true`，不猜关闭取值 | `{supported, param, value, needs_confirmation, ...}` |
+
+辅助导出：`catalogVersion()` / `isKnownValue()` / `isKnownSource()` / `isGenerationModel()` / `CatalogValidationError`。
+
+**重试分支优先级**：发送前视觉拦截 → 受理未知 → 2xx 已受理（不重放）→ 上下文超长 → 其余。
+
+- 2xx（含流中途报错、含带 `context_length_exceeded`）一律 `action:'none'`，绝不 compact / retry / switch，避免重复扣费。
+- 无有效 HTTP 状态（超时 / 断网）→ `stop` + `acceptance_unknown`，绝不重发（PT 可能已受理）。
+- 非 2xx 上下文超长（400/422）→ `compact`（先压缩再发，不原样重试）。
+- `maxRetries:0` 合法（不重试），只有参数未传才用默认 3。
+- 搜索候选只有 `works===true && returns_sources===true` 才进 `candidates`，`null` 进 `pending_verification`。
+
+```js
+const { loadCatalog, selectCandidates, classifyError, retryDecision } = require('./node');
+const cat = loadCatalog({ expectedSchema: 2 });
+const visible = await yourModelsCall();          // 该 Key 的 /v1/models 可见 ID
+const cands = selectCandidates('general', visible, { catalog: cat, detail: true });
+const err = classifyError(429, { error: { code: 'model_rate_limited' } });
+const d = retryDecision({ status: 429, attempt: 1, retryAfter: 5 });
+```
+
+### 账户只读客户端 7 个接口（JS / Python 一一对应）
+
+| 能力 | Node 方法 | Python 方法 | 端点 |
+|---|---|---|---|
+| Key 状态 | `getKeyStatus(keyId)` | `get_key_status()` | `POST /v1/key/info`（body 传整数 `key_id`，GET 404） |
+| 余额 | `getBalance()` | `get_balance()` | `GET /v1/billing/balance?key_id=` |
+| 消费记录列表 | `listUsageRecords({startDate,endDate,keyId})` | `list_usage_records()` | `GET /v1/billing/usage`（日汇总有延迟） |
+| 单条消费记录 | `getUsageRecord({requestId,taskId,consumeId})` | `get_usage_record()` | `GET /v1/logs/query`（**按 ID 精查单条，不是列表接口**） |
+| **费用预估** | `estimateCost({model,endpoint,request,keyId,kind})` | `estimate_cost()` | `POST /v1/billing/estimate`（见下节） |
+| 资产库协议状态 | `getAgreementStatus()` | `get_agreement_status()` | `GET /v1/asset/agreement/status` |
+| 可见模型 | `getKeyModels(apiKey)` | `get_key_models()` | `GET /v1/models`（生成域，`Bearer`） |
+
+`getUsageRecord` 的「未查到」三态（仅此接口）：有效记录 `found:true`；明确未找到 `found:false, category:'record_not_found'`；200 空壳 `found:false, category:'empty_record'`；其他错误 `found:null`。对账只读结构化 `found` / `category`，**不解析 PT 的 msg**；`found:false` 不代表未扣费、**不可据此重发**。
+
+```js
+const { AccountClient } = require('./node/account-client');
+const acct = AccountClient.fromEnv();        // 读 PT_ACCESS_TOKEN / PT_KEY_ID
+const bal = await acct.getBalance();         // { ok, code, data, error, data_as_of, is_cached }
+if (!bal.ok) console.error(bal.error.category);
+```
+
+### 是否包含预估接口？—— 有，且是官方接口
+
+`estimateCost()` / `estimate_cost()` 走官方 `POST /v1/billing/estimate`。四个关键边界：
+
+1. **不扣费**：真机实测余额 `80 → 80 credits`。
+2. **整包请求体**：`{ model, endpoint, key_id, request:{...} }`，`key_id` 必填且为数字。
+3. **不支持对话模型（chat）**：chat 在本地被拦截、不发请求，返回 `error.category:'unsupported'`；chat 费用**以实际扣费为准**，不自建单价表。预估主要面向图 / 视频类。
+4. **金额保留 credits**，不换算 USD；**预估值只作参考**——U10 实测 `wan3.0-video` 5s/720p 预估 1000 vs 实扣 500 credits（`pricing_policy`：预估可能偏高）。
+
+> 真正扣费的单价真相源是消费记录 `logs/query`；`GET /v1/billing/usage` 当日不实时计入消费。
+
+### Python 工具链（校验 / 复核 / 测试）
+
+| 工具 | 命令 | 作用 |
+|---|---|---|
+| catalog 校验 | `python pt-gateway/validate_catalog.py` | schema / 字段 / 来源枚举守门，改 catalog 后必跑 |
+| 复核脚本 | `python pt-gateway/recheck.py` | 离线对账（0 花费）；`--live-view <models.json>` 对账 `top_provider`；`--registry` 生成待复核清单 |
+| 真机复核 | `recheck.py --live --max-usd <N> --usd-per-1k-tokens <N>` | 真实调用，**会产生费用**；`--max-usd` 硬上限须 > 0，未显式给出则不跑 |
+| 测试 | `python pt-gateway/tests/run_tests.py` + `cd node && npm test` | Python 全量 / Node **62/62**（0.8.7），0 花费 |
+
+### 能力边界（明确不做什么）
+
+- 不发模型生成请求、不做媒体生成（视频 / 图片由供应商层负责）。
+- 不做客户端权限拦截（fail-open）；某 Key 能否调用某模型以该 Key 的 `/v1/models` 与服务端报错为准。
+- 字段为 `null` 或来源为 `inferred` / `configured` 一律按未知处理。
+- 不保存凭证；令牌只在内存 / 本机临时文件，用完即删。
+
+### 一页速查
+
+```
+我想……
+├─ 选模型 / 判断能不能用        → selectCandidates()（AUTO / pinned）
+├─ 归类一个报错                 → classifyError()
+├─ 决定要不要重试 / 换模型      → retryDecision()
+├─ 决定思考参数怎么传           → reasoningParams()
+├─ 查余额 / Key 状态 / 协议     → getBalance / getKeyStatus / getAgreementStatus
+├─ 查消费记录（单条 / 列表）    → getUsageRecord / listUsageRecords
+├─ 查这把 Key 能看到哪些模型    → getKeyModels(apiKey)   [Bearer]
+├─ 预估一次调用多少钱           → estimateCost()         [不支持 chat，不扣费]
+└─ 改完 catalog 想自证          → validate_catalog.py + run_tests.py + npm test
+```
+
+---
+
+**（以下为英文技术细节：逐版本演进、打包说明与边界）**
 
 ## index.js —— 五条规则 API
 
@@ -34,7 +170,7 @@ const decision = retryDecision({ status: 429, body: {}, attempt: 1, retryAfter: 
 
 ### 用户指定模型（pinned，0.8.2）
 
-北极星交付 1 需要「用户指定了模型」时**只判定、绝不自动换模型**：
+核心能力：「用户指定了模型」时**只判定、绝不自动换模型**：
 
 ```js
 // 1) 指定模型可用性：返回 { pinned, available, reasons, checks, candidate }
@@ -66,7 +202,7 @@ const e = retryDecision({ status: 403, pinned: true, model: 'gpt-5.2' });
 改按模型的 `routing.recommended` 标签匹配，`detail:true` 时返回 `matched_by: 'routing.recommended'`；
 仍无匹配才 `unknown_purpose`。标签无序、不宣称优先级。
 
-### 0.8.3（北极星 Codex 复核修复）
+### 0.8.3（源码复核修复）
 
 - **`maxRetries: 0` 是合法值**（不重试）：只在参数未传时才用默认 3；传 0 时可重试错误
   第一次就返回 `switch` / `stop`，绝不返回 `retry`。
@@ -93,7 +229,7 @@ const e = retryDecision({ status: 403, pinned: true, model: 'gpt-5.2' });
   `category:'aborted'`）；响应大小上限 `maxResponseBytes`（默认 1 MiB 可配），超限返回
   `response_too_large`。
 
-### 0.8.4（北极星 Codex 复核第二轮：2 项边界情况）
+### 0.8.4（第二轮：2 项边界情况）
 
 - **D1 `code:null` 不再当成功**：账户域只有 `code` 明确是成功值（`200`/`'200'`/`0`/`'0'`）
   才算成功；`code` 为 `null` / `''` / `'abc'` / 缺失时即使 HTTP 200 也返回

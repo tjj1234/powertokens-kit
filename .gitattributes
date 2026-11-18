@@ -1,4 +1,4 @@
-# 固定 JSON 换行符为 LF（0.8.4 / 北极星对账）
+# 固定 JSON 换行符为 LF（0.8.4 起）
 # 背景：Windows core.autocrlf=true 会把工作区 *.json 写成 CRLF，导致 npm pack
 # 打进 tgz 的 catalog.snapshot.json 是 CRLF，而 git blob 是 LF，两者 SHA256 不同、
 # 对账时误报不一致。eol=lf 强制工作区与仓库、tgz 三者统一为 LF。

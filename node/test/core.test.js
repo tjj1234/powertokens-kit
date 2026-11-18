@@ -307,7 +307,7 @@ test('retryDecision.pinned: 工具调用实测 null → 照常用并标 untested
     pinned: true, model: 'glm-4.7' }, { catalog: cat }).action, 'stop');
 });
 
-// ---- 北极星 Codex 复核（0.8.3）A1-A4 ----
+// ---- 0.8.3 A1-A4 边界情况 ----
 
 test('A1: maxRetries=0 是合法值不被默认 3 覆盖；可重试错误第一次就返回 switch', () => {
   for (const input of [

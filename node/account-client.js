@@ -14,7 +14,7 @@
  *   - estimate 不扣费，但不支持对话模型
  *   - 业务判断以响应体 code 为准（无效凭证会返回 HTTP 200 + code=500）
  *
- * 0.8.3（北极星 Codex 复核 B1-B3）：
+ * 0.8.3（源码复核 B1-B3）：
  *   - B1 严格校验：账户域 2xx 响应必须是合法 JSON 对象且带 PT 的 code 字段，
  *     code 表示成功才算成功；否则返回 invalid_response（HTML / 空串 / 截断 JSON 均失败）。
  *     生成域 /v1/models 是 OpenAI 风格 {data:[...]}，只要求合法 JSON 对象。
@@ -23,7 +23,7 @@
  *   - B3 调用方可传 AbortSignal（与内部超时合并）；响应读取有大小上限
  *     （默认 1 MiB，maxResponseBytes 可配），超限中止并返回 response_too_large。
  *
- * 0.8.4（北极星 Codex 复核 D1）：
+ * 0.8.4（边界情况 D1）：
  *   - D1 账户域只有 code 明确是成功值（200/'200'/0/'0'）才算成功；code=null/''/'abc'/
  *     缺失时即使 HTTP 200 也返回 invalid_response，绝不按 HTTP 状态兜底当成成功。
  *     生成域 /v1/models 规则不变（无 code 时按 HTTP 判断）。

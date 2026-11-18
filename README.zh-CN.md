@@ -10,17 +10,21 @@
   <a href="#13-接入方式-aagent-skills">Agent Skills 接入</a> ·
   <a href="#14-接入方式-bmcp-server">MCP 接入</a> ·
   <a href="#10-seedance-专题独立类型">Seedance 专题</a> ·
+  <a href="node/README.md">Node 核心包</a> ·
   <a href="README.md">English</a>
 </p>
 
 > 📘 本文档为中文。 [English](README.md)
 >
-> **📦 本仓库包含两部分能力**
+> **📦 本仓库包含三部分能力**
 >
 > - **本页（`pt_video.py` + `mcp_server.py`）**：image / video / seedance 生成引擎与 MCP 接入。
 > - **`pt-gateway/`（生产级统一网关）**：在引擎之上增加 **audio（TTS）** 与 **chat（多模态 / 联网搜索 / 思考模式能力标注）**，HTTP + MCP 双接口、能力目录、三层测试。
+> - **`node/`（零依赖 Node 核心包）**：给 agent 用的「决策大脑」——规则层 5 API + 账户只读 7 接口（含**费用预估**），不发任何生成请求，中文快速上手见 [`node/README.md`](node/README.md)。
 >
 > 👉 **chat / 音频 / 网关相关文档不在本页**，见 [`pt-gateway/README.md`](pt-gateway/README.md)（chat 模型能力标注在 **§9.1**，38 个模型逐一标注 vision / audio_in / video_in / web_search / thinking）。
+>
+> 👉 **Node 核心包用法与接口清单**：[`node/README.md`](node/README.md)（中文快速上手）· [完整能力清单](docs/PT_Kit_使用与接口能力清单_20261118.md)。
 
 ---
 
@@ -58,8 +62,9 @@
 - **壳 A · Agent Skills（`SKILL.md`）**：符合开放标准，直接被 40+ 支持该标准的 agent 读取（Claude Code、Cursor、GitHub Copilot、Codex、Trae、Zed、Kiro、Junie、Roo Code …）。
 - **壳 B · MCP server（`mcp_server.py`）**：被任何 MCP 客户端当作「工具」调用（Claude Desktop、Cursor、Trae、VS Code、Windsurf、Cline、Zed …）。
 - **网关 `pt-gateway/`**：HTTP + MCP 统一入口，在引擎之上补齐 **audio（TTS）** 与 **chat**（含多模态 / 联网搜索 / 思考模式能力标注），自带能力目录与三层测试。文档见 [`pt-gateway/README.md`](pt-gateway/README.md)。
+- **Node 核心包 `node/`**：给 agent 用的零依赖、**不发请求的决策层**——规则层 5 API（`loadCatalog` / `selectCandidates` / `classifyError` / `retryDecision` / `reasoningParams`）+ 账户只读 7 接口（含**费用预估**）。它读同一份 `catalog.json`，但不发任何生成请求。文档见 [`node/README.md`](node/README.md)。
 
-> 三种壳共用**同一个引擎**，所有生成逻辑只维护一份（单一真相源）。
+> 上述三种壳共用**同一个引擎**，所有生成逻辑只维护一份（单一真相源）。`node/` 核心包是独立的只读决策层，不是第四种生成壳。
 
 **官方 REST 直连，没有中间层：**
 
