@@ -6,6 +6,16 @@
 
 ---
 
+## 0.8.7-security.1 — 2026-11-20 · 下载链路 API Key 泄露修复（T06，安全补丁）
+
+**优先级**：安全补丁，独立于 0.8.8 能力补全，先行发布。只改 `pt_video.py`，不碰 catalog / node / npm 包，故无关的在用方无需换锁。
+
+- **问题**：`download_binary()` 下载生成产物时，先用 `Authorization: Bearer <API Key>` 请求产物 URL，失败后才裸请求。产物地址多为 PT 自有 R2 公共桶（`pub-*.r2.dev`）或上游签名链接（OSS/S3），这些第三方地址**不需要鉴权**，旧顺序等于每次下载都先把 API Key 发给第三方。
+- **修复**：改为**默认裸请求**（只带 User-Agent）；仅当目标 host 是 PT 官方域名（`powertokens.ai` 及子域，精确后缀匹配防仿冒）且裸请求明确返回 401/403 时，才带 Key 重试一次。第三方地址（含 `evil-powertokens.ai` 这类仿冒域名）**永不接触** API Key。
+- **兼容性**：PT 自有地址 `/v1/videos/{task_id}/content`（catalog `kinds.seedance.result_persistence` 记载需 token 鉴权）在 401 时仍会自动带 Key 重试，功能不回退；公开产物桶走裸请求，行为不变。
+- **验证**：新增 `pt-gateway/tests/test_unit_download_security.py` 5 个离线用例（第三方不带 key / 第三方 401 不带 key 重试 / PT 域名 401 带 key 重试 / 仿冒域名不带 key / host 白名单判定）；全套 Python 292/292 通过。
+- **对账**：本补丁的载体是根目录 `pt_video.py`（不进 npm tgz）。其 SHA-256 与版本号随 Release `v0.8.7-security.1` 给出，供使用 Python 适配器的调用方同步文件副本。
+
 ## 0.8.7 — 2026-11-18 · 请求 ID 官方确认，三项闭环（纯文档）
 
 **来源**：用户转发 PT 官方答复。闭合「接口确认」三项的最后一项（③ 请求 ID）。

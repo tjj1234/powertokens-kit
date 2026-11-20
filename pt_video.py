@@ -760,26 +760,45 @@ def result_url(task):
     return meta.get("url") or meta.get("content_url") or task.get("url")
 
 
-def download_binary(url, path, key):
-    req = urllib.request.Request(url, headers=_headers(key))
+def _trusted_pt_host(url):
+    """T06 安全：仅 PT 官方域名允许携带 API Key。
+    产物地址多为 PT 自有 R2 公共桶（pub-*.r2.dev）或上游签名链接（OSS/S3），
+    这些地址绝不能收到 Authorization——否则等于把 Key 交给第三方。
+    精确匹配 powertokens.ai 及其子域（api./docs. 等），防止 evil-powertokens.ai 绕过。"""
     try:
+        host = (urllib.parse.urlparse(url).hostname or "").lower().rstrip(".")
+    except Exception:
+        return False
+    return host == "powertokens.ai" or host.endswith(".powertokens.ai")
+
+
+def download_binary(url, path, key):
+    """下载生成产物。安全约束（T06）：默认裸请求，Key 只发给 PT 官方域名。
+
+    历史 bug：先带 Bearer key 请求产物 URL，失败再裸请求——导致每次下载都先把
+    API Key 发给第三方产物地址（R2/OSS）。修正为先裸请求；只有目标是可信 PT
+    域名且裸请求明确 401/403 时，才带 key 重试一次。第三方地址永不接触 Key。
+    """
+    def _save(req):
         with urllib.request.urlopen(req, timeout=120) as r, open(path, "wb") as f:
             while True:
                 chunk = r.read(DOWNLOAD_CHUNK)
                 if not chunk:
                     break
                 f.write(chunk)
+
+    bare = urllib.request.Request(url, headers={"User-Agent": "pt-media-skill"})
+    try:
+        _save(bare)
         return True
-    except urllib.error.HTTPError:
-        # 结果地址若不需要鉴权（如图片临时签名 URL），再无 auth 试一次
-        req2 = urllib.request.Request(url, headers={"User-Agent": "pt-media-skill"})
-        with urllib.request.urlopen(req2, timeout=120) as r, open(path, "wb") as f:
-            while True:
-                chunk = r.read(DOWNLOAD_CHUNK)
-                if not chunk:
-                    break
-                f.write(chunk)
-        return True
+    except urllib.error.HTTPError as e:
+        # 只有明确 401/403 且目标是 PT 官方域名，才允许带 key 重试；
+        # 第三方产物地址即便 401/403 也绝不携带 Key。
+        if e.code in (401, 403) and _trusted_pt_host(url) and key:
+            req2 = urllib.request.Request(url, headers=_headers(key))
+            _save(req2)
+            return True
+        raise
 
 
 # ---------- 资产库上传（Seedance 图生视频必须先把素材上传拿 asset://）----------
