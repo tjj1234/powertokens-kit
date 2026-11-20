@@ -142,9 +142,17 @@ def main():
                 "purposes.%s 候选 >= 2" % use, "实际 %r" % cands)
         missing = [c for c in (cands or []) if c not in models]
         r.check(not missing, "purposes.%s 候选都在 models 中" % use, repr(missing))
-        channels = {models.get(c, {}).get("capabilities", {}).get("channel")
-                    for c in (cands or []) if c in models}
-        r.check(len(channels) >= 2, "purposes.%s 跨 >= 2 渠道" % use, repr(channels))
+        # 0.8.8：媒体用途（text2image/image2image/text2video/image2video）的候选是
+        # image/video/seedance 模型，走统一 /v1/images 或 /v1/videos 端点，没有 chat
+        # 的 capabilities.channel 概念。对纯媒体用途豁免「跨 2 渠道」，只校验候选存在。
+        cand_kinds = {models[c].get("kind") for c in (cands or []) if c in models}
+        media_only = cand_kinds and cand_kinds <= {"image", "video", "seedance"}
+        if media_only:
+            r.check(True, "purposes.%s 媒体用途（免渠道校验）" % use, repr(cand_kinds))
+        else:
+            channels = {models.get(c, {}).get("capabilities", {}).get("channel")
+                        for c in (cands or []) if c in models}
+            r.check(len(channels) >= 2, "purposes.%s 跨 >= 2 渠道" % use, repr(channels))
     r.check(isinstance(ap.get("skip_rules"), list) and len(ap.get("skip_rules", [])) >= 1,
             "auto_policy.skip_rules 存在")
 

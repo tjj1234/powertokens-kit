@@ -21,6 +21,18 @@ from harness import (  # noqa: E402
 
 EXPECTED_EXECUTION = {k: ("async" if k in ASYNC_KINDS else "sync") for k in KNOWN_KINDS}
 
+# 0.8.8：媒体用途与 validate_catalog.py 同口径——候选 kind 全为媒体类时没有
+# chat 的 capabilities.channel 概念，须豁免「跨 >= 2 渠道」断言。
+CHAT_PURPOSES = {"general", "agent", "search", "long_report", "vision"}
+MEDIA_PURPOSES = {"text2image", "image2image", "text2video", "image2video"}
+MEDIA_KINDS = {"image", "video", "seedance"}
+
+
+def _purpose_is_media_only(cands, models):
+    """与 validate_catalog.py 完全同口径：候选 kind 集合 ⊆ 媒体类即视为媒体用途。"""
+    kinds = {models[c].get("kind") for c in (cands or []) if c in models}
+    return bool(kinds) and kinds <= MEDIA_KINDS
+
 
 class TestCatalogLoad(GatewayTestBase):
     def test_missing_file_yields_empty_catalog(self):
@@ -426,6 +438,9 @@ class TestCatalogV2Integrity(unittest.TestCase):
 
     def test_auto_policy_purposes_span_channels(self):
         for use, cands in self.data["auto_policy"]["purposes"].items():
+            # 0.8.8：媒体用途（纯 image/video/seedance 候选）无 channel 概念，免渠道校验
+            if _purpose_is_media_only(cands, self.models):
+                continue
             channels = {self.models[c]["capabilities"].get("channel") for c in cands}
             self.assertGreaterEqual(len(channels), 2, "%s 未跨渠道" % use)
 
@@ -683,11 +698,19 @@ class TestCatalogV080(unittest.TestCase):
         cls.cat = json.loads(CATALOG_JSON.read_text(encoding="utf-8"))
 
     def test_purposes_cover_five_uses(self):
-        self.assertEqual({"general", "agent", "search", "long_report", "vision"},
-                         set(self.cat["auto_policy"]["purposes"]))
+        purposes = set(self.cat["auto_policy"]["purposes"])
+        # 0.8.0 锁定的 5 种 chat 用途必须仍在（不能被 0.8.8 媒体用途挤掉）
+        self.assertTrue(CHAT_PURPOSES <= purposes,
+                        "缺 chat 用途：" + ", ".join(sorted(CHAT_PURPOSES - purposes)))
+        # 0.8.8 新增 4 种媒体用途
+        self.assertTrue(MEDIA_PURPOSES <= purposes,
+                        "缺媒体用途：" + ", ".join(sorted(MEDIA_PURPOSES - purposes)))
 
     def test_every_purpose_crosses_channels(self):
         for use, cands in self.cat["auto_policy"]["purposes"].items():
+            # 0.8.8：媒体用途（纯 image/video/seedance 候选）无 channel 概念，免渠道校验
+            if _purpose_is_media_only(cands, self.cat["models"]):
+                continue
             channels = {self.cat["models"][c]["capabilities"]["channel"] for c in cands}
             self.assertGreaterEqual(len(channels), 2, use)
 

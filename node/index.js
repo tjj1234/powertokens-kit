@@ -197,6 +197,63 @@ function _modelCanSeeImages(e) {
   return caps.vision === true || Boolean(caps.multimodal && caps.multimodal.vision === true);
 }
 
+// ---------------------------------------------------------------- 0.8.8 媒体能力筛选
+// 需求 M2：按参数筛选候选。规则（用方复核 §1）：列表里没有就是不支持，绝不乐观放行；
+// 能力字段缺失报 capability_unknown 并排除，同时附实际可用值。只读 capabilities.media，
+// 顶层同名键（0.8.5 历史值）不参与判断——capabilities.media 是唯一权威。
+const REQ_FIELD_MAP = {
+  duration_s:   { get: (m) => (m.durations || {}).value, rule: (m) => m.duration_rule },
+  resolution:   { get: (m) => (m.resolutions || {}).value },
+  size:         { get: (m) => (m.sizes || {}).value },
+  aspect_ratio: { get: (m) => (m.aspect_ratios || {}).value },
+  mode:         { get: (m) => (m.modes || {}).value },
+};
+
+function _normMediaVal(v) {
+  return String(v).trim().toLowerCase();
+}
+
+/** 把一个需求值对到模型能力上。返回 null=匹配，或 {field,value,available,reason}。 */
+function _matchOneRequirement(media, field, value) {
+  const spec = REQ_FIELD_MAP[field];
+  if (!spec) return { field, value, available: null, reason: 'capability_unknown' }; // 未知维度一律排除
+  let available = spec.get ? spec.get(media) : null;
+  // duration_s 特殊：有 duration_rule(min/max) 时用区间判断，无枚举时按区间
+  if (field === 'duration_s' && !available && spec.rule) {
+    const rule = spec.rule(media);
+    if (rule && (rule.min_duration_s !== undefined || rule.max_duration_s !== undefined)) {
+      const n = Number(value);
+      const min = rule.min_duration_s === -1 ? 0 : rule.min_duration_s;
+      const max = rule.max_duration_s;
+      const inRange = Number.isFinite(n) &&
+        (min === undefined || n >= min) && (max === undefined || n <= max);
+      return inRange ? null
+        : { field, value, available: { min_duration_s: rule.min_duration_s, max_duration_s: rule.max_duration_s }, reason: 'unsupported' };
+    }
+  }
+  if (!Array.isArray(available)) {
+    return { field, value, available: null, reason: 'capability_unknown' };
+  }
+  const hit = available.some((x) => _normMediaVal(x) === _normMediaVal(value));
+  return hit ? null : { field, value, available, reason: 'unsupported' };
+}
+
+/** 模型的媒体能力是否满足全部 requirements。返回 {ok, unmatched:[...]}。 */
+function _matchMediaRequirements(entry, requirements) {
+  const media = (entry && entry.capabilities && entry.capabilities.media) || null;
+  const unmatched = [];
+  for (const [field, value] of Object.entries(requirements || {})) {
+    if (value === null || value === undefined) continue;
+    if (!media) {
+      unmatched.push({ field, value, available: null, reason: 'capability_unknown' });
+      continue;
+    }
+    const miss = _matchOneRequirement(media, field, value);
+    if (miss) unmatched.push(miss);
+  }
+  return { ok: unmatched.length === 0, unmatched };
+}
+
 /**
  * 选模。两种互斥模式：
  *
@@ -283,6 +340,10 @@ function selectCandidates(purpose, keyModels, options = {}) {
   }
   const skipped = [];
   const candidates = [];
+  // 0.8.8 M2：可选媒体能力筛选。只在显式传 requirements 时启用；不传时以下逻辑全不触发。
+  const hasReq = Boolean(options.requirements && typeof options.requirements === 'object'
+    && Object.keys(options.requirements).length);
+  const excluded = [];
   // A4：搜索用途只有 works===true 且 returns_sources===true 才是可投入使用候选；
   // 值为 null（未实测）的进 pending_verification，绝不进 candidates。
   const pendingVerification = [];
@@ -319,14 +380,29 @@ function selectCandidates(purpose, keyModels, options = {}) {
       }
       return;
     }
+    // 0.8.8 M2：媒体能力筛选。列表里没有就是不支持；能力未知一律排除并附可用值。
+    if (hasReq) {
+      const match = _matchMediaRequirements(e, options.requirements);
+      if (!match.ok) {
+        excluded.push({
+          id, position, reason: 'requirements_unmatched',
+          unmatched: match.unmatched,
+        });
+        return;
+      }
+    }
     candidates.push({
       id, position,
       kind: e.kind || null,
       channel: (e.capabilities && e.capabilities.channel) || null,
+      ...(hasReq ? { match_basis: 'capabilities.media' } : {}),
     });
   });
   if (options.detail) {
-    return { purpose, candidates, skipped, pending_verification: pendingVerification, matched_by: matchedBy };
+    return {
+      purpose, candidates, skipped, pending_verification: pendingVerification, matched_by: matchedBy,
+      ...(hasReq ? { requirements: options.requirements, excluded } : {}),
+    };
   }
   return candidates;
 }
@@ -620,10 +696,48 @@ function isGenerationModel(modelsApiEntry) {
   return out.some((m) => m === 'image' || m === 'video' || m === 'audio');
 }
 
+/**
+ * 0.8.8 M5：把调用方的「友好参数」映射成 PT 请求该用的真实字段名。
+ * 纯规则、不发请求、不改默认值；不支持的参数进 unsupported 报错，绝不静默丢弃。
+ *
+ * @param {string} modelId  catalog 中的模型 id
+ * @param {object} req      友好参数，如 { duration_s: 4, resolution: '720P', aspect_ratio: '16:9' }
+ * @param {object} options  { catalog }
+ * @returns { object } { model, params:{真实字段名:值}, unsupported:[{field,value,reason,available}] }
+ */
+function mediaRequestParams(modelId, req, options = {}) {
+  const cat = _catalog(options);
+  const entry = cat.models[modelId];
+  if (!entry) {
+    return { model: modelId, params: {}, unsupported: Object.entries(req || {}).map(
+      ([field, value]) => ({ field, value, reason: 'not_in_catalog', available: null })) };
+  }
+  const media = (entry.capabilities && entry.capabilities.media) || null;
+  const pnames = (media && media.param_names) || {};
+  const params = {};
+  const unsupported = [];
+  for (const [field, value] of Object.entries(req || {})) {
+    if (value === null || value === undefined) continue;
+    const real = pnames[field];
+    if (!real) {
+      unsupported.push({ field, value, reason: 'no_param_mapping', available: null });
+      continue;
+    }
+    // 值校验：用与 M2 相同的媒体能力判定，避免传默认值掩盖不支持
+    if (media) {
+      const miss = _matchOneRequirement(media, field, value);
+      if (miss) { unsupported.push(miss); continue; }
+    }
+    params[real] = value;
+  }
+  return { model: modelId, params, unsupported };
+}
+
 module.exports = {
   // catalog
   loadCatalog, catalogVersion, CatalogValidationError,
   REPO_CATALOG_PATH, PACKAGED_CATALOG_PATH, KNOWN_SOURCES, isKnownSource, isKnownValue,
   // rules
   selectCandidates, classifyError, retryDecision, reasoningParams, isGenerationModel,
+  mediaRequestParams,
 };

@@ -1,6 +1,6 @@
 {
   "name": "@powertokens/kit-core",
-  "version": "0.8.7",
+  "version": "0.8.8",
   "private": true,
   "description": "Zero-dependency Node core for powertokens-kit: reads the same pt-gateway/catalog.json as the Python tools. Does NOT send requests.",
   "type": "commonjs",
@@ -22,7 +22,7 @@
     "node": ">=18"
   },
   "scripts": {
-    "test": "node --test test/core.test.js test/account-client.test.js"
+    "test": "node --test test/core.test.js test/account-client.test.js test/media.test.js"
   },
   "license": "MIT"
 }

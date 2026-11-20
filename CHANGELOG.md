@@ -6,6 +6,38 @@
 
 ---
 
+## 0.8.8 — 2026-11-20 · 媒体能力补全（4 用途 + capabilities.media，纯增量零破坏）
+
+**来源**：《kit 媒体能力需求 M1–M6》+ Codex/T01–T09 报告 + 北极星复核六条（已逐条核实接受）。
+从 PT 官方 en.zip OpenAPI + playground 全量抽取媒体参数，404 下架模型从媒体候选剔除。
+版本增量兼容，**对 0.8.7 零破坏，可无感升级**。
+
+- **纯新增，不改调用路径**：`auto_policy.purposes` 加 4 个媒体用途
+  `text2image`/`image2image`/`text2video`/`image2video`（各 3 候选，image/video/seedance 模型）；
+  条目加权威字段 `capabilities.media`（`durations/resolutions/aspect_ratios/sizes/duration_rule/
+  reference_image/pixel_map/price/param_names/family`）+ M6 别名；顶层旧字段保留兼容，
+  差异由 `supersedes_top_level` 标注。新增可选导出 `mediaRequestParams(modelId, friendlyParams,
+  {catalog})` 按 `param_names` 映射用户友好参数，不支持项进 `unsupported` 不静默丢。
+- **`selectCandidates` 可选 `requirements`**：传时长 / 分辨率 / 比例时，不满足的候选进
+  `excluded`（`reason` + `available_values`），能力未知标 `capability_unknown`。**不传
+  `requirements` 时输出与 0.8.7 逐字节一致**——差分测试 OLD 4410B == NEW 4410B，北极星锁定的
+  旧签名调用不受影响；`detail` 仅在传 requirements 时才多返回键。
+- **数据口径**：预估按高档、实扣为准（价格带 `_source`，仅 `wan3.0-video` 5s/720p 有
+  `verified` 实扣 0.5 USD）；chat 无预估接口。像素映射由 kit 按档位统一定义并标
+  「待实测校准」，精确像素以官网原厂为准。404 下架 17 个模型只排除媒体候选、不删主条目；
+  seedance 不改 `kind`、只标 `family:'video'`。
+- **北极星复核六条逐条落实**：① 字段名 / 完整枚举（含 -1/4/6 秒）② `capabilities.media`
+  权威 + 新旧差异标注 ③ 价格 `_source`（`verified` 附日期）④ 像素映射 kit 自定 +
+  待实测 ⑤ 参考图要求 ⑥ seedance `family` 标注。
+- **零影响**：生成链路 `pt_video.py`、账户客户端、现有测试与现有调用路径 0 改动。T06 下载
+  安全补丁已作为 `v0.8.7-security.1` 单独先行发布，与本版解耦。
+- **验收**：Node `--test` **73/73**（新增 11 例媒体测试）、Python **292/292**、
+  `validate_catalog.py` 全通过；`npm pack` 自包含 6 文件、`expectedSchema:2` 校验通过。
+- 产物 `dist/powertokens-kit-core-0.8.8.tgz`，tgz SHA-256
+  `121cc4e46b49ebd48ceed84da4b71d5b0fa7a87f0533d9382c7688b2dd7c218b`；包内 catalog SHA-256
+  `698ffc4980d06728a20bcd5c1820d59fa27c0db80547d3415ad901262c0e9b82`（LF、0 CRLF）。
+  附 GitHub Release v0.8.8。
+
 ## 0.8.7-security.1 — 2026-11-20 · 下载链路 API Key 泄露修复（T06，安全补丁）
 
 **优先级**：安全补丁，独立于 0.8.8 能力补全，先行发布。只改 `pt_video.py`，不碰 catalog / node / npm 包，故无关的在用方无需换锁。

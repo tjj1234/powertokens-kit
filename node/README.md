@@ -32,7 +32,7 @@ const { AccountClient } = require('./node/account-client');
 ```
 
 ```bash
-cd node && npm pack     # 生成 dist/powertokens-kit-core-0.8.7.tgz，自包含
+cd node && npm pack     # 生成 dist/powertokens-kit-core-0.8.8.tgz，自包含
 ```
 
 tgz 内含 `index.js` / `account-client.js` / `catalog.snapshot.json` / `catalog.schema.snapshot.json` / `README.md` / `package.json`。把解包后的 `package/` 整个放进 DSH 的 `vendor/` 即可，`loadCatalog()` 找不到仓库 catalog 时自动回退读包内快照。零运行时依赖，Node ≥ 18。
@@ -59,6 +59,19 @@ tgz 内含 `index.js` / `account-client.js` / `catalog.snapshot.json` / `catalog
 | `reasoningParams(model, effort, opts)` | 思考模式传参；`effort='none'` 返回 `needs_confirmation:true`，不猜关闭取值 | `{supported, param, value, needs_confirmation, ...}` |
 
 辅助导出：`catalogVersion()` / `isKnownValue()` / `isKnownSource()` / `isGenerationModel()` / `CatalogValidationError`。
+
+**媒体选模（0.8.8 新增，向后兼容）**：`auto_policy.purposes` 新增 4 个媒体用途
+`text2image` / `image2image` / `text2video` / `image2video`（候选为 image / video / seedance 模型）。
+- `selectCandidates(purpose, keyModels, {catalog, requirements})` 可选传 `requirements`（如
+  `{duration:4, resolution:'720p', ratio:'16:9'}`）：不满足的候选进 `excluded`（带 `reason`
+  与 `available_values`），能力未知标 `capability_unknown`。**不传 `requirements` 时行为与
+  0.8.7 逐字节一致**，`detail` 也不会多出键。
+- `mediaRequestParams(modelId, friendlyParams, {catalog})` 按条目 `capabilities.media.param_names`
+  把用户友好参数映射到真实请求字段；不支持的参数进 `unsupported`，不静默丢。
+- 媒体能力权威字段是条目的 `capabilities.media`（`durations/resolutions/aspect_ratios/sizes/
+  duration_rule/reference_image/pixel_map/price/param_names/family`）；顶层旧字段保留兼容，
+  差异由 `supersedes_top_level` 标注。价格带 `_source`（`verified` 附日期），像素映射由 kit
+  按档位统一定义、标「待实测校准」，精确像素以官网原厂参数为准。
 
 **重试分支优先级**：发送前视觉拦截 → 受理未知 → 2xx 已受理（不重放）→ 上下文超长 → 其余。
 
@@ -116,7 +129,7 @@ if (!bal.ok) console.error(bal.error.category);
 | catalog 校验 | `python pt-gateway/validate_catalog.py` | schema / 字段 / 来源枚举守门，改 catalog 后必跑 |
 | 复核脚本 | `python pt-gateway/recheck.py` | 离线对账（0 花费）；`--live-view <models.json>` 对账 `top_provider`；`--registry` 生成待复核清单 |
 | 真机复核 | `recheck.py --live --max-usd <N> --usd-per-1k-tokens <N>` | 真实调用，**会产生费用**；`--max-usd` 硬上限须 > 0，未显式给出则不跑 |
-| 测试 | `python pt-gateway/tests/run_tests.py` + `cd node && npm test` | Python 全量 / Node **62/62**（0.8.7），0 花费 |
+| 测试 | `python pt-gateway/tests/run_tests.py` + `cd node && npm test` | Python 全量 / Node **73/73**（0.8.8），0 花费 |
 
 ### 能力边界（明确不做什么）
 
@@ -255,6 +268,22 @@ const e = retryDecision({ status: 403, pinned: true, model: 'gpt-5.2' });
   （一致→confirmed，catalog null→suggestion，不一致→conflict，不自动写回正文）。
 
 
+### 0.8.8（媒体能力补全：4 用途 + capabilities.media + 可选选模分支）
+
+- **纯增量、对 0.8.7 零破坏**：只新增 4 个媒体用途（`text2image/image2image/text2video/
+  image2video`）、条目 `capabilities.media` 权威字段、M6 别名与一个可选函数
+  `mediaRequestParams()`。`selectCandidates(purpose, keyModels)` 旧调用（不传 `requirements`）
+  输出逐字节一致，差分测试 OLD/NEW 均 4410 字节相同；北极星锁定 tgz + catalog SHA 的方案不受影响。
+- **数据来源**：从 PT 官方 en.zip OpenAPI + playground 全量抽取媒体参数；404 下架的 17 个
+  模型只从媒体候选排除、不删主条目；在售 75 个模型。价格预估按高档、实扣为准（仅
+  `wan3.0-video` 5s/720p 有 `verified` 实扣 0.5 USD），chat 无预估接口。
+- **北极星复核六条已逐条落实**：字段名 / 完整枚举、`capabilities.media` 权威 + 新旧差异
+  标注、价格 `_source`、像素映射（kit 自定档位映射 + 待实测校准）、参考图要求、seedance
+  不改 `kind` 只标 `family:'video'`。
+- **不碰**：生成链路 `pt_video.py`、账户客户端、现有调用路径与现有测试。T06 下载安全补丁
+  已作为 `v0.8.7-security.1` 单独先行发布，与本版解耦。
+- **验收**：Node **73/73**（新增 11 例媒体测试）、Python **292/292**、validate_catalog 全过。
+
 ### 0.8.7（请求 ID 官方确认，纯文档）
 
 - PT 官方确认：`X-Oneapi-Request-Id` 响应头与消费记录 `request_id` **同值**（可查
@@ -284,8 +313,8 @@ const e = retryDecision({ status: 403, pinned: true, model: 'gpt-5.2' });
 ### 打包（npm pack / vendor 离线使用）
 
 ```bash
-cd node && npm pack              # 生成 dist/powertokens-kit-core-0.8.7.tgz
-sha256sum dist/powertokens-kit-core-0.8.7.tgz
+cd node && npm pack              # 生成 dist/powertokens-kit-core-0.8.8.tgz
+sha256sum dist/powertokens-kit-core-0.8.8.tgz
 ```
 
 tgz 含 `index.js` / `account-client.js` / `catalog.snapshot.json` /
