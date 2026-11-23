@@ -6,6 +6,36 @@
 
 ---
 
+## 0.9.0 — 2026-11-23 · C01 按需求推荐（新增可选）+ P3 price_rows 小写（顺序 6）
+
+**来源**：统一排期计划顺序 6（C01），用户 11-23 批准开工并明确"改选模逻辑须做成新增可选、旧调用输出不变"。**本版动 node core（新增函数）+ catalog（P3 大小写）→ 发新 core tgz，北极星换一次锁。**
+
+### 交付四项（供北极星审核换锁）
+
+1. **新旧差分 OLD==NEW**：
+   - A) 代码差分：`OLD index.js`(0.8.12) vs `NEW index.js`(0.9.0)，同一 catalog，旧签名 `selectCandidates(purpose, keyModels)` 36 用例（9 用途 × 无参/detail/keyModel 过滤 + pinned + requirements + hasImage/purposeKind）输出逐字节一致，mismatches=0。
+   - B) 数据差分：同一 NEW index.js，OLD catalog(0.8.12) vs NEW catalog(0.9.0，P3 小写) 22 用例输出逐字节一致，mismatches=0。
+   - **R1/R3 红线**：`selectCandidates` 函数体、签名、默认路径一个字节未改；`recommendModels` 是独立新函数，不传不生效。
+2. **SHA-256**：tgz `0532cbdb7b95aab91ad51708898690c18d830edef8d7419f58c77891a5baba82`（64745B）；包内 catalog `fcfce6f0f5ac31a188fa12239ef47ecbb46e233618ff2d33d4f3baa9cc7f2687`（227707B、LF、0 CRLF）。6 文件自包含，干净安装实测通过。
+3. **改动清单**：
+   - **新增** `recommendModels()` / `parseRecommendIntent()`（node/index.js 导出，函数体新增于 selectCandidates 之后）；新增 `node/test/recommend.test.js` 13 例。
+   - **catalog（P3，搭车）**：25 个模型共 137 处 `price_rows.value[].resolution` 由大写改小写（`1080P×43/720P×38/540P×17/480P×9/2K×8/4K×8/768P×7/1K×3/1.5K×2/512P×2`，按 OLD 统计）。**只改大小写、不改数值、不改字段语义**；严格验证 OLD 仅转小写后与 NEW 逐字节一致，大写归零。
+   - 无来源字段一律不打分/不猜（R4）：catalog 无任何 documented/verified 的质量分字段，效果档用可审计的能力覆盖度代理，不编造质量分。
+4. **C01 三档语义**（新旧对照）：
+   - `recommendModels(intent, keyModels, opts)` → `{intent, purpose, strategy, tiers:{quality,balanced,cost}, recommended}`。
+   - **成本档**：按 `price.usd_5s_720p` 的 documented/verified 价升序；无合规价格排末尾、不参与打分。
+   - **效果档**：按有官方来源的能力维度数量（durations/resolutions/aspect_ratios/frame_control/reference_image 等）降序；同分保持 catalog 顺序；`signals` 随附依据，**不编造质量分**（catalog 无 documented/verified 的 score/rank）。
+   - **均衡档**：保持 catalog 候选顺序，不主观重排。
+   - 自然语言纯规则解析；混合信号（如「真实好看又便宜」命中 quality+cost）判 balanced，三档都返回交调用方对比。内部复用 `selectCandidates(detail:true)`，继承跳过 / A4 / requirements / keyModels 过滤。
+
+### 守门与验收
+
+- **R1 差分 OLD==NEW**（代码 36 + 数据 22 用例）、**R2** 5 个 chat 用途候选顺序默认不动、**R3** 新增可选不传不生效、**R4** 无来源不打分不猜——四条全守。
+- 测试：Node **96/96**（83+13）、Python **347/347**、validate_catalog 全过、干净安装自包含 PASS。未调用 PT、0 花费。
+- **P3 说明**：这是你 0.8.12 审核提的 price_rows 大小写遗留，本次因顺序 6 动 catalog 顺手搭车完成，不额外换锁。
+
+---
+
 ## 0.8.13 — 2026-11-23 · T04 账户凭证 + T03 实时报价 + T07 产物后缀（顺序 5，说明性发版无新 core 包）
 
 **来源**：统一排期计划顺序 5（T04 + T03 + T07），用户 11-23 批准开工。**本版只改 `pt_video.py` + 两版 README + 新测试，不动 catalog / node core → 不发新 tgz，北极星无需换锁；core tgz 与 catalog SHA 沿用 0.8.12。**

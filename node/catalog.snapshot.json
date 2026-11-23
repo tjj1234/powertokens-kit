@@ -409,21 +409,21 @@
             "price_rows": {
               "value": [
                 {
-                  "resolution": "480P",
+                  "resolution": "480p",
                   "billing_unit": "per_second",
                   "model_type": "video",
                   "sale_input_price": 0.05,
                   "sale_input_credit": 50
                 },
                 {
-                  "resolution": "720P",
+                  "resolution": "720p",
                   "billing_unit": "per_second",
                   "model_type": "video",
                   "sale_input_price": 0.1,
                   "sale_input_credit": 100
                 },
                 {
-                  "resolution": "1080P",
+                  "resolution": "1080p",
                   "billing_unit": "per_second",
                   "model_type": "video",
                   "sale_input_price": 0.2,
@@ -551,14 +551,14 @@
             "price_rows": {
               "value": [
                 {
-                  "resolution": "720P",
+                  "resolution": "720p",
                   "billing_unit": "per_second",
                   "model_type": "video",
                   "sale_input_price": 0.095,
                   "sale_input_credit": 95
                 },
                 {
-                  "resolution": "1080P",
+                  "resolution": "1080p",
                   "billing_unit": "per_second",
                   "model_type": "video",
                   "sale_input_price": 0.143,
@@ -660,21 +660,21 @@
                   "sale_input_credit": 28
                 },
                 {
-                  "resolution": "720P",
+                  "resolution": "720p",
                   "billing_unit": "per_second",
                   "model_type": "video",
                   "sale_input_price": 0.084,
                   "sale_input_credit": 84
                 },
                 {
-                  "resolution": "1080P",
+                  "resolution": "1080p",
                   "billing_unit": "per_second",
                   "model_type": "video",
                   "sale_input_price": 0.112,
                   "sale_input_credit": 112
                 },
                 {
-                  "resolution": "720P",
+                  "resolution": "720p",
                   "has_audio": 1,
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -683,7 +683,7 @@
                   "is_specified_voice": 2
                 },
                 {
-                  "resolution": "720P",
+                  "resolution": "720p",
                   "ability": "motion-control2video",
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -691,7 +691,7 @@
                   "sale_input_credit": 126
                 },
                 {
-                  "resolution": "720P",
+                  "resolution": "720p",
                   "has_audio": 1,
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -700,7 +700,7 @@
                   "is_specified_voice": 1
                 },
                 {
-                  "resolution": "1080P",
+                  "resolution": "1080p",
                   "has_audio": 1,
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -709,7 +709,7 @@
                   "is_specified_voice": 2
                 },
                 {
-                  "resolution": "1080P",
+                  "resolution": "1080p",
                   "ability": "motion-control2video",
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -717,7 +717,7 @@
                   "sale_input_credit": 168
                 },
                 {
-                  "resolution": "1080P",
+                  "resolution": "1080p",
                   "has_audio": 1,
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -726,7 +726,7 @@
                   "is_specified_voice": 1
                 },
                 {
-                  "resolution": "4K",
+                  "resolution": "4k",
                   "has_audio": 1,
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -735,7 +735,7 @@
                   "is_specified_voice": 2
                 },
                 {
-                  "resolution": "4K",
+                  "resolution": "4k",
                   "billing_unit": "per_second",
                   "model_type": "video",
                   "sale_input_price": 0.42,
@@ -814,21 +814,21 @@
             "price_rows": {
               "value": [
                 {
-                  "resolution": "720P",
+                  "resolution": "720p",
                   "billing_unit": "per_second",
                   "model_type": "video",
                   "sale_input_price": 0.084,
                   "sale_input_credit": 84
                 },
                 {
-                  "resolution": "1080P",
+                  "resolution": "1080p",
                   "billing_unit": "per_second",
                   "model_type": "video",
                   "sale_input_price": 0.112,
                   "sale_input_credit": 112
                 },
                 {
-                  "resolution": "720P",
+                  "resolution": "720p",
                   "has_video": 1,
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -836,7 +836,7 @@
                   "sale_input_credit": 126
                 },
                 {
-                  "resolution": "1080P",
+                  "resolution": "1080p",
                   "has_video": 1,
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -1088,7 +1088,7 @@
             "price_rows": {
               "value": [
                 {
-                  "resolution": "4K",
+                  "resolution": "4k",
                   "has_video": 1,
                   "billing_unit": "per_1M_tokens",
                   "model_type": "video",
@@ -1096,14 +1096,14 @@
                   "sale_input_credit": 2400
                 },
                 {
-                  "resolution": "4K",
+                  "resolution": "4k",
                   "billing_unit": "per_1M_tokens",
                   "model_type": "video",
                   "sale_input_price": 4,
                   "sale_input_credit": 4000
                 },
                 {
-                  "resolution": "480P",
+                  "resolution": "480p",
                   "has_video": 1,
                   "billing_unit": "per_1M_tokens",
                   "model_type": "video",
@@ -1111,7 +1111,7 @@
                   "sale_input_credit": 4300
                 },
                 {
-                  "resolution": "720P",
+                  "resolution": "720p",
                   "has_video": 1,
                   "billing_unit": "per_1M_tokens",
                   "model_type": "video",
@@ -1119,7 +1119,7 @@
                   "sale_input_credit": 4300
                 },
                 {
-                  "resolution": "1080P",
+                  "resolution": "1080p",
                   "has_video": 1,
                   "billing_unit": "per_1M_tokens",
                   "model_type": "video",
@@ -1127,21 +1127,21 @@
                   "sale_input_credit": 4700
                 },
                 {
-                  "resolution": "480P",
+                  "resolution": "480p",
                   "billing_unit": "per_1M_tokens",
                   "model_type": "video",
                   "sale_input_price": 7,
                   "sale_input_credit": 7000
                 },
                 {
-                  "resolution": "720P",
+                  "resolution": "720p",
                   "billing_unit": "per_1M_tokens",
                   "model_type": "video",
                   "sale_input_price": 7,
                   "sale_input_credit": 7000
                 },
                 {
-                  "resolution": "1080P",
+                  "resolution": "1080p",
                   "billing_unit": "per_1M_tokens",
                   "model_type": "video",
                   "sale_input_price": 7.7,
@@ -1370,7 +1370,7 @@
             "price_rows": {
               "value": [
                 {
-                  "resolution": "480P",
+                  "resolution": "480p",
                   "has_video": 1,
                   "billing_unit": "per_1M_tokens",
                   "model_type": "video",
@@ -1378,7 +1378,7 @@
                   "sale_input_credit": 6400
                 },
                 {
-                  "resolution": "720P",
+                  "resolution": "720p",
                   "has_video": 1,
                   "billing_unit": "per_1M_tokens",
                   "model_type": "video",
@@ -1386,7 +1386,7 @@
                   "sale_input_credit": 6400
                 },
                 {
-                  "resolution": "1080P",
+                  "resolution": "1080p",
                   "has_video": 1,
                   "billing_unit": "per_1M_tokens",
                   "model_type": "video",
@@ -1394,21 +1394,21 @@
                   "sale_input_credit": 7000
                 },
                 {
-                  "resolution": "480P",
+                  "resolution": "480p",
                   "billing_unit": "per_1M_tokens",
                   "model_type": "video",
                   "sale_input_price": 10.7,
                   "sale_input_credit": 10700
                 },
                 {
-                  "resolution": "720P",
+                  "resolution": "720p",
                   "billing_unit": "per_1M_tokens",
                   "model_type": "video",
                   "sale_input_price": 10.7,
                   "sale_input_credit": 10700
                 },
                 {
-                  "resolution": "1080P",
+                  "resolution": "1080p",
                   "billing_unit": "per_1M_tokens",
                   "model_type": "video",
                   "sale_input_price": 11.7,
@@ -3286,14 +3286,14 @@
             "price_rows": {
               "value": [
                 {
-                  "resolution": "1K",
+                  "resolution": "1k",
                   "billing_unit": "per_image",
                   "model_type": "image",
                   "sale_input_price": 0.04,
                   "sale_input_credit": 40
                 },
                 {
-                  "resolution": "2K",
+                  "resolution": "2k",
                   "billing_unit": "per_image",
                   "model_type": "image",
                   "sale_input_price": 0.075,
@@ -3620,7 +3620,7 @@
             "price_rows": {
               "value": [
                 {
-                  "resolution": "1K",
+                  "resolution": "1k",
                   "ability": "layer-decompostion",
                   "billing_unit": "per_image",
                   "model_type": "image",
@@ -3628,7 +3628,7 @@
                   "sale_input_credit": 23
                 },
                 {
-                  "resolution": "1.5K",
+                  "resolution": "1.5k",
                   "ability": "layer-decompostion",
                   "billing_unit": "per_image",
                   "model_type": "image",
@@ -3636,14 +3636,14 @@
                   "sale_input_credit": 23
                 },
                 {
-                  "resolution": "1K",
+                  "resolution": "1k",
                   "billing_unit": "per_image",
                   "model_type": "image",
                   "sale_input_price": 0.045,
                   "sale_input_credit": 45
                 },
                 {
-                  "resolution": "2K",
+                  "resolution": "2k",
                   "ability": "layer-decompostion",
                   "billing_unit": "per_image",
                   "model_type": "image",
@@ -3651,14 +3651,14 @@
                   "sale_input_credit": 45
                 },
                 {
-                  "resolution": "1.5K",
+                  "resolution": "1.5k",
                   "billing_unit": "per_image",
                   "model_type": "image",
                   "sale_input_price": 0.045,
                   "sale_input_credit": 45
                 },
                 {
-                  "resolution": "2K",
+                  "resolution": "2k",
                   "billing_unit": "per_image",
                   "model_type": "image",
                   "sale_input_price": 0.09,
@@ -3743,7 +3743,7 @@
             "price_rows": {
               "value": [
                 {
-                  "resolution": "1080P",
+                  "resolution": "1080p",
                   "ability": "text2image",
                   "billing_unit": "per_image",
                   "model_type": "image",
@@ -3751,7 +3751,7 @@
                   "sale_input_credit": 29
                 },
                 {
-                  "resolution": "2K",
+                  "resolution": "2k",
                   "ability": "text2image",
                   "billing_unit": "per_image",
                   "model_type": "image",
@@ -3759,7 +3759,7 @@
                   "sale_input_credit": 38
                 },
                 {
-                  "resolution": "1080P",
+                  "resolution": "1080p",
                   "ability": "multi-reference-image2image",
                   "billing_unit": "per_image",
                   "model_type": "image",
@@ -3769,7 +3769,7 @@
                   "image_count_end": 3
                 },
                 {
-                  "resolution": "4K",
+                  "resolution": "4k",
                   "ability": "text2image",
                   "billing_unit": "per_image",
                   "model_type": "image",
@@ -3777,7 +3777,7 @@
                   "sale_input_credit": 48
                 },
                 {
-                  "resolution": "1080P",
+                  "resolution": "1080p",
                   "ability": "multi-reference-image2image",
                   "billing_unit": "per_image",
                   "model_type": "image",
@@ -3787,7 +3787,7 @@
                   "image_count_end": 7
                 },
                 {
-                  "resolution": "2K",
+                  "resolution": "2k",
                   "ability": "multi-reference-image2image",
                   "billing_unit": "per_image",
                   "model_type": "image",
@@ -3797,7 +3797,7 @@
                   "image_count_end": 3
                 },
                 {
-                  "resolution": "2K",
+                  "resolution": "2k",
                   "ability": "multi-reference-image2image",
                   "billing_unit": "per_image",
                   "model_type": "image",
@@ -3807,7 +3807,7 @@
                   "image_count_end": 7
                 },
                 {
-                  "resolution": "4K",
+                  "resolution": "4k",
                   "ability": "multi-reference-image2image",
                   "billing_unit": "per_image",
                   "model_type": "image",
@@ -3817,7 +3817,7 @@
                   "image_count_end": 3
                 },
                 {
-                  "resolution": "4K",
+                  "resolution": "4k",
                   "ability": "multi-reference-image2image",
                   "billing_unit": "per_image",
                   "model_type": "image",
@@ -3915,7 +3915,7 @@
             "price_rows": {
               "value": [
                 {
-                  "resolution": "480P",
+                  "resolution": "480p",
                   "duration_value": 1,
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -3923,7 +3923,7 @@
                   "sale_input_credit": 15
                 },
                 {
-                  "resolution": "720P",
+                  "resolution": "720p",
                   "duration_value": 1,
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -3931,7 +3931,7 @@
                   "sale_input_credit": 36
                 },
                 {
-                  "resolution": "1080P",
+                  "resolution": "1080p",
                   "duration_value": 1,
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -4009,7 +4009,7 @@
             "price_rows": {
               "value": [
                 {
-                  "resolution": "720P",
+                  "resolution": "720p",
                   "billing_unit": "per_second",
                   "model_type": "video",
                   "sale_input_price": 0.1,
@@ -4089,14 +4089,14 @@
             "price_rows": {
               "value": [
                 {
-                  "resolution": "720P",
+                  "resolution": "720p",
                   "billing_unit": "per_second",
                   "model_type": "video",
                   "sale_input_price": 0.095,
                   "sale_input_credit": 95
                 },
                 {
-                  "resolution": "1080P",
+                  "resolution": "1080p",
                   "billing_unit": "per_second",
                   "model_type": "video",
                   "sale_input_price": 0.143,
@@ -4189,14 +4189,14 @@
             "price_rows": {
               "value": [
                 {
-                  "resolution": "720P",
+                  "resolution": "720p",
                   "billing_unit": "per_second",
                   "model_type": "video",
                   "sale_input_price": 0.095,
                   "sale_input_credit": 95
                 },
                 {
-                  "resolution": "1080P",
+                  "resolution": "1080p",
                   "billing_unit": "per_second",
                   "model_type": "video",
                   "sale_input_price": 0.143,
@@ -4262,21 +4262,21 @@
             "price_rows": {
               "value": [
                 {
-                  "resolution": "480P",
+                  "resolution": "480p",
                   "billing_unit": "per_second",
                   "model_type": "video",
                   "sale_input_price": 0.07,
                   "sale_input_credit": 70
                 },
                 {
-                  "resolution": "720P",
+                  "resolution": "720p",
                   "billing_unit": "per_second",
                   "model_type": "video",
                   "sale_input_price": 0.14,
                   "sale_input_credit": 140
                 },
                 {
-                  "resolution": "1080P",
+                  "resolution": "1080p",
                   "billing_unit": "per_second",
                   "model_type": "video",
                   "sale_input_price": 0.18,
@@ -4359,21 +4359,21 @@
             "price_rows": {
               "value": [
                 {
-                  "resolution": "480P",
+                  "resolution": "480p",
                   "billing_unit": "per_second",
                   "model_type": "video",
                   "sale_input_price": 0.07,
                   "sale_input_credit": 70
                 },
                 {
-                  "resolution": "720P",
+                  "resolution": "720p",
                   "billing_unit": "per_second",
                   "model_type": "video",
                   "sale_input_price": 0.14,
                   "sale_input_credit": 140
                 },
                 {
-                  "resolution": "1080P",
+                  "resolution": "1080p",
                   "billing_unit": "per_second",
                   "model_type": "video",
                   "sale_input_price": 0.18,
@@ -4455,21 +4455,21 @@
             "price_rows": {
               "value": [
                 {
-                  "resolution": "480P",
+                  "resolution": "480p",
                   "billing_unit": "per_second",
                   "model_type": "video",
                   "sale_input_price": 0.07,
                   "sale_input_credit": 70
                 },
                 {
-                  "resolution": "720P",
+                  "resolution": "720p",
                   "billing_unit": "per_second",
                   "model_type": "video",
                   "sale_input_price": 0.14,
                   "sale_input_credit": 140
                 },
                 {
-                  "resolution": "1080P",
+                  "resolution": "1080p",
                   "billing_unit": "per_second",
                   "model_type": "video",
                   "sale_input_price": 0.18,
@@ -4550,14 +4550,14 @@
             "price_rows": {
               "value": [
                 {
-                  "resolution": "768P",
+                  "resolution": "768p",
                   "billing_unit": "per_second",
                   "model_type": "video",
                   "sale_input_price": 0.08,
                   "sale_input_credit": 80
                 },
                 {
-                  "resolution": "2K",
+                  "resolution": "2k",
                   "billing_unit": "per_second",
                   "model_type": "video",
                   "sale_input_price": 0.13,
@@ -4635,7 +4635,7 @@
             "price_rows": {
               "value": [
                 {
-                  "resolution": "512P",
+                  "resolution": "512p",
                   "duration_value": 6,
                   "billing_unit": "per_video",
                   "model_type": "video",
@@ -4643,7 +4643,7 @@
                   "sale_input_credit": 95
                 },
                 {
-                  "resolution": "512P",
+                  "resolution": "512p",
                   "duration_value": 10,
                   "billing_unit": "per_video",
                   "model_type": "video",
@@ -4651,7 +4651,7 @@
                   "sale_input_credit": 143
                 },
                 {
-                  "resolution": "768P",
+                  "resolution": "768p",
                   "duration_value": 6,
                   "billing_unit": "per_video",
                   "model_type": "video",
@@ -4659,7 +4659,7 @@
                   "sale_input_credit": 266
                 },
                 {
-                  "resolution": "1080P",
+                  "resolution": "1080p",
                   "duration_value": 6,
                   "billing_unit": "per_video",
                   "model_type": "video",
@@ -4667,7 +4667,7 @@
                   "sale_input_credit": 466
                 },
                 {
-                  "resolution": "768P",
+                  "resolution": "768p",
                   "duration_value": 10,
                   "billing_unit": "per_video",
                   "model_type": "video",
@@ -4731,7 +4731,7 @@
             "price_rows": {
               "value": [
                 {
-                  "resolution": "768P",
+                  "resolution": "768p",
                   "duration_value": 6,
                   "billing_unit": "per_video",
                   "model_type": "video",
@@ -4739,7 +4739,7 @@
                   "sale_input_credit": 181
                 },
                 {
-                  "resolution": "768P",
+                  "resolution": "768p",
                   "duration_value": 10,
                   "billing_unit": "per_video",
                   "model_type": "video",
@@ -4747,7 +4747,7 @@
                   "sale_input_credit": 304
                 },
                 {
-                  "resolution": "1080P",
+                  "resolution": "1080p",
                   "duration_value": 6,
                   "billing_unit": "per_video",
                   "model_type": "video",
@@ -4811,7 +4811,7 @@
             "price_rows": {
               "value": [
                 {
-                  "resolution": "768P",
+                  "resolution": "768p",
                   "duration_value": 6,
                   "billing_unit": "per_video",
                   "model_type": "video",
@@ -4819,7 +4819,7 @@
                   "sale_input_credit": 266
                 },
                 {
-                  "resolution": "1080P",
+                  "resolution": "1080p",
                   "duration_value": 6,
                   "billing_unit": "per_video",
                   "model_type": "video",
@@ -4827,7 +4827,7 @@
                   "sale_input_credit": 466
                 },
                 {
-                  "resolution": "768P",
+                  "resolution": "768p",
                   "duration_value": 10,
                   "billing_unit": "per_video",
                   "model_type": "video",
@@ -4893,7 +4893,7 @@
             "price_rows": {
               "value": [
                 {
-                  "resolution": "720P",
+                  "resolution": "720p",
                   "ability": "image2video",
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -4902,7 +4902,7 @@
                   "is_peak_shifting_mode": 1
                 },
                 {
-                  "resolution": "1080P",
+                  "resolution": "1080p",
                   "ability": "image2video",
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -4911,7 +4911,7 @@
                   "is_peak_shifting_mode": 1
                 },
                 {
-                  "resolution": "720P",
+                  "resolution": "720p",
                   "ability": "image2video",
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -4920,7 +4920,7 @@
                   "is_peak_shifting_mode": 2
                 },
                 {
-                  "resolution": "1080P",
+                  "resolution": "1080p",
                   "ability": "image2video",
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -5000,7 +5000,7 @@
             "price_rows": {
               "value": [
                 {
-                  "resolution": "540P",
+                  "resolution": "540p",
                   "ability": "text2video",
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -5009,7 +5009,7 @@
                   "is_peak_shifting_mode": 1
                 },
                 {
-                  "resolution": "540P",
+                  "resolution": "540p",
                   "ability": "image2video",
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -5018,7 +5018,7 @@
                   "is_peak_shifting_mode": 1
                 },
                 {
-                  "resolution": "540P",
+                  "resolution": "540p",
                   "ability": "first-last-frame2video",
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -5027,7 +5027,7 @@
                   "is_peak_shifting_mode": 1
                 },
                 {
-                  "resolution": "540P",
+                  "resolution": "540p",
                   "ability": "image2video",
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -5036,7 +5036,7 @@
                   "is_peak_shifting_mode": 2
                 },
                 {
-                  "resolution": "540P",
+                  "resolution": "540p",
                   "ability": "text2video",
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -5045,7 +5045,7 @@
                   "is_peak_shifting_mode": 2
                 },
                 {
-                  "resolution": "540P",
+                  "resolution": "540p",
                   "ability": "first-last-frame2video",
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -5054,7 +5054,7 @@
                   "is_peak_shifting_mode": 2
                 },
                 {
-                  "resolution": "720P",
+                  "resolution": "720p",
                   "ability": "image2video",
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -5063,7 +5063,7 @@
                   "is_peak_shifting_mode": 1
                 },
                 {
-                  "resolution": "720P",
+                  "resolution": "720p",
                   "ability": "text2video",
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -5072,7 +5072,7 @@
                   "is_peak_shifting_mode": 1
                 },
                 {
-                  "resolution": "720P",
+                  "resolution": "720p",
                   "ability": "first-last-frame2video",
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -5081,7 +5081,7 @@
                   "is_peak_shifting_mode": 1
                 },
                 {
-                  "resolution": "1080P",
+                  "resolution": "1080p",
                   "ability": "first-last-frame2video",
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -5090,7 +5090,7 @@
                   "is_peak_shifting_mode": 1
                 },
                 {
-                  "resolution": "1080P",
+                  "resolution": "1080p",
                   "ability": "image2video",
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -5099,7 +5099,7 @@
                   "is_peak_shifting_mode": 1
                 },
                 {
-                  "resolution": "1080P",
+                  "resolution": "1080p",
                   "ability": "text2video",
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -5108,7 +5108,7 @@
                   "is_peak_shifting_mode": 1
                 },
                 {
-                  "resolution": "720P",
+                  "resolution": "720p",
                   "ability": "text2video",
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -5117,7 +5117,7 @@
                   "is_peak_shifting_mode": 2
                 },
                 {
-                  "resolution": "720P",
+                  "resolution": "720p",
                   "ability": "first-last-frame2video",
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -5126,7 +5126,7 @@
                   "is_peak_shifting_mode": 2
                 },
                 {
-                  "resolution": "720P",
+                  "resolution": "720p",
                   "ability": "image2video",
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -5135,7 +5135,7 @@
                   "is_peak_shifting_mode": 2
                 },
                 {
-                  "resolution": "1080P",
+                  "resolution": "1080p",
                   "ability": "text2video",
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -5144,7 +5144,7 @@
                   "is_peak_shifting_mode": 2
                 },
                 {
-                  "resolution": "1080P",
+                  "resolution": "1080p",
                   "ability": "image2video",
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -5153,7 +5153,7 @@
                   "is_peak_shifting_mode": 2
                 },
                 {
-                  "resolution": "1080P",
+                  "resolution": "1080p",
                   "ability": "first-last-frame2video",
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -5232,7 +5232,7 @@
             "price_rows": {
               "value": [
                 {
-                  "resolution": "540P",
+                  "resolution": "540p",
                   "ability": "reference2video",
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -5241,7 +5241,7 @@
                   "is_peak_shifting_mode": 1
                 },
                 {
-                  "resolution": "720P",
+                  "resolution": "720p",
                   "ability": "reference2video",
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -5250,7 +5250,7 @@
                   "is_peak_shifting_mode": 1
                 },
                 {
-                  "resolution": "540P",
+                  "resolution": "540p",
                   "ability": "reference2video",
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -5259,7 +5259,7 @@
                   "is_peak_shifting_mode": 2
                 },
                 {
-                  "resolution": "1080P",
+                  "resolution": "1080p",
                   "ability": "reference2video",
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -5268,7 +5268,7 @@
                   "is_peak_shifting_mode": 1
                 },
                 {
-                  "resolution": "720P",
+                  "resolution": "720p",
                   "ability": "reference2video",
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -5277,7 +5277,7 @@
                   "is_peak_shifting_mode": 2
                 },
                 {
-                  "resolution": "1080P",
+                  "resolution": "1080p",
                   "ability": "reference2video",
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -5355,7 +5355,7 @@
             "price_rows": {
               "value": [
                 {
-                  "resolution": "540P",
+                  "resolution": "540p",
                   "ability": "reference2video",
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -5364,7 +5364,7 @@
                   "is_peak_shifting_mode": 1
                 },
                 {
-                  "resolution": "540P",
+                  "resolution": "540p",
                   "ability": "image2video",
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -5373,7 +5373,7 @@
                   "is_peak_shifting_mode": 1
                 },
                 {
-                  "resolution": "540P",
+                  "resolution": "540p",
                   "ability": "reference2video",
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -5382,7 +5382,7 @@
                   "is_peak_shifting_mode": 2
                 },
                 {
-                  "resolution": "540P",
+                  "resolution": "540p",
                   "ability": "text2video",
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -5391,7 +5391,7 @@
                   "is_peak_shifting_mode": 1
                 },
                 {
-                  "resolution": "540P",
+                  "resolution": "540p",
                   "ability": "first-last-frame2video",
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -5400,7 +5400,7 @@
                   "is_peak_shifting_mode": 1
                 },
                 {
-                  "resolution": "720P",
+                  "resolution": "720p",
                   "ability": "reference2video",
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -5409,7 +5409,7 @@
                   "is_peak_shifting_mode": 1
                 },
                 {
-                  "resolution": "720P",
+                  "resolution": "720p",
                   "ability": "image2video",
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -5418,7 +5418,7 @@
                   "is_peak_shifting_mode": 1
                 },
                 {
-                  "resolution": "720P",
+                  "resolution": "720p",
                   "ability": "text2video",
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -5427,7 +5427,7 @@
                   "is_peak_shifting_mode": 1
                 },
                 {
-                  "resolution": "720P",
+                  "resolution": "720p",
                   "ability": "first-last-frame2video",
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -5436,7 +5436,7 @@
                   "is_peak_shifting_mode": 1
                 },
                 {
-                  "resolution": "540P",
+                  "resolution": "540p",
                   "ability": "image2video",
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -5445,7 +5445,7 @@
                   "is_peak_shifting_mode": 2
                 },
                 {
-                  "resolution": "1080P",
+                  "resolution": "1080p",
                   "ability": "reference2video",
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -5454,7 +5454,7 @@
                   "is_peak_shifting_mode": 1
                 },
                 {
-                  "resolution": "1080P",
+                  "resolution": "1080p",
                   "ability": "first-last-frame2video",
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -5463,7 +5463,7 @@
                   "is_peak_shifting_mode": 1
                 },
                 {
-                  "resolution": "540P",
+                  "resolution": "540p",
                   "ability": "first-last-frame2video",
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -5472,7 +5472,7 @@
                   "is_peak_shifting_mode": 2
                 },
                 {
-                  "resolution": "1080P",
+                  "resolution": "1080p",
                   "ability": "text2video",
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -5481,7 +5481,7 @@
                   "is_peak_shifting_mode": 1
                 },
                 {
-                  "resolution": "540P",
+                  "resolution": "540p",
                   "ability": "text2video",
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -5490,7 +5490,7 @@
                   "is_peak_shifting_mode": 2
                 },
                 {
-                  "resolution": "1080P",
+                  "resolution": "1080p",
                   "ability": "image2video",
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -5499,7 +5499,7 @@
                   "is_peak_shifting_mode": 1
                 },
                 {
-                  "resolution": "720P",
+                  "resolution": "720p",
                   "ability": "reference2video",
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -5508,7 +5508,7 @@
                   "is_peak_shifting_mode": 2
                 },
                 {
-                  "resolution": "720P",
+                  "resolution": "720p",
                   "ability": "first-last-frame2video",
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -5517,7 +5517,7 @@
                   "is_peak_shifting_mode": 2
                 },
                 {
-                  "resolution": "720P",
+                  "resolution": "720p",
                   "ability": "text2video",
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -5526,7 +5526,7 @@
                   "is_peak_shifting_mode": 2
                 },
                 {
-                  "resolution": "720P",
+                  "resolution": "720p",
                   "ability": "image2video",
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -5535,7 +5535,7 @@
                   "is_peak_shifting_mode": 2
                 },
                 {
-                  "resolution": "1080P",
+                  "resolution": "1080p",
                   "ability": "text2video",
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -5544,7 +5544,7 @@
                   "is_peak_shifting_mode": 2
                 },
                 {
-                  "resolution": "1080P",
+                  "resolution": "1080p",
                   "ability": "first-last-frame2video",
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -5553,7 +5553,7 @@
                   "is_peak_shifting_mode": 2
                 },
                 {
-                  "resolution": "1080P",
+                  "resolution": "1080p",
                   "ability": "image2video",
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -5562,7 +5562,7 @@
                   "is_peak_shifting_mode": 2
                 },
                 {
-                  "resolution": "1080P",
+                  "resolution": "1080p",
                   "ability": "reference2video",
                   "billing_unit": "per_second",
                   "model_type": "video",
@@ -5644,35 +5644,35 @@
             "price_rows": {
               "value": [
                 {
-                  "resolution": "540P",
+                  "resolution": "540p",
                   "billing_unit": "per_second",
                   "model_type": "video",
                   "sale_input_price": 0.045,
                   "sale_input_credit": 45
                 },
                 {
-                  "resolution": "720P",
+                  "resolution": "720p",
                   "billing_unit": "per_second",
                   "model_type": "video",
                   "sale_input_price": 0.095,
                   "sale_input_credit": 95
                 },
                 {
-                  "resolution": "1080P",
+                  "resolution": "1080p",
                   "billing_unit": "per_second",
                   "model_type": "video",
                   "sale_input_price": 0.12,
                   "sale_input_credit": 120
                 },
                 {
-                  "resolution": "2K",
+                  "resolution": "2k",
                   "billing_unit": "per_second",
                   "model_type": "video",
                   "sale_input_price": 0.19,
                   "sale_input_credit": 190
                 },
                 {
-                  "resolution": "4K",
+                  "resolution": "4k",
                   "billing_unit": "per_second",
                   "model_type": "video",
                   "sale_input_price": 0.39,

@@ -32,7 +32,7 @@ const { AccountClient } = require('./node/account-client');
 ```
 
 ```bash
-cd node && npm pack     # 生成 dist/powertokens-kit-core-0.8.12.tgz，自包含
+cd node && npm pack     # 生成 dist/powertokens-kit-core-0.9.0.tgz，自包含
 ```
 
 tgz 内含 `index.js` / `account-client.js` / `catalog.snapshot.json` / `catalog.schema.snapshot.json` / `README.md` / `package.json`。把解包后的 `package/` 整个放进 DSH 的 `vendor/` 即可，`loadCatalog()` 找不到仓库 catalog 时自动回退读包内快照。零运行时依赖，Node ≥ 18。
@@ -59,6 +59,14 @@ tgz 内含 `index.js` / `account-client.js` / `catalog.snapshot.json` / `catalog
 | `reasoningParams(model, effort, opts)` | 思考模式传参；`effort='none'` 返回 `needs_confirmation:true`，不猜关闭取值 | `{supported, param, value, needs_confirmation, ...}` |
 
 辅助导出：`catalogVersion()` / `isKnownValue()` / `isKnownSource()` / `isGenerationModel()` / `CatalogValidationError`。
+
+**按需求推荐（0.9.0 C01 新增，可选、旧调用零影响）**：`recommendModels(intent, keyModels, opts)`
+理解自然语言意图（如「真实好看又便宜的产品视频」），返回 `{intent, purpose, strategy,
+tiers:{quality,balanced,cost}, recommended}` 三档；每档模型带可审计 `signals`（能力覆盖度 /
+价格来源）。成本档只用 documented/verified 价格，效果档用有官方来源的能力覆盖度（**不编造质量分**），
+混合信号判 balanced 交调用方对比。内部复用 `selectCandidates`，继承全部筛选规则；
+`selectCandidates` 本身逐字节不变，不调用 `recommendModels` 就完全不受影响。
+`parseRecommendIntent(intent, opts)` 可单独用于意图解析。
 
 **媒体选模（0.8.8 新增，向后兼容）**：`auto_policy.purposes` 新增 4 个媒体用途
 `text2image` / `image2image` / `text2video` / `image2video`（候选为 image / video / seedance 模型）。
@@ -147,7 +155,7 @@ if (!bal.ok) console.error(bal.error.category);
 | catalog 校验 | `python pt-gateway/validate_catalog.py` | schema / 字段 / 来源枚举守门，改 catalog 后必跑 |
 | 复核脚本 | `python pt-gateway/recheck.py` | 离线对账（0 花费）；`--live-view <models.json>` 对账 `top_provider`；`--registry` 生成待复核清单 |
 | 真机复核 | `recheck.py --live --max-usd <N> --usd-per-1k-tokens <N>` | 真实调用，**会产生费用**；`--max-usd` 硬上限须 > 0，未显式给出则不跑 |
-| 测试 | `python pt-gateway/tests/run_tests.py` + `cd node && npm test` | Python 全量 / Node **83/83**（0.8.12），0 花费 |
+| 测试 | `python pt-gateway/tests/run_tests.py` + `cd node && npm test` | Python 全量 / Node **96/96**（0.9.0），0 花费 |
 
 ### 能力边界（明确不做什么）
 
@@ -286,6 +294,18 @@ const e = retryDecision({ status: 403, pinned: true, model: 'gpt-5.2' });
   （一致→confirmed，catalog null→suggestion，不一致→conflict，不自动写回正文）。
 
 
+### 0.9.0（C01 按需求推荐：新增可选，选模默认行为零变化）
+
+- **新增独立函数 `recommendModels(intent, keyModels, opts)` + `parseRecommendIntent()`**：理解自然语言意图（如「真实好看又便宜的产品视频」），返回效果优先 / 均衡 / 成本优先三档推荐。**不传不生效**，`selectCandidates` 的签名、默认路径、输出逐字节不变（代码差分 36 用例 OLD==NEW、数据差分 22 用例 OLD==NEW）。北极星不调用则零影响。
+- **三档依据（R4 可审计）**：catalog 无任何 documented/verified 的质量/评分字段，故不编造质量分——
+  - 成本档：按 `price.usd_5s_720p` 的 documented/verified 价格升序，无合规价格者排末尾、不参与打分；
+  - 效果档：按「能力覆盖度」（有 documented/verified 来源的能力维度数量，如 durations/resolutions/aspect_ratios/frame_control/reference_image）降序，同分保持 catalog 原顺序，属**可审计代理指标**而非官方质量分；
+  - 均衡档：保持 catalog 候选顺序，不做主观重排。
+  - 混合信号（如「真实好看又便宜」同时命中 quality+cost）判为 balanced，把三档都交给调用方对比，不替用户拍板。每模型随附 `signals`（能力覆盖度、价格来源）供审核。
+- **继承规则**：内部调 `selectCandidates(detail:true)` 拿候选，完整沿用跳过 / A4 搜索可用性 / requirements / keyModels 过滤。
+- **P3 搭车**：`price_rows.value[].resolution` 137 处大小写统一小写（与 `resolutions.value` 口径一致，仅改大小写、不改数值）。
+- **验收**：Node 96/96、Python 347/347、validate 全过、代码+数据差分均 OLD==NEW。发新 tgz，北极星换一次锁。
+
 ### 0.8.12（T09 尺寸传参 + P2-7 sizes 语义/计价结构化 + 10 default 小写）
 
 - **动 catalog 字段语义，单独发版 + 发版说明（R2）**：发新 core tgz，北极星按新字段读取规则平滑跟进、换一次锁。旧签名 `selectCandidates(purpose, keyModels)` 输出逐字节一致（差分 OLD 7994B == NEW 7994B，含代码差分 + 数据差分）。
@@ -358,8 +378,8 @@ const e = retryDecision({ status: 403, pinned: true, model: 'gpt-5.2' });
 ### 打包（npm pack / vendor 离线使用）
 
 ```bash
-cd node && npm pack              # 生成 dist/powertokens-kit-core-0.8.12.tgz
-sha256sum dist/powertokens-kit-core-0.8.12.tgz
+cd node && npm pack              # 生成 dist/powertokens-kit-core-0.9.0.tgz
+sha256sum dist/powertokens-kit-core-0.9.0.tgz
 ```
 
 tgz 含 `index.js` / `account-client.js` / `catalog.snapshot.json` /

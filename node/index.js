@@ -423,6 +423,187 @@ function selectCandidates(purpose, keyModels, options = {}) {
   return candidates;
 }
 
+// ============================================================================
+// C01：按需求推荐（0.9.0，新增可选，严格守 R1/R3/R4）
+// ----------------------------------------------------------------------------
+// R1/R3：这是**独立新函数**，不传不生效；selectCandidates 的签名、默认路径、
+//        输出一个字节都不改（差分 OLD==NEW 强行守）。
+// R2：不调整任何用途的默认候选顺序；三档排序只发生在本函数的返回值里。
+// R4："效果"无法用官方质量分（catalog 无任何 documented/verified 的 score/rank
+//     字段）——故用**能力覆盖度**（有 documented 来源的能力项数量）作为可审计
+//     代理，绝不编造质量分；"成本"只用 documented/verified 价格，无来源不打分。
+//     所有依据随结果返回（basis / signals），供调用方审核，北极星默认不调用。
+// ============================================================================
+
+// 自然语言关键词 → 用途 / 策略（纯规则、不联网、不调 LLM）。
+// 命中多条时取第一个匹配（数组顺序即优先级）；都没命中走 opts 默认值。
+const C01_PURPOSE_HINTS = [
+  ['image2video', ['图生视频', '首帧', '参考图生成视频', 'image to video', 'i2v', 'img2video']],
+  ['text2video', ['视频', '短片', '影片', '动画', 'video', 'clip', 'cinematic']],
+  ['image2image', ['图生图', '改图', '编辑图片', 'image to image', 'i2i']],
+  ['text2image', ['图片', '海报', '封面', '绘画', '生成图', 'image', 'picture', 'poster', 'photo']],
+  ['long_report', ['长文', '报告', '论文', 'long report', 'report']],
+  ['search', ['搜索', '联网', '查资料', '最新', 'search', 'web']],
+  ['agent', ['代理', '工具调用', 'agent', 'tool']],
+  ['vision', ['看图', '图片理解', '视觉', 'vision']],
+  ['general', ['通用', '一般', 'general']],
+];
+const C01_STRATEGY_HINTS = [
+  ['cost', ['便宜', '省钱', '低成本', '成本优先', '划算', '性价比', 'cheap', 'cost', 'budget', 'affordable', 'inexpensive']],
+  ['quality', ['真实', '好看', '效果', '高质量', '画质', '精细', '质量优先', '效果优先', 'quality', 'best', 'realistic', 'hd', 'premium']],
+  ['balanced', ['均衡', '平衡', '适中', 'balanced', 'middle', 'both']],
+];
+
+function parseRecommendIntent(intent, opts = {}) {
+  const raw = typeof intent === 'string' ? intent : '';
+  const low = raw.toLowerCase();
+  let purpose = opts.purpose || null;
+  let strategy = opts.strategy || null;
+  let from = 'option';
+  if (!purpose) {
+    for (const [p, hints] of C01_PURPOSE_HINTS) {
+      if (hints.some((h) => low.includes(h))) { purpose = p; from = 'intent'; break; }
+    }
+  }
+  let strategyFrom = 'option';
+  const detected = [];
+  if (!strategy) {
+    for (const [s, hints] of C01_STRATEGY_HINTS) {
+      if (hints.some((h) => low.includes(h))) { detected.push(s); }
+    }
+    if (detected.length === 1) { strategy = detected[0]; strategyFrom = 'intent'; }
+    else if (detected.length > 1) {
+      // 混合信号（如「真实好看又便宜」同时命中 quality+cost）→ 交由 balanced 三档对比，
+      // 不替用户拍板；detected 保留全部命中项供审计。
+      strategy = 'balanced'; strategyFrom = 'intent_mixed';
+    }
+  }
+  return {
+    raw,
+    purpose: purpose || 'general',
+    strategy: strategy || 'balanced',
+    purpose_from: from,
+    strategy_from: strategyFrom,
+    detected_strategies: detected,
+  };
+}
+
+// 能力覆盖度：统计 entry 下**有 documented/verified 来源**的能力维度数量。
+// 只数"存在且有值"的维度，null/缺字段不计数（R4）；不含任何主观质量分。
+function _capabilityBreadth(entry) {
+  const media = (entry && entry.capabilities && entry.capabilities.media) || {};
+  const caps = (entry && entry.capabilities) || {};
+  const dims = [];
+  const has = (v) => v !== null && v !== undefined && !(Array.isArray(v) && v.length === 0);
+  // 媒体侧：每个枚举/标志维度带 documented 来源才算数
+  for (const key of ['durations', 'resolutions', 'aspect_ratios', 'size_tiers', 'frame_control', 'reference_image']) {
+    const node = media[key];
+    if (node && has(node.value ?? node.min ?? node.formats) &&
+        (node._source === 'documented' || node._source === 'verified')) dims.push('media.' + key);
+  }
+  // chat 侧：capabilities 有官方来源且为 true 的布尔能力
+  for (const key of ['web_search', 'tools', 'streaming', 'thinking']) {
+    if (caps[key] === true && (caps._source === 'official' || caps._source === 'official+verified')) dims.push('capabilities.' + key);
+  }
+  return dims;
+}
+
+// 成本信号：只取 documented/verified 的价格；无来源返回 null（不猜、不打分）。
+function _priceSignal(entry) {
+  const media = (entry && entry.capabilities && entry.capabilities.media) || {};
+  const price = media.price || {};
+  const val = price.usd_5s_720p;
+  const src = price._source;
+  if (typeof val === 'number' && val > 0 && (src === 'documented' || src === 'verified')) {
+    return { usd: val, source: src };
+  }
+  return null;
+}
+
+/**
+ * C01 按需求推荐：理解自然语言意图，给出"效果优先 / 均衡 / 成本优先"三档。
+ *
+ * @param {string} intent  自然语言，如 "真实好看又便宜的产品视频"
+ * @param {Iterable<string>|null} keyModels  Key 可见 ID；null 不过滤
+ * @param {object} opts  { catalog, purpose, strategy, requirements, ...selectCandidates 选项 }
+ * @returns {{intent, tiers, recommended, note}}
+ *   tiers = {
+ *     quality:  {models:[{id,position,kind,channel,signals}], basis},
+ *     balanced: {...},
+ *     cost:     {...}
+ *   }
+ *   recommended = 当前 strategy 对应档（默认 balanced）
+ *
+ * 注意：本函数内部调用 selectCandidates(detail:true) 拿候选，因此完整继承
+ * 跳过规则 / A4 搜索可用性 / requirements 筛选；不修改也不绕过它们。
+ */
+function recommendModels(intent, keyModels, opts = {}) {
+  const cat = _catalog(opts);
+  const parsed = parseRecommendIntent(intent, opts);
+  // 只把 selectCandidates 认识的值透传，避免把 C01 私有键带进去
+  const selOpts = { ...opts, detail: true };
+  delete selOpts.strategy; delete selOpts.intent; delete selOpts.purpose; // purpose 由 parsed 决定
+  const base = selectCandidates(parsed.purpose, keyModels, selOpts);
+  const candidates = Array.isArray(base.candidates) ? base.candidates : [];
+
+  const scored = candidates.map((c) => {
+    const e = (cat.models || {})[c.id] || {};
+    const breadth = _capabilityBreadth(e);
+    const price = _priceSignal(e);
+    return {
+      id: c.id,
+      position: c.position,
+      kind: c.kind ?? e.kind ?? null,
+      channel: c.channel ?? null,
+      signals: {
+        capability_breadth: breadth,                 // documented/verified 能力项
+        capability_count: breadth.length,
+        price: price,                                // {usd, source} 或 null
+      },
+    };
+  });
+
+  // 成本档：有合规价格的按价格升序；无价格的排末尾（不猜、不参与打分），同级保持原顺序。
+  const costRank = scored.map((s, i) => ({ ...s, _i: i }));
+  const withPrice = costRank.filter((s) => s.signals.price).sort(
+    (a, b) => (a.signals.price.usd - b.signals.price.usd) || (a._i - b._i));
+  const noPrice = costRank.filter((s) => !s.signals.price);
+  const costOrder = [...withPrice, ...noPrice];
+
+  // 效果档：能力覆盖度降序；同分保持原候选顺序。无官方能力项者排末尾。
+  const qualityOrder = scored.map((s, i) => ({ ...s, _i: i })).sort(
+    (a, b) => (b.signals.capability_count - a.signals.capability_count) || (a._i - b._i));
+
+  const strip = (arr) => arr.map(({ _i, ...rest }) => rest);
+  const posIndex = new Map(scored.map((s) => [s.id, s.position]));
+
+  const tier = (order, basis) => ({
+    models: strip(order).map((s, rank) => ({
+      id: s.id, rank: rank + 1, catalog_position: posIndex.get(s.id),
+      kind: s.kind, channel: s.channel, signals: s.signals,
+    })),
+    basis,
+  });
+
+  const tiers = {
+    quality: tier(qualityOrder,
+      '效果优先：按能力覆盖度（仅 documented/verified 能力项数量）降序；catalog 无官方质量分，不编造。'),
+    balanced: tier(scored.map((s, i) => ({ ...s, _i: i })),
+      '均衡：保持 catalog 候选顺序（auto_policy/requirements 排序），不做主观重排。'),
+    cost: tier(costOrder,
+      '成本优先：按 documented/verified 价格升序；无合规价格者排末尾、不参与打分。'),
+  };
+
+  return {
+    intent: parsed,
+    purpose: parsed.purpose,
+    strategy: parsed.strategy,
+    tiers,
+    recommended: tiers[parsed.strategy] ? tiers[parsed.strategy] : tiers.balanced,
+    note: '三档均为新增可选输出；不改变 selectCandidates 默认行为。预估/能力仅供辅助，以实扣与官方能力为准（U10/R4）。',
+  };
+}
+
 function _pinnedReasonMessage(code, id) {
   switch (code) {
     case 'delisted': return `模型 ${id} 已确认下架`;
@@ -756,4 +937,6 @@ module.exports = {
   // rules
   selectCandidates, classifyError, retryDecision, reasoningParams, isGenerationModel,
   mediaRequestParams,
+  // C01（0.9.0，新增可选）：按需求推荐，不改 selectCandidates 默认行为
+  recommendModels, parseRecommendIntent,
 };
