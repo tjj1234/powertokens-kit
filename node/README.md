@@ -32,7 +32,7 @@ const { AccountClient } = require('./node/account-client');
 ```
 
 ```bash
-cd node && npm pack     # 生成 dist/powertokens-kit-core-0.8.8.tgz，自包含
+cd node && npm pack     # 生成 dist/powertokens-kit-core-0.8.9.tgz，自包含
 ```
 
 tgz 内含 `index.js` / `account-client.js` / `catalog.snapshot.json` / `catalog.schema.snapshot.json` / `README.md` / `package.json`。把解包后的 `package/` 整个放进 DSH 的 `vendor/` 即可，`loadCatalog()` 找不到仓库 catalog 时自动回退读包内快照。零运行时依赖，Node ≥ 18。
@@ -72,6 +72,16 @@ tgz 内含 `index.js` / `account-client.js` / `catalog.snapshot.json` / `catalog
   duration_rule/reference_image/pixel_map/price/param_names/family`）；顶层旧字段保留兼容，
   差异由 `supersedes_top_level` 标注。价格带 `_source`（`verified` 附日期），像素映射由 kit
   按档位统一定义、标「待实测校准」，精确像素以官网原厂参数为准。
+
+**读取规则（0.8.9 官方约定，接入方按此实现）**：
+> 以 `capabilities.media` 为权威；新字段里存在的项，以新字段为准。新字段里缺失、且
+> `supersedes_top_level.fields` 未声明被替代的项，**沿用该模型顶层旧字段值**；只有被
+> `supersedes_top_level` 明确声明替代的项，才不使用旧值。
+- 作用：seedream 等「顶层有比例、新字段尚未枚举」的模型不会被判成无能力；而被 `supersedes`
+  标注替代的 9 个视频模型（顶层分辨率/时长是 0.8.5 历史值）不会误回退到旧值。
+- `adaptive` 自 0.8.9 起从 `aspect_ratios.value` 移出，改用 `aspect_ratios.adaptive_supported: true`
+  标记；选模与 `mediaRequestParams` 会把该标记还原成可匹配的 `adaptive` 值，语义不变。
+- 无官方来源的能力值一律 `null` + `_source`（北极星只把 `documented` / `verified` 当成支持）。
 
 **重试分支优先级**：发送前视觉拦截 → 受理未知 → 2xx 已受理（不重放）→ 上下文超长 → 其余。
 
@@ -129,7 +139,7 @@ if (!bal.ok) console.error(bal.error.category);
 | catalog 校验 | `python pt-gateway/validate_catalog.py` | schema / 字段 / 来源枚举守门，改 catalog 后必跑 |
 | 复核脚本 | `python pt-gateway/recheck.py` | 离线对账（0 花费）；`--live-view <models.json>` 对账 `top_provider`；`--registry` 生成待复核清单 |
 | 真机复核 | `recheck.py --live --max-usd <N> --usd-per-1k-tokens <N>` | 真实调用，**会产生费用**；`--max-usd` 硬上限须 > 0，未显式给出则不跑 |
-| 测试 | `python pt-gateway/tests/run_tests.py` + `cd node && npm test` | Python 全量 / Node **73/73**（0.8.8），0 花费 |
+| 测试 | `python pt-gateway/tests/run_tests.py` + `cd node && npm test` | Python 全量 / Node **83/83**（0.8.9），0 花费 |
 
 ### 能力边界（明确不做什么）
 
@@ -268,6 +278,24 @@ const e = retryDecision({ status: 403, pinned: true, model: 'gpt-5.2' });
   （一致→confirmed，catalog null→suggestion，不一致→conflict，不自动写回正文）。
 
 
+### 0.8.9（媒体数据补齐：北极星审核 P1 + P2-4/5/6，读取规则文档化）
+
+- **纯增量、对 0.8.8 零破坏**：旧签名 `selectCandidates(purpose, keyModels)` 输出逐字节一致
+  （差分 OLD==NEW）。只改 catalog 媒体字段 + node `aspect_ratio` 取值逻辑（把 `adaptive_supported`
+  标记还原成可匹配值，语义不变）；不碰生成链路、账户客户端、5 个 chat 用途的候选顺序。
+- **P1 补欠账**：4 个 seedream 补 `aspect_ratios`（seedream-5-0 沿用顶层 8 比例 documented，
+  其余 3 个顶层/en.zip 均无枚举→留 null）；9 个图片模型补 `pixel_map`（image-01 有官方精确像素
+  documented，wan2.7-image-pro 为 kit 自定档位换算待校准，其余 null）；19 个 `reference_image`
+  补全字段（wan2.7-image-pro 有 20MB/≤9 张 documented，其余 null）。
+- **P2 新口径**：24 个模型分辨率字符串统一小写（`_normMediaVal` 本就大小写不敏感，行为不变）；
+  8 个模型的 `adaptive` 从 `aspect_ratios.value` 移到 `adaptive_supported:true`；8 个 `duration_rule`
+  补 `duration_step_s`（官网无步长依据→留 null）；删 `wan3.0-video` 的 `confirmed_card`。
+- **读取规则文档化**：README + catalog 顶层 `note` 写明「新字段优先；缺失且未被 `supersedes_top_level`
+  替代则沿用顶层旧字段」的 fallback 约定。
+- **R4 不猜**：共 86 处无官方来源的值留 `null` + `_source`，北极星只把 `documented`/`verified`
+  当支持。
+- **验收**：Node **83/83**（新增 adaptive 单列用例）、Python 全量、validate_catalog 全过、差分 OLD==NEW。
+
 ### 0.8.8（媒体能力补全：4 用途 + capabilities.media + 可选选模分支）
 
 - **纯增量、对 0.8.7 零破坏**：只新增 4 个媒体用途（`text2image/image2image/text2video/
@@ -313,8 +341,8 @@ const e = retryDecision({ status: 403, pinned: true, model: 'gpt-5.2' });
 ### 打包（npm pack / vendor 离线使用）
 
 ```bash
-cd node && npm pack              # 生成 dist/powertokens-kit-core-0.8.8.tgz
-sha256sum dist/powertokens-kit-core-0.8.8.tgz
+cd node && npm pack              # 生成 dist/powertokens-kit-core-0.8.9.tgz
+sha256sum dist/powertokens-kit-core-0.8.9.tgz
 ```
 
 tgz 含 `index.js` / `account-client.js` / `catalog.snapshot.json` /

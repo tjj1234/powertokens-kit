@@ -6,6 +6,36 @@
 
 ---
 
+## 0.8.9 — 2026-11-23 · 媒体数据补齐（北极星审核 P1 + P2-4/5/6，读取规则文档化）
+
+**来源**：北极星 11-23 对 0.8.8 的审核反馈 + 第三节答复（全部采纳），按第五节顺序 1 实施。
+**性质**：纯增量、对 0.8.8 零破坏——旧签名 `selectCandidates(purpose, keyModels)` 输出逐字节一致。
+
+### 交付四项（供北极星审核换锁）
+
+1. **新旧差分**：OLD 6804B == NEW 6804B 逐字节一致（5 chat 用途 × 无参/detail + 指定模型 + keyModel 过滤 + 4 媒体用途无参/detail）。**P2-5 专项**：adaptive 语义在 0.8.8 catalog 与 0.8.9 catalog 上结果完全相同（selectCandidates 命中 + mediaRequestParams 接受均一致）。
+2. **SHA-256**：tgz `89966e857fd85a5e915ec70ae55b6e88976fadbdf3014b93734f9d3adeb022d0`（57009B）；包内 catalog `e039745078115456d82624f812ac81e90b998dab0e1c39e314c406a2e9952ca8`（170402B、LF、0 CRLF）。
+3. **改动清单**：见下方表格与 GitHub Release v0.8.9 正文（逐模型逐字段）；86 处无来源值留 `null` + `_source`。
+4. **读取规则**：「新字段优先；缺失且未被 `supersedes_top_level` 替代则沿用顶层旧字段」已写入 `node/README.md` 与 catalog 顶层 `note`。
+
+### 数据改动（两份 catalog 同步：pt-gateway + node 快照）
+
+| 批次 | 内容 | 数量 |
+|---|---|---|
+| P1 seedream 比例 | `seedream-5-0` 补顶层 8 比例（documented）；其余 3 个 seedream 顶层/en.zip 无枚举→null | 4 模型 |
+| P1 pixel_map | `image-01` 官方精确像素（documented）；`wan2.7-image-pro` kit 自定档位换算（kit_derived、待校准）；其余 7 图片模型 null | 9 模型 |
+| P1 reference_image | 补全 formats/input/max_reference_images/max_file_size_mb；`wan2.7-image-pro` 有 20MB/≤9 张（documented），其余 null | 19 模型 |
+| P2-4 分辨率小写 | `resolutions.value` 统一小写（16 个含大写 P/K 的模型）；`_normMediaVal` 大小写不敏感，行为不变 | 14 模型 |
+| P2-5 adaptive 单列 | `adaptive` 从 `aspect_ratios.value` 移出→`adaptive_supported:true`；node 取值逻辑还原成可匹配值，语义不变 | 8 模型 |
+| P2-6 duration_step_s | 补字段；官网无步长依据→null | 8 模型 |
+| 删 confirmed_card | `wan3.0-video` 价格确认卡移除（北极星不读） | 1 |
+
+### 验收
+
+Node **83/83**（新增 10 例 0.8.9 测试）、Python **292/292**、validate_catalog 全过（含两 catalog 一致）、差分 OLD==NEW、P2-5 专项 PASS。未调用 PT、0 费用、生成链路与账户客户端 0 改动。
+
+---
+
 ## 0.8.8 — 2026-11-20 · 媒体能力补全（4 用途 + capabilities.media，纯增量零破坏）
 
 **来源**：《kit 媒体能力需求 M1–M6》+ Codex/T01–T09 报告 + 北极星复核六条（已逐条核实接受）。

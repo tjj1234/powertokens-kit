@@ -205,7 +205,15 @@ const REQ_FIELD_MAP = {
   duration_s:   { get: (m) => (m.durations || {}).value, rule: (m) => m.duration_rule },
   resolution:   { get: (m) => (m.resolutions || {}).value },
   size:         { get: (m) => (m.sizes || {}).value },
-  aspect_ratio: { get: (m) => (m.aspect_ratios || {}).value },
+  // 0.8.9 P2-5：adaptive 从 aspect_ratios.value 单列为 adaptive_supported 标记。
+  // 取值时若该标记为真，把 'adaptive' 还原进可匹配列表——使升级前后对 adaptive 需求语义一致，
+  // 且不改变 old 签名（不传 requirements 时本函数不触发）。
+  aspect_ratio: { get: (m) => {
+    const ar = m.aspect_ratios || {};
+    const vals = Array.isArray(ar.value) ? ar.value.slice() : ar.value;
+    if (ar.adaptive_supported === true && Array.isArray(vals)) vals.push('adaptive');
+    return vals;
+  } },
   mode:         { get: (m) => (m.modes || {}).value },
 };
 

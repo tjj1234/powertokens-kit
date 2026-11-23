@@ -101,17 +101,16 @@ test('复核§2: 所有新旧字段矛盾的模型都有 supersedes_top_level �
 });
 
 // ---------- 复核 §3：价格 _source 完整性 ----------
-test('复核§3: 所有媒体价格带 _source；verified 附日期；仅 verified 有确认卡', () => {
+test('复核§3: 所有媒体价格带 _source；verified 附日期；无 confirmed_card（0.8.9 移除）', () => {
   for (const [id, e] of Object.entries(cat.models)) {
     const p = e.capabilities && e.capabilities.media && e.capabilities.media.price;
     if (!p) continue;
     assert.ok(['verified', 'documented'].includes(p._source), `${id} price 缺合法 _source`);
     if (p._source === 'verified') {
       assert.ok(p.verified_at, `${id} verified 应有日期`);
-      assert.ok(p.confirmed_card && /实际扣费/.test(p.confirmed_card));
-    } else {
-      assert.equal(p.confirmed_card, undefined, `${id} documented 不应有 verified 确认卡`);
     }
+    // 0.8.9：confirmed_card 已全部移除（北极星不读，文案由接入方自定）
+    assert.equal(p.confirmed_card, undefined, `${id} 不应再有 confirmed_card`);
   }
 });
 
@@ -139,3 +138,98 @@ test('M5: 不支持的参数进 unsupported，不静默丢', () => {
   assert.ok(r.unsupported.some((u) => u.field === 'duration_s' && u.reason === 'unsupported'));
   assert.ok(r.unsupported.some((u) => u.field === 'unknown_field' && u.reason === 'no_param_mapping'));
 });
+
+// ================= 0.8.9 专项 =================
+// ---------- P2-5：adaptive 单列，且语义不变（差分关键） ----------
+test('0.8.9 P2-5: adaptive 从 aspect_ratios.value 移出，改用 adaptive_supported 标记', () => {
+  const n = ['wan3.0-video', 'dreamina-seedance-2-0-260128', 'MiniMax-H3'];
+  for (const id of n) {
+    const ar = cat.models[id].capabilities.media.aspect_ratios;
+    assert.ok(ar, `${id} 应有 aspect_ratios`);
+    assert.equal((ar.value || []).includes('adaptive'), false, `${id} value 不应再含 adaptive`);
+    assert.equal(ar.adaptive_supported, true, `${id} 应标 adaptive_supported=true`);
+  }
+});
+
+test('0.8.9 P2-5: adaptive 需求仍可匹配（标记被还原成可匹配值），语义不变', () => {
+  // wan3.0-video 的 aspect_ratio 取值会把 adaptive_supported 还原成 'adaptive'
+  const r = selectCandidates('text2video', ['wan3.0-video'], {
+    catalog: cat, detail: true, requirements: { aspect_ratio: 'adaptive' },
+  });
+  assert.ok(r.candidates.some((c) => c.id === 'wan3.0-video'),
+    'adaptive 需求应仍能命中 wan3.0-video（升级前后语义一致）');
+});
+
+test('0.8.9 P2-5: mediaRequestParams 传 adaptive 不被判 unsupported', () => {
+  const r = mediaRequestParams('wan3.0-video', { aspect_ratio: 'adaptive' }, { catalog: cat });
+  assert.ok(!r.unsupported.some((u) => u.field === 'aspect_ratio'),
+    'adaptive 应被接受，不应进 unsupported');
+});
+
+// ---------- P2-4：分辨率全小写 ----------
+test('0.8.9 P2-4: capabilities.media.resolutions.value 全部小写', () => {
+  for (const [id, e] of Object.entries(cat.models)) {
+    const rs = e.capabilities && e.capabilities.media && e.capabilities.media.resolutions;
+    if (!rs || !Array.isArray(rs.value)) continue;
+    for (const v of rs.value) {
+      assert.equal(v, String(v).toLowerCase(), `${id} 分辨率 ${v} 未小写`);
+    }
+  }
+});
+
+test('0.8.9 P2-4: 传大写分辨率仍可匹配（_normMediaVal 大小写不敏感，行为不变）', () => {
+  const r = selectCandidates('text2video', ['wan3.0-video'], {
+    catalog: cat, detail: true, requirements: { resolution: '720P' },
+  });
+  assert.ok(r.candidates.some((c) => c.id === 'wan3.0-video'), '大写 720P 仍应命中');
+});
+
+// ---------- P1：seedream 比例 / pixel_map / reference_image ----------
+test('0.8.9 P1: seedream-5-0 比例沿用顶层 8 个，其余 3 个留 null + source', () => {
+  const s5 = cat.models['seedream-5-0-260128'].capabilities.media.aspect_ratios;
+  assert.deepEqual(s5.value, ['1:1', '16:9', '4:3', '3:2', '2:3', '3:4', '9:16', '21:9']);
+  assert.equal(s5._source, 'documented');
+  for (const id of ['seedream-4-0-250828', 'seedream-4-5-251128', 'dola-seedream-5-0-pro-260628']) {
+    const ar = cat.models[id].capabilities.media.aspect_ratios;
+    assert.equal(ar.value, null, `${id} 无来源应留 null`);
+  }
+});
+
+test('0.8.9 P1: 图片模型 pixel_map 有 _source；image-01 有精确像素 documented', () => {
+  const im = cat.models['image-01'].capabilities.media.pixel_map;
+  assert.equal(im._source, 'documented');
+  assert.equal(im.basis['1K']['16:9'], '1280x720');
+  const w = cat.models['wan2.7-image-pro'].capabilities.media.pixel_map;
+  assert.equal(w._source, 'kit_derived', 'kit 自定档位换算应标 kit_derived');
+  const sd = cat.models['seedream-4-5-251128'].capabilities.media.pixel_map;
+  assert.equal(sd.basis, null, '无来源留 null');
+});
+
+test('0.8.9 P1: reference_image 补全，无来源字段留 null；wan2.7-image-pro 有 20MB', () => {
+  const w = cat.models['wan2.7-image-pro'].capabilities.media.reference_image;
+  assert.equal(w.max_file_size_mb, 20);
+  assert.equal(w.max_reference_images, 9);
+  assert.equal(w._source, 'documented');
+  const sd = cat.models['seedream-5-0-260128'].capabilities.media.reference_image;
+  assert.equal(sd.max_file_size_mb, null, '无来源留 null');
+  assert.ok('input' in sd && 'formats' in sd, '空壳应补全字段名');
+});
+
+// ---------- P2-6 / 删 confirmed_card / P0 读取规则 ----------
+test('0.8.9 P2-6: duration_rule 补 duration_step_s，无来源留 null', () => {
+  let n = 0;
+  for (const [id, e] of Object.entries(cat.models)) {
+    const rule = e.capabilities && e.capabilities.media && e.capabilities.media.duration_rule;
+    if (!rule) continue;
+    n++;
+    assert.ok('duration_step_s' in rule, `${id} 应补 duration_step_s`);
+    assert.equal(rule.duration_step_s, null, `${id} 无步长依据应留 null`);
+  }
+  assert.ok(n >= 8, '应有 8 个 duration_rule');
+});
+
+test('0.8.9: catalog 顶层 note 含 fallback 读取规则', () => {
+  assert.ok(cat.note.some((x) => String(x).includes('读取规则') && String(x).includes('沿用')),
+    '顶层 note 应写明 fallback 读取规则');
+});
+
