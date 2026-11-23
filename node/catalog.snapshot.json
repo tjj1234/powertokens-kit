@@ -7,7 +7,9 @@
     "价格字段 price_usd_5s_720p 基于 5s/720p 探测（PT 预扣单价）；n/a 表示 PT 未公开，以仪表盘为准。",
     "模型可见性由 ModelRegistry.sync() 维护：GET /v1/models 返回本 Key / 分组的可见模型视图（按 Key 限额、分组启用、定价规则与名单双重过滤），不是平台全量清单（PT 2026-11-13 答复 + 双 Key 实测）。不在列表只标 not_in_key_view，不再自动判下架；确认下架须显式 mark_delisted()。本目录只维护能力档案（分辨率/时长/模式等人工标注字段）。",
     "音频类（TTS）端点：PT 侧统一为 OpenAI 兼容 POST /v1/audio/speech（同步返回 data.audio url）；请求体 {model, input, voice}，voice 必填（OpenAI 标准音色实测可用）。注：此前假设的 /ali/api/v1/services/aigc/... 实测 404/500，已废弃；各模型的上游厂商提示见 upstream_endpoint 字段，实际调用一律走 /v1/audio/speech。",
-    "读取规则(0.8.9)：以 capabilities.media 为权威；新字段里存在的项以新字段为准；新字段里缺失、且 supersedes_top_level.fields 未声明被替代的项，沿用该模型顶层旧字段值；只有被 supersedes_top_level 明确声明替代的项才不使用旧值。adaptive 一律从 aspect_ratios.value 移出，改用 aspect_ratios.adaptive_supported 标记。"
+    "读取规则(0.8.9)：以 capabilities.media 为权威；新字段里存在的项以新字段为准；新字段里缺失、且 supersedes_top_level.fields 未声明被替代的项，沿用该模型顶层旧字段值；只有被 supersedes_top_level 明确声明替代的项才不使用旧值。adaptive 一律从 aspect_ratios.value 移出，改用 aspect_ratios.adaptive_supported 标记。",
+    "P2-7 sizes 语义（0.8.12）：capabilities.media.sizes 仅放模型保证的精确像素（如 2560x1440），无官方枚举则 null + _source；分辨率档位放 size_tiers（如 1080p/2k/4k，小写）。读旧档位请用 size_tiers，勿从 sizes 取档位。",
+    "P2-7 计价结构化（0.8.12）：capabilities.media.price.price_rows 为 playground 价档结构化数组（每行含 resolution/mode/ability/billing_unit/sale_input_price/sale_input_credit 等，带 _source=documented）；price_rows_count 保留为条数兼容。预估仅参考、以实扣为准(U10)。"
   ],
   "models_api_contract": {
     "_source": "models_api",
@@ -380,7 +382,7 @@
               "1080p"
             ],
             "_source": "documented",
-            "default": "1080P"
+            "default": "1080p"
           },
           "aspect_ratios": {
             "value": [
@@ -403,7 +405,35 @@
             "price_rows_count": 3,
             "_checked_at": "2026-11-20",
             "verified_at": "2026-11-16",
-            "verified_note": "0.8.1 付费真机实扣 100 credits/秒 × 5s = 500 credits = 0.5 USD"
+            "verified_note": "0.8.1 付费真机实扣 100 credits/秒 × 5s = 500 credits = 0.5 USD",
+            "price_rows": {
+              "value": [
+                {
+                  "resolution": "480P",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.05,
+                  "sale_input_credit": 50
+                },
+                {
+                  "resolution": "720P",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.1,
+                  "sale_input_credit": 100
+                },
+                {
+                  "resolution": "1080P",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.2,
+                  "sale_input_credit": 200
+                }
+              ],
+              "_source": "documented",
+              "_checked_at": "2026-11-20",
+              "note": "官网 playground 计价档位结构化（每行=一个价档）；仅 documented 基准价、预估仅参考、以实扣为准(U10)"
+            }
           },
           "supersedes_top_level": {
             "fields": [
@@ -496,7 +526,7 @@
               "1080p"
             ],
             "_source": "documented",
-            "default": "1080P"
+            "default": "1080p"
           },
           "aspect_ratios": {
             "value": [
@@ -517,7 +547,28 @@
             ],
             "price_rows_count": 2,
             "_checked_at": "2026-11-20",
-            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)"
+            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)",
+            "price_rows": {
+              "value": [
+                {
+                  "resolution": "720P",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.095,
+                  "sale_input_credit": 95
+                },
+                {
+                  "resolution": "1080P",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.143,
+                  "sale_input_credit": 143
+                }
+              ],
+              "_source": "documented",
+              "_checked_at": "2026-11-20",
+              "note": "官网 playground 计价档位结构化（每行=一个价档）；仅 documented 基准价、预估仅参考、以实扣为准(U10)"
+            }
           },
           "supersedes_top_level": {
             "fields": [
@@ -599,7 +650,102 @@
             ],
             "price_rows_count": 11,
             "_checked_at": "2026-11-20",
-            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)"
+            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)",
+            "price_rows": {
+              "value": [
+                {
+                  "billing_unit": "per_image",
+                  "model_type": "image",
+                  "sale_input_price": 0.028,
+                  "sale_input_credit": 28
+                },
+                {
+                  "resolution": "720P",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.084,
+                  "sale_input_credit": 84
+                },
+                {
+                  "resolution": "1080P",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.112,
+                  "sale_input_credit": 112
+                },
+                {
+                  "resolution": "720P",
+                  "has_audio": 1,
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.126,
+                  "sale_input_credit": 126,
+                  "is_specified_voice": 2
+                },
+                {
+                  "resolution": "720P",
+                  "ability": "motion-control2video",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.126,
+                  "sale_input_credit": 126
+                },
+                {
+                  "resolution": "720P",
+                  "has_audio": 1,
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.154,
+                  "sale_input_credit": 154,
+                  "is_specified_voice": 1
+                },
+                {
+                  "resolution": "1080P",
+                  "has_audio": 1,
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.168,
+                  "sale_input_credit": 168,
+                  "is_specified_voice": 2
+                },
+                {
+                  "resolution": "1080P",
+                  "ability": "motion-control2video",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.168,
+                  "sale_input_credit": 168
+                },
+                {
+                  "resolution": "1080P",
+                  "has_audio": 1,
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.196,
+                  "sale_input_credit": 196,
+                  "is_specified_voice": 1
+                },
+                {
+                  "resolution": "4K",
+                  "has_audio": 1,
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.42,
+                  "sale_input_credit": 420,
+                  "is_specified_voice": 2
+                },
+                {
+                  "resolution": "4K",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.42,
+                  "sale_input_credit": 420
+                }
+              ],
+              "_source": "documented",
+              "_checked_at": "2026-11-20",
+              "note": "官网 playground 计价档位结构化（每行=一个价档）；仅 documented 基准价、预估仅参考、以实扣为准(U10)"
+            }
           },
           "supersedes_top_level": {
             "fields": [
@@ -664,7 +810,44 @@
             ],
             "price_rows_count": 4,
             "_checked_at": "2026-11-20",
-            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)"
+            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)",
+            "price_rows": {
+              "value": [
+                {
+                  "resolution": "720P",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.084,
+                  "sale_input_credit": 84
+                },
+                {
+                  "resolution": "1080P",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.112,
+                  "sale_input_credit": 112
+                },
+                {
+                  "resolution": "720P",
+                  "has_video": 1,
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.126,
+                  "sale_input_credit": 126
+                },
+                {
+                  "resolution": "1080P",
+                  "has_video": 1,
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.168,
+                  "sale_input_credit": 168
+                }
+              ],
+              "_source": "documented",
+              "_checked_at": "2026-11-20",
+              "note": "官网 playground 计价档位结构化（每行=一个价档）；仅 documented 基准价、预估仅参考、以实扣为准(U10)"
+            }
           },
           "_checked_at": "2026-11-20",
           "_source": "documented"
@@ -787,7 +970,27 @@
             "billing_units": [],
             "price_rows_count": 2,
             "_checked_at": "2026-11-20",
-            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)"
+            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)",
+            "price_rows": {
+              "value": [
+                {
+                  "has_video": 1,
+                  "billing_unit": "per_1M_tokens",
+                  "model_type": "video",
+                  "sale_input_price": 3.3,
+                  "sale_input_credit": 3300
+                },
+                {
+                  "billing_unit": "per_1M_tokens",
+                  "model_type": "video",
+                  "sale_input_price": 5.6,
+                  "sale_input_credit": 5600
+                }
+              ],
+              "_source": "documented",
+              "_checked_at": "2026-11-20",
+              "note": "官网 playground 计价档位结构化（每行=一个价档）；仅 documented 基准价、预估仅参考、以实扣为准(U10)"
+            }
           },
           "family": "video",
           "supersedes_top_level": {
@@ -881,7 +1084,74 @@
             "billing_units": [],
             "price_rows_count": 8,
             "_checked_at": "2026-11-20",
-            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)"
+            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)",
+            "price_rows": {
+              "value": [
+                {
+                  "resolution": "4K",
+                  "has_video": 1,
+                  "billing_unit": "per_1M_tokens",
+                  "model_type": "video",
+                  "sale_input_price": 2.4,
+                  "sale_input_credit": 2400
+                },
+                {
+                  "resolution": "4K",
+                  "billing_unit": "per_1M_tokens",
+                  "model_type": "video",
+                  "sale_input_price": 4,
+                  "sale_input_credit": 4000
+                },
+                {
+                  "resolution": "480P",
+                  "has_video": 1,
+                  "billing_unit": "per_1M_tokens",
+                  "model_type": "video",
+                  "sale_input_price": 4.3,
+                  "sale_input_credit": 4300
+                },
+                {
+                  "resolution": "720P",
+                  "has_video": 1,
+                  "billing_unit": "per_1M_tokens",
+                  "model_type": "video",
+                  "sale_input_price": 4.3,
+                  "sale_input_credit": 4300
+                },
+                {
+                  "resolution": "1080P",
+                  "has_video": 1,
+                  "billing_unit": "per_1M_tokens",
+                  "model_type": "video",
+                  "sale_input_price": 4.7,
+                  "sale_input_credit": 4700
+                },
+                {
+                  "resolution": "480P",
+                  "billing_unit": "per_1M_tokens",
+                  "model_type": "video",
+                  "sale_input_price": 7,
+                  "sale_input_credit": 7000
+                },
+                {
+                  "resolution": "720P",
+                  "billing_unit": "per_1M_tokens",
+                  "model_type": "video",
+                  "sale_input_price": 7,
+                  "sale_input_credit": 7000
+                },
+                {
+                  "resolution": "1080P",
+                  "billing_unit": "per_1M_tokens",
+                  "model_type": "video",
+                  "sale_input_price": 7.7,
+                  "sale_input_credit": 7700
+                }
+              ],
+              "_source": "documented",
+              "_checked_at": "2026-11-20",
+              "note": "官网 playground 计价档位结构化（每行=一个价档）；仅 documented 基准价、预估仅参考、以实扣为准(U10)"
+            }
           },
           "family": "video",
           "supersedes_top_level": {
@@ -973,7 +1243,27 @@
             "billing_units": [],
             "price_rows_count": 2,
             "_checked_at": "2026-11-20",
-            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)"
+            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)",
+            "price_rows": {
+              "value": [
+                {
+                  "has_video": 1,
+                  "billing_unit": "per_1M_tokens",
+                  "model_type": "video",
+                  "sale_input_price": 2.1,
+                  "sale_input_credit": 2100
+                },
+                {
+                  "billing_unit": "per_1M_tokens",
+                  "model_type": "video",
+                  "sale_input_price": 3.5,
+                  "sale_input_credit": 3500
+                }
+              ],
+              "_source": "documented",
+              "_checked_at": "2026-11-20",
+              "note": "官网 playground 计价档位结构化（每行=一个价档）；仅 documented 基准价、预估仅参考、以实扣为准(U10)"
+            }
           },
           "family": "video",
           "supersedes_top_level": {
@@ -1076,7 +1366,59 @@
             "billing_units": [],
             "price_rows_count": 6,
             "_checked_at": "2026-11-20",
-            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)"
+            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)",
+            "price_rows": {
+              "value": [
+                {
+                  "resolution": "480P",
+                  "has_video": 1,
+                  "billing_unit": "per_1M_tokens",
+                  "model_type": "video",
+                  "sale_input_price": 6.4,
+                  "sale_input_credit": 6400
+                },
+                {
+                  "resolution": "720P",
+                  "has_video": 1,
+                  "billing_unit": "per_1M_tokens",
+                  "model_type": "video",
+                  "sale_input_price": 6.4,
+                  "sale_input_credit": 6400
+                },
+                {
+                  "resolution": "1080P",
+                  "has_video": 1,
+                  "billing_unit": "per_1M_tokens",
+                  "model_type": "video",
+                  "sale_input_price": 7,
+                  "sale_input_credit": 7000
+                },
+                {
+                  "resolution": "480P",
+                  "billing_unit": "per_1M_tokens",
+                  "model_type": "video",
+                  "sale_input_price": 10.7,
+                  "sale_input_credit": 10700
+                },
+                {
+                  "resolution": "720P",
+                  "billing_unit": "per_1M_tokens",
+                  "model_type": "video",
+                  "sale_input_price": 10.7,
+                  "sale_input_credit": 10700
+                },
+                {
+                  "resolution": "1080P",
+                  "billing_unit": "per_1M_tokens",
+                  "model_type": "video",
+                  "sale_input_price": 11.7,
+                  "sale_input_credit": 11700
+                }
+              ],
+              "_source": "documented",
+              "_checked_at": "2026-11-20",
+              "note": "官网 playground 计价档位结构化（每行=一个价档）；仅 documented 基准价、预估仅参考、以实扣为准(U10)"
+            }
           },
           "family": "video",
           "supersedes_top_level": {
@@ -1167,7 +1509,20 @@
             "billing_units": [],
             "price_rows_count": 1,
             "_checked_at": "2026-11-20",
-            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)"
+            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)",
+            "price_rows": {
+              "value": [
+                {
+                  "billing_unit": "per_1M_tokens",
+                  "model_type": "video",
+                  "sale_input_price": 0.95,
+                  "sale_input_credit": 950
+                }
+              ],
+              "_source": "documented",
+              "_checked_at": "2026-11-20",
+              "note": "官网 playground 计价档位结构化（每行=一个价档）；仅 documented 基准价、预估仅参考、以实扣为准(U10)"
+            }
           },
           "family": "video",
           "supersedes_top_level": {
@@ -1258,7 +1613,20 @@
             "billing_units": [],
             "price_rows_count": 1,
             "_checked_at": "2026-11-20",
-            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)"
+            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)",
+            "price_rows": {
+              "value": [
+                {
+                  "billing_unit": "per_1M_tokens",
+                  "model_type": "video",
+                  "sale_input_price": 2.375,
+                  "sale_input_credit": 2375
+                }
+              ],
+              "_source": "documented",
+              "_checked_at": "2026-11-20",
+              "note": "官网 playground 计价档位结构化（每行=一个价档）；仅 documented 基准价、预估仅参考、以实扣为准(U10)"
+            }
           },
           "family": "video",
           "supersedes_top_level": {
@@ -1314,7 +1682,20 @@
             ],
             "price_rows_count": 1,
             "_checked_at": "2026-11-20",
-            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)"
+            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)",
+            "price_rows": {
+              "value": [
+                {
+                  "billing_unit": "per_image",
+                  "model_type": "image",
+                  "sale_input_price": 0.034,
+                  "sale_input_credit": 34
+                }
+              ],
+              "_source": "documented",
+              "_checked_at": "2026-11-20",
+              "note": "官网 playground 计价档位结构化（每行=一个价档）；仅 documented 基准价、预估仅参考、以实扣为准(U10)"
+            }
           },
           "_checked_at": "2026-11-20",
           "_source": "documented",
@@ -1410,7 +1791,20 @@
             ],
             "price_rows_count": 1,
             "_checked_at": "2026-11-20",
-            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)"
+            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)",
+            "price_rows": {
+              "value": [
+                {
+                  "billing_unit": "per_image",
+                  "model_type": "image",
+                  "sale_input_price": 0.004,
+                  "sale_input_credit": 4
+                }
+              ],
+              "_source": "documented",
+              "_checked_at": "2026-11-20",
+              "note": "官网 playground 计价档位结构化（每行=一个价档）；仅 documented 基准价、预估仅参考、以实扣为准(U10)"
+            }
           },
           "_checked_at": "2026-11-20",
           "_source": "documented",
@@ -2888,7 +3282,28 @@
             ],
             "price_rows_count": 2,
             "_checked_at": "2026-11-20",
-            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)"
+            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)",
+            "price_rows": {
+              "value": [
+                {
+                  "resolution": "1K",
+                  "billing_unit": "per_image",
+                  "model_type": "image",
+                  "sale_input_price": 0.04,
+                  "sale_input_credit": 40
+                },
+                {
+                  "resolution": "2K",
+                  "billing_unit": "per_image",
+                  "model_type": "image",
+                  "sale_input_price": 0.075,
+                  "sale_input_credit": 75
+                }
+              ],
+              "_source": "documented",
+              "_checked_at": "2026-11-20",
+              "note": "官网 playground 计价档位结构化（每行=一个价档）；仅 documented 基准价、预估仅参考、以实扣为准(U10)"
+            }
           },
           "_checked_at": "2026-11-20",
           "_source": "documented",
@@ -2937,7 +3352,20 @@
             ],
             "price_rows_count": 1,
             "_checked_at": "2026-11-20",
-            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)"
+            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)",
+            "price_rows": {
+              "value": [
+                {
+                  "billing_unit": "per_image",
+                  "model_type": "image",
+                  "sale_input_price": 0.072,
+                  "sale_input_credit": 72
+                }
+              ],
+              "_source": "documented",
+              "_checked_at": "2026-11-20",
+              "note": "官网 playground 计价档位结构化（每行=一个价档）；仅 documented 基准价、预估仅参考、以实扣为准(U10)"
+            }
           },
           "_checked_at": "2026-11-20",
           "_source": "documented",
@@ -3004,7 +3432,20 @@
             ],
             "price_rows_count": 1,
             "_checked_at": "2026-11-20",
-            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)"
+            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)",
+            "price_rows": {
+              "value": [
+                {
+                  "billing_unit": "per_image",
+                  "model_type": "image",
+                  "sale_input_price": 0.072,
+                  "sale_input_credit": 72
+                }
+              ],
+              "_source": "documented",
+              "_checked_at": "2026-11-20",
+              "note": "官网 playground 计价档位结构化（每行=一个价档）；仅 documented 基准价、预估仅参考、以实扣为准(U10)"
+            }
           },
           "_checked_at": "2026-11-20",
           "_source": "documented",
@@ -3054,7 +3495,20 @@
             ],
             "price_rows_count": 1,
             "_checked_at": "2026-11-20",
-            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)"
+            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)",
+            "price_rows": {
+              "value": [
+                {
+                  "billing_unit": "per_image",
+                  "model_type": "image",
+                  "sale_input_price": 0.029,
+                  "sale_input_credit": 29
+                }
+              ],
+              "_source": "documented",
+              "_checked_at": "2026-11-20",
+              "note": "官网 playground 计价档位结构化（每行=一个价档）；仅 documented 基准价、预估仅参考、以实扣为准(U10)"
+            }
           },
           "_checked_at": "2026-11-20",
           "_source": "documented",
@@ -3098,7 +3552,20 @@
             ],
             "price_rows_count": 1,
             "_checked_at": "2026-11-20",
-            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)"
+            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)",
+            "price_rows": {
+              "value": [
+                {
+                  "billing_unit": "per_image",
+                  "model_type": "image",
+                  "sale_input_price": 0.038,
+                  "sale_input_credit": 38
+                }
+              ],
+              "_source": "documented",
+              "_checked_at": "2026-11-20",
+              "note": "官网 playground 计价档位结构化（每行=一个价档）；仅 documented 基准价、预估仅参考、以实扣为准(U10)"
+            }
           },
           "_checked_at": "2026-11-20",
           "_source": "documented",
@@ -3149,7 +3616,59 @@
             ],
             "price_rows_count": 6,
             "_checked_at": "2026-11-20",
-            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)"
+            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)",
+            "price_rows": {
+              "value": [
+                {
+                  "resolution": "1K",
+                  "ability": "layer-decompostion",
+                  "billing_unit": "per_image",
+                  "model_type": "image",
+                  "sale_input_price": 0.023,
+                  "sale_input_credit": 23
+                },
+                {
+                  "resolution": "1.5K",
+                  "ability": "layer-decompostion",
+                  "billing_unit": "per_image",
+                  "model_type": "image",
+                  "sale_input_price": 0.023,
+                  "sale_input_credit": 23
+                },
+                {
+                  "resolution": "1K",
+                  "billing_unit": "per_image",
+                  "model_type": "image",
+                  "sale_input_price": 0.045,
+                  "sale_input_credit": 45
+                },
+                {
+                  "resolution": "2K",
+                  "ability": "layer-decompostion",
+                  "billing_unit": "per_image",
+                  "model_type": "image",
+                  "sale_input_price": 0.045,
+                  "sale_input_credit": 45
+                },
+                {
+                  "resolution": "1.5K",
+                  "billing_unit": "per_image",
+                  "model_type": "image",
+                  "sale_input_price": 0.045,
+                  "sale_input_credit": 45
+                },
+                {
+                  "resolution": "2K",
+                  "billing_unit": "per_image",
+                  "model_type": "image",
+                  "sale_input_price": 0.09,
+                  "sale_input_credit": 90
+                }
+              ],
+              "_source": "documented",
+              "_checked_at": "2026-11-20",
+              "note": "官网 playground 计价档位结构化（每行=一个价档）；仅 documented 基准价、预估仅参考、以实扣为准(U10)"
+            }
           },
           "_checked_at": "2026-11-20",
           "_source": "documented",
@@ -3182,13 +3701,11 @@
             "aspect_ratio": "aspect_ratio"
           },
           "sizes": {
-            "value": [
-              "1080p",
-              "2K",
-              "4K"
-            ],
-            "_source": "documented",
-            "default": "1080p"
+            "value": null,
+            "_source": null,
+            "default": null,
+            "_checked_at": "2026-11-23",
+            "note": "P2-7 新语义：sizes 仅放模型保证的精确像素（如 2560x1440）。原厂仅给档位名+比例、不给精确像素枚举，按 R4 留 null；档位见 size_tiers，像素换算见 pixel_map（kit_derived 待实测，不当作支持）"
           },
           "aspect_ratios": {
             "value": [
@@ -3222,7 +3739,98 @@
             ],
             "price_rows_count": 9,
             "_checked_at": "2026-11-20",
-            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)"
+            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)",
+            "price_rows": {
+              "value": [
+                {
+                  "resolution": "1080P",
+                  "ability": "text2image",
+                  "billing_unit": "per_image",
+                  "model_type": "image",
+                  "sale_input_price": 0.029,
+                  "sale_input_credit": 29
+                },
+                {
+                  "resolution": "2K",
+                  "ability": "text2image",
+                  "billing_unit": "per_image",
+                  "model_type": "image",
+                  "sale_input_price": 0.038,
+                  "sale_input_credit": 38
+                },
+                {
+                  "resolution": "1080P",
+                  "ability": "multi-reference-image2image",
+                  "billing_unit": "per_image",
+                  "model_type": "image",
+                  "sale_input_price": 0.038,
+                  "sale_input_credit": 38,
+                  "image_count_start": 1,
+                  "image_count_end": 3
+                },
+                {
+                  "resolution": "4K",
+                  "ability": "text2image",
+                  "billing_unit": "per_image",
+                  "model_type": "image",
+                  "sale_input_price": 0.048,
+                  "sale_input_credit": 48
+                },
+                {
+                  "resolution": "1080P",
+                  "ability": "multi-reference-image2image",
+                  "billing_unit": "per_image",
+                  "model_type": "image",
+                  "sale_input_price": 0.048,
+                  "sale_input_credit": 48,
+                  "image_count_start": 4,
+                  "image_count_end": 7
+                },
+                {
+                  "resolution": "2K",
+                  "ability": "multi-reference-image2image",
+                  "billing_unit": "per_image",
+                  "model_type": "image",
+                  "sale_input_price": 0.057,
+                  "sale_input_credit": 57,
+                  "image_count_start": 1,
+                  "image_count_end": 3
+                },
+                {
+                  "resolution": "2K",
+                  "ability": "multi-reference-image2image",
+                  "billing_unit": "per_image",
+                  "model_type": "image",
+                  "sale_input_price": 0.076,
+                  "sale_input_credit": 76,
+                  "image_count_start": 4,
+                  "image_count_end": 7
+                },
+                {
+                  "resolution": "4K",
+                  "ability": "multi-reference-image2image",
+                  "billing_unit": "per_image",
+                  "model_type": "image",
+                  "sale_input_price": 0.095,
+                  "sale_input_credit": 95,
+                  "image_count_start": 1,
+                  "image_count_end": 3
+                },
+                {
+                  "resolution": "4K",
+                  "ability": "multi-reference-image2image",
+                  "billing_unit": "per_image",
+                  "model_type": "image",
+                  "sale_input_price": 0.143,
+                  "sale_input_credit": 143,
+                  "image_count_start": 4,
+                  "image_count_end": 7
+                }
+              ],
+              "_source": "documented",
+              "_checked_at": "2026-11-20",
+              "note": "官网 playground 计价档位结构化（每行=一个价档）；仅 documented 基准价、预估仅参考、以实扣为准(U10)"
+            }
           },
           "_checked_at": "2026-11-20",
           "_source": "documented",
@@ -3231,6 +3839,16 @@
             "_source": null,
             "_checked_at": "2026-11-23",
             "note": "仅有档位(如 2K)无官方精确像素；原厂为中转上游，待真机/官网确认。不猜"
+          },
+          "size_tiers": {
+            "value": [
+              "1080p",
+              "2k",
+              "4k"
+            ],
+            "_source": "documented",
+            "default": "1080p",
+            "note": "P2-7 从原 sizes 迁入的档位（如 1080p/2k/4k，已统一小写）；分辨率档位，非精确像素"
           }
         }
       }
@@ -3274,7 +3892,7 @@
               "1080p"
             ],
             "_source": "documented",
-            "default": "720P"
+            "default": "720p"
           },
           "reference_image": {
             "formats": null,
@@ -3293,7 +3911,38 @@
             ],
             "price_rows_count": 3,
             "_checked_at": "2026-11-20",
-            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)"
+            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)",
+            "price_rows": {
+              "value": [
+                {
+                  "resolution": "480P",
+                  "duration_value": 1,
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.015,
+                  "sale_input_credit": 15
+                },
+                {
+                  "resolution": "720P",
+                  "duration_value": 1,
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.036,
+                  "sale_input_credit": 36
+                },
+                {
+                  "resolution": "1080P",
+                  "duration_value": 1,
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.07,
+                  "sale_input_credit": 70
+                }
+              ],
+              "_source": "documented",
+              "_checked_at": "2026-11-20",
+              "note": "官网 playground 计价档位结构化（每行=一个价档）；仅 documented 基准价、预估仅参考、以实扣为准(U10)"
+            }
           },
           "_checked_at": "2026-11-20",
           "_source": "documented"
@@ -3337,7 +3986,7 @@
               "720p"
             ],
             "_source": "documented",
-            "default": "720P"
+            "default": "720p"
           },
           "reference_image": {
             "formats": null,
@@ -3356,7 +4005,21 @@
             ],
             "price_rows_count": 1,
             "_checked_at": "2026-11-20",
-            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)"
+            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)",
+            "price_rows": {
+              "value": [
+                {
+                  "resolution": "720P",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.1,
+                  "sale_input_credit": 100
+                }
+              ],
+              "_source": "documented",
+              "_checked_at": "2026-11-20",
+              "note": "官网 playground 计价档位结构化（每行=一个价档）；仅 documented 基准价、预估仅参考、以实扣为准(U10)"
+            }
           },
           "_checked_at": "2026-11-20",
           "_source": "documented"
@@ -3412,7 +4075,7 @@
               "1080p"
             ],
             "_source": "documented",
-            "default": "1080P"
+            "default": "1080p"
           },
           "price": {
             "usd_5s_720p": null,
@@ -3422,7 +4085,28 @@
             ],
             "price_rows_count": 2,
             "_checked_at": "2026-11-20",
-            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)"
+            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)",
+            "price_rows": {
+              "value": [
+                {
+                  "resolution": "720P",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.095,
+                  "sale_input_credit": 95
+                },
+                {
+                  "resolution": "1080P",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.143,
+                  "sale_input_credit": 143
+                }
+              ],
+              "_source": "documented",
+              "_checked_at": "2026-11-20",
+              "note": "官网 playground 计价档位结构化（每行=一个价档）；仅 documented 基准价、预估仅参考、以实扣为准(U10)"
+            }
           },
           "_checked_at": "2026-11-20",
           "_source": "documented"
@@ -3480,7 +4164,7 @@
               "1080p"
             ],
             "_source": "documented",
-            "default": "1080P"
+            "default": "1080p"
           },
           "aspect_ratios": {
             "value": [
@@ -3501,7 +4185,28 @@
             ],
             "price_rows_count": 2,
             "_checked_at": "2026-11-20",
-            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)"
+            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)",
+            "price_rows": {
+              "value": [
+                {
+                  "resolution": "720P",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.095,
+                  "sale_input_credit": 95
+                },
+                {
+                  "resolution": "1080P",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.143,
+                  "sale_input_credit": 143
+                }
+              ],
+              "_source": "documented",
+              "_checked_at": "2026-11-20",
+              "note": "官网 playground 计价档位结构化（每行=一个价档）；仅 documented 基准价、预估仅参考、以实扣为准(U10)"
+            }
           },
           "_checked_at": "2026-11-20",
           "_source": "documented"
@@ -3543,7 +4248,7 @@
               "1080p"
             ],
             "_source": "documented",
-            "default": "1080P"
+            "default": "1080p"
           },
           "price": {
             "usd_5s_720p": null,
@@ -3553,7 +4258,35 @@
             ],
             "price_rows_count": 3,
             "_checked_at": "2026-11-20",
-            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)"
+            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)",
+            "price_rows": {
+              "value": [
+                {
+                  "resolution": "480P",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.07,
+                  "sale_input_credit": 70
+                },
+                {
+                  "resolution": "720P",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.14,
+                  "sale_input_credit": 140
+                },
+                {
+                  "resolution": "1080P",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.18,
+                  "sale_input_credit": 180
+                }
+              ],
+              "_source": "documented",
+              "_checked_at": "2026-11-20",
+              "note": "官网 playground 计价档位结构化（每行=一个价档）；仅 documented 基准价、预估仅参考、以实扣为准(U10)"
+            }
           },
           "_checked_at": "2026-11-20",
           "_source": "documented"
@@ -3597,7 +4330,7 @@
               "720p"
             ],
             "_source": "documented",
-            "default": "1080P"
+            "default": "1080p"
           },
           "aspect_ratios": {
             "value": [
@@ -3622,7 +4355,35 @@
             ],
             "price_rows_count": 3,
             "_checked_at": "2026-11-20",
-            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)"
+            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)",
+            "price_rows": {
+              "value": [
+                {
+                  "resolution": "480P",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.07,
+                  "sale_input_credit": 70
+                },
+                {
+                  "resolution": "720P",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.14,
+                  "sale_input_credit": 140
+                },
+                {
+                  "resolution": "1080P",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.18,
+                  "sale_input_credit": 180
+                }
+              ],
+              "_source": "documented",
+              "_checked_at": "2026-11-20",
+              "note": "官网 playground 计价档位结构化（每行=一个价档）；仅 documented 基准价、预估仅参考、以实扣为准(U10)"
+            }
           },
           "_checked_at": "2026-11-20",
           "_source": "documented"
@@ -3665,7 +4426,7 @@
               "1080p"
             ],
             "_source": "documented",
-            "default": "1080P"
+            "default": "1080p"
           },
           "aspect_ratios": {
             "value": [
@@ -3690,7 +4451,35 @@
             ],
             "price_rows_count": 3,
             "_checked_at": "2026-11-20",
-            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)"
+            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)",
+            "price_rows": {
+              "value": [
+                {
+                  "resolution": "480P",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.07,
+                  "sale_input_credit": 70
+                },
+                {
+                  "resolution": "720P",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.14,
+                  "sale_input_credit": 140
+                },
+                {
+                  "resolution": "1080P",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.18,
+                  "sale_input_credit": 180
+                }
+              ],
+              "_source": "documented",
+              "_checked_at": "2026-11-20",
+              "note": "官网 playground 计价档位结构化（每行=一个价档）；仅 documented 基准价、预估仅参考、以实扣为准(U10)"
+            }
           },
           "_checked_at": "2026-11-20",
           "_source": "documented"
@@ -3742,7 +4531,7 @@
               "2k"
             ],
             "_source": "documented",
-            "default": "768P"
+            "default": "768p"
           },
           "aspect_ratios": {
             "value": [],
@@ -3757,7 +4546,28 @@
             ],
             "price_rows_count": 2,
             "_checked_at": "2026-11-20",
-            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)"
+            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)",
+            "price_rows": {
+              "value": [
+                {
+                  "resolution": "768P",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.08,
+                  "sale_input_credit": 80
+                },
+                {
+                  "resolution": "2K",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.13,
+                  "sale_input_credit": 130
+                }
+              ],
+              "_source": "documented",
+              "_checked_at": "2026-11-20",
+              "note": "官网 playground 计价档位结构化（每行=一个价档）；仅 documented 基准价、预估仅参考、以实扣为准(U10)"
+            }
           },
           "_checked_at": "2026-11-20",
           "_source": "documented"
@@ -3821,7 +4631,54 @@
             "billing_units": [],
             "price_rows_count": 5,
             "_checked_at": "2026-11-20",
-            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)"
+            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)",
+            "price_rows": {
+              "value": [
+                {
+                  "resolution": "512P",
+                  "duration_value": 6,
+                  "billing_unit": "per_video",
+                  "model_type": "video",
+                  "sale_input_price": 0.095,
+                  "sale_input_credit": 95
+                },
+                {
+                  "resolution": "512P",
+                  "duration_value": 10,
+                  "billing_unit": "per_video",
+                  "model_type": "video",
+                  "sale_input_price": 0.143,
+                  "sale_input_credit": 143
+                },
+                {
+                  "resolution": "768P",
+                  "duration_value": 6,
+                  "billing_unit": "per_video",
+                  "model_type": "video",
+                  "sale_input_price": 0.266,
+                  "sale_input_credit": 266
+                },
+                {
+                  "resolution": "1080P",
+                  "duration_value": 6,
+                  "billing_unit": "per_video",
+                  "model_type": "video",
+                  "sale_input_price": 0.466,
+                  "sale_input_credit": 466
+                },
+                {
+                  "resolution": "768P",
+                  "duration_value": 10,
+                  "billing_unit": "per_video",
+                  "model_type": "video",
+                  "sale_input_price": 0.532,
+                  "sale_input_credit": 532
+                }
+              ],
+              "_source": "documented",
+              "_checked_at": "2026-11-20",
+              "note": "官网 playground 计价档位结构化（每行=一个价档）；仅 documented 基准价、预估仅参考、以实扣为准(U10)"
+            }
           },
           "_checked_at": "2026-11-20",
           "_source": "documented"
@@ -3870,7 +4727,38 @@
             "billing_units": [],
             "price_rows_count": 3,
             "_checked_at": "2026-11-20",
-            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)"
+            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)",
+            "price_rows": {
+              "value": [
+                {
+                  "resolution": "768P",
+                  "duration_value": 6,
+                  "billing_unit": "per_video",
+                  "model_type": "video",
+                  "sale_input_price": 0.181,
+                  "sale_input_credit": 181
+                },
+                {
+                  "resolution": "768P",
+                  "duration_value": 10,
+                  "billing_unit": "per_video",
+                  "model_type": "video",
+                  "sale_input_price": 0.304,
+                  "sale_input_credit": 304
+                },
+                {
+                  "resolution": "1080P",
+                  "duration_value": 6,
+                  "billing_unit": "per_video",
+                  "model_type": "video",
+                  "sale_input_price": 0.314,
+                  "sale_input_credit": 314
+                }
+              ],
+              "_source": "documented",
+              "_checked_at": "2026-11-20",
+              "note": "官网 playground 计价档位结构化（每行=一个价档）；仅 documented 基准价、预估仅参考、以实扣为准(U10)"
+            }
           },
           "_checked_at": "2026-11-20",
           "_source": "documented"
@@ -3919,7 +4807,38 @@
             "billing_units": [],
             "price_rows_count": 3,
             "_checked_at": "2026-11-20",
-            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)"
+            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)",
+            "price_rows": {
+              "value": [
+                {
+                  "resolution": "768P",
+                  "duration_value": 6,
+                  "billing_unit": "per_video",
+                  "model_type": "video",
+                  "sale_input_price": 0.266,
+                  "sale_input_credit": 266
+                },
+                {
+                  "resolution": "1080P",
+                  "duration_value": 6,
+                  "billing_unit": "per_video",
+                  "model_type": "video",
+                  "sale_input_price": 0.466,
+                  "sale_input_credit": 466
+                },
+                {
+                  "resolution": "768P",
+                  "duration_value": 10,
+                  "billing_unit": "per_video",
+                  "model_type": "video",
+                  "sale_input_price": 0.532,
+                  "sale_input_credit": 532
+                }
+              ],
+              "_source": "documented",
+              "_checked_at": "2026-11-20",
+              "note": "官网 playground 计价档位结构化（每行=一个价档）；仅 documented 基准价、预估仅参考、以实扣为准(U10)"
+            }
           },
           "_checked_at": "2026-11-20",
           "_source": "documented"
@@ -3970,7 +4889,50 @@
             ],
             "price_rows_count": 4,
             "_checked_at": "2026-11-20",
-            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)"
+            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)",
+            "price_rows": {
+              "value": [
+                {
+                  "resolution": "720P",
+                  "ability": "image2video",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.03,
+                  "sale_input_credit": 30,
+                  "is_peak_shifting_mode": 1
+                },
+                {
+                  "resolution": "1080P",
+                  "ability": "image2video",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.04,
+                  "sale_input_credit": 40,
+                  "is_peak_shifting_mode": 1
+                },
+                {
+                  "resolution": "720P",
+                  "ability": "image2video",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.06,
+                  "sale_input_credit": 60,
+                  "is_peak_shifting_mode": 2
+                },
+                {
+                  "resolution": "1080P",
+                  "ability": "image2video",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.075,
+                  "sale_input_credit": 75,
+                  "is_peak_shifting_mode": 2
+                }
+              ],
+              "_source": "documented",
+              "_checked_at": "2026-11-20",
+              "note": "官网 playground 计价档位结构化（每行=一个价档）；仅 documented 基准价、预估仅参考、以实扣为准(U10)"
+            }
           },
           "_checked_at": "2026-11-20",
           "_source": "documented"
@@ -4034,7 +4996,176 @@
             ],
             "price_rows_count": 18,
             "_checked_at": "2026-11-20",
-            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)"
+            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)",
+            "price_rows": {
+              "value": [
+                {
+                  "resolution": "540P",
+                  "ability": "text2video",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.025,
+                  "sale_input_credit": 25,
+                  "is_peak_shifting_mode": 1
+                },
+                {
+                  "resolution": "540P",
+                  "ability": "image2video",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.025,
+                  "sale_input_credit": 25,
+                  "is_peak_shifting_mode": 1
+                },
+                {
+                  "resolution": "540P",
+                  "ability": "first-last-frame2video",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.025,
+                  "sale_input_credit": 25,
+                  "is_peak_shifting_mode": 1
+                },
+                {
+                  "resolution": "540P",
+                  "ability": "image2video",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.045,
+                  "sale_input_credit": 45,
+                  "is_peak_shifting_mode": 2
+                },
+                {
+                  "resolution": "540P",
+                  "ability": "text2video",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.045,
+                  "sale_input_credit": 45,
+                  "is_peak_shifting_mode": 2
+                },
+                {
+                  "resolution": "540P",
+                  "ability": "first-last-frame2video",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.045,
+                  "sale_input_credit": 45,
+                  "is_peak_shifting_mode": 2
+                },
+                {
+                  "resolution": "720P",
+                  "ability": "image2video",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.05,
+                  "sale_input_credit": 50,
+                  "is_peak_shifting_mode": 1
+                },
+                {
+                  "resolution": "720P",
+                  "ability": "text2video",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.05,
+                  "sale_input_credit": 50,
+                  "is_peak_shifting_mode": 1
+                },
+                {
+                  "resolution": "720P",
+                  "ability": "first-last-frame2video",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.05,
+                  "sale_input_credit": 50,
+                  "is_peak_shifting_mode": 1
+                },
+                {
+                  "resolution": "1080P",
+                  "ability": "first-last-frame2video",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.06,
+                  "sale_input_credit": 60,
+                  "is_peak_shifting_mode": 1
+                },
+                {
+                  "resolution": "1080P",
+                  "ability": "image2video",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.06,
+                  "sale_input_credit": 60,
+                  "is_peak_shifting_mode": 1
+                },
+                {
+                  "resolution": "1080P",
+                  "ability": "text2video",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.06,
+                  "sale_input_credit": 60,
+                  "is_peak_shifting_mode": 1
+                },
+                {
+                  "resolution": "720P",
+                  "ability": "text2video",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.1,
+                  "sale_input_credit": 100,
+                  "is_peak_shifting_mode": 2
+                },
+                {
+                  "resolution": "720P",
+                  "ability": "first-last-frame2video",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.1,
+                  "sale_input_credit": 100,
+                  "is_peak_shifting_mode": 2
+                },
+                {
+                  "resolution": "720P",
+                  "ability": "image2video",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.1,
+                  "sale_input_credit": 100,
+                  "is_peak_shifting_mode": 2
+                },
+                {
+                  "resolution": "1080P",
+                  "ability": "text2video",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.12,
+                  "sale_input_credit": 120,
+                  "is_peak_shifting_mode": 2
+                },
+                {
+                  "resolution": "1080P",
+                  "ability": "image2video",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.12,
+                  "sale_input_credit": 120,
+                  "is_peak_shifting_mode": 2
+                },
+                {
+                  "resolution": "1080P",
+                  "ability": "first-last-frame2video",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.12,
+                  "sale_input_credit": 120,
+                  "is_peak_shifting_mode": 2
+                }
+              ],
+              "_source": "documented",
+              "_checked_at": "2026-11-20",
+              "note": "官网 playground 计价档位结构化（每行=一个价档）；仅 documented 基准价、预估仅参考、以实扣为准(U10)"
+            }
           },
           "_checked_at": "2026-11-20",
           "_source": "documented"
@@ -4097,7 +5228,68 @@
             ],
             "price_rows_count": 6,
             "_checked_at": "2026-11-20",
-            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)"
+            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)",
+            "price_rows": {
+              "value": [
+                {
+                  "resolution": "540P",
+                  "ability": "reference2video",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.02,
+                  "sale_input_credit": 20,
+                  "is_peak_shifting_mode": 1
+                },
+                {
+                  "resolution": "720P",
+                  "ability": "reference2video",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.03,
+                  "sale_input_credit": 30,
+                  "is_peak_shifting_mode": 1
+                },
+                {
+                  "resolution": "540P",
+                  "ability": "reference2video",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.035,
+                  "sale_input_credit": 35,
+                  "is_peak_shifting_mode": 2
+                },
+                {
+                  "resolution": "1080P",
+                  "ability": "reference2video",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.035,
+                  "sale_input_credit": 35,
+                  "is_peak_shifting_mode": 1
+                },
+                {
+                  "resolution": "720P",
+                  "ability": "reference2video",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.06,
+                  "sale_input_credit": 60,
+                  "is_peak_shifting_mode": 2
+                },
+                {
+                  "resolution": "1080P",
+                  "ability": "reference2video",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.075,
+                  "sale_input_credit": 75,
+                  "is_peak_shifting_mode": 2
+                }
+              ],
+              "_source": "documented",
+              "_checked_at": "2026-11-20",
+              "note": "官网 playground 计价档位结构化（每行=一个价档）；仅 documented 基准价、预估仅参考、以实扣为准(U10)"
+            }
           },
           "_checked_at": "2026-11-20",
           "_source": "documented"
@@ -4159,7 +5351,230 @@
             ],
             "price_rows_count": 24,
             "_checked_at": "2026-11-20",
-            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)"
+            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)",
+            "price_rows": {
+              "value": [
+                {
+                  "resolution": "540P",
+                  "ability": "reference2video",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.01,
+                  "sale_input_credit": 10,
+                  "is_peak_shifting_mode": 1
+                },
+                {
+                  "resolution": "540P",
+                  "ability": "image2video",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.02,
+                  "sale_input_credit": 20,
+                  "is_peak_shifting_mode": 1
+                },
+                {
+                  "resolution": "540P",
+                  "ability": "reference2video",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.02,
+                  "sale_input_credit": 20,
+                  "is_peak_shifting_mode": 2
+                },
+                {
+                  "resolution": "540P",
+                  "ability": "text2video",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.02,
+                  "sale_input_credit": 20,
+                  "is_peak_shifting_mode": 1
+                },
+                {
+                  "resolution": "540P",
+                  "ability": "first-last-frame2video",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.02,
+                  "sale_input_credit": 20,
+                  "is_peak_shifting_mode": 1
+                },
+                {
+                  "resolution": "720P",
+                  "ability": "reference2video",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.025,
+                  "sale_input_credit": 25,
+                  "is_peak_shifting_mode": 1
+                },
+                {
+                  "resolution": "720P",
+                  "ability": "image2video",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.03,
+                  "sale_input_credit": 30,
+                  "is_peak_shifting_mode": 1
+                },
+                {
+                  "resolution": "720P",
+                  "ability": "text2video",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.03,
+                  "sale_input_credit": 30,
+                  "is_peak_shifting_mode": 1
+                },
+                {
+                  "resolution": "720P",
+                  "ability": "first-last-frame2video",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.03,
+                  "sale_input_credit": 30,
+                  "is_peak_shifting_mode": 1
+                },
+                {
+                  "resolution": "540P",
+                  "ability": "image2video",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.035,
+                  "sale_input_credit": 35,
+                  "is_peak_shifting_mode": 2
+                },
+                {
+                  "resolution": "1080P",
+                  "ability": "reference2video",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.035,
+                  "sale_input_credit": 35,
+                  "is_peak_shifting_mode": 1
+                },
+                {
+                  "resolution": "1080P",
+                  "ability": "first-last-frame2video",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.035,
+                  "sale_input_credit": 35,
+                  "is_peak_shifting_mode": 1
+                },
+                {
+                  "resolution": "540P",
+                  "ability": "first-last-frame2video",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.035,
+                  "sale_input_credit": 35,
+                  "is_peak_shifting_mode": 2
+                },
+                {
+                  "resolution": "1080P",
+                  "ability": "text2video",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.035,
+                  "sale_input_credit": 35,
+                  "is_peak_shifting_mode": 1
+                },
+                {
+                  "resolution": "540P",
+                  "ability": "text2video",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.035,
+                  "sale_input_credit": 35,
+                  "is_peak_shifting_mode": 2
+                },
+                {
+                  "resolution": "1080P",
+                  "ability": "image2video",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.035,
+                  "sale_input_credit": 35,
+                  "is_peak_shifting_mode": 1
+                },
+                {
+                  "resolution": "720P",
+                  "ability": "reference2video",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.05,
+                  "sale_input_credit": 50,
+                  "is_peak_shifting_mode": 2
+                },
+                {
+                  "resolution": "720P",
+                  "ability": "first-last-frame2video",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.06,
+                  "sale_input_credit": 60,
+                  "is_peak_shifting_mode": 2
+                },
+                {
+                  "resolution": "720P",
+                  "ability": "text2video",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.06,
+                  "sale_input_credit": 60,
+                  "is_peak_shifting_mode": 2
+                },
+                {
+                  "resolution": "720P",
+                  "ability": "image2video",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.06,
+                  "sale_input_credit": 60,
+                  "is_peak_shifting_mode": 2
+                },
+                {
+                  "resolution": "1080P",
+                  "ability": "text2video",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.065,
+                  "sale_input_credit": 65,
+                  "is_peak_shifting_mode": 2
+                },
+                {
+                  "resolution": "1080P",
+                  "ability": "first-last-frame2video",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.065,
+                  "sale_input_credit": 65,
+                  "is_peak_shifting_mode": 2
+                },
+                {
+                  "resolution": "1080P",
+                  "ability": "image2video",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.065,
+                  "sale_input_credit": 65,
+                  "is_peak_shifting_mode": 2
+                },
+                {
+                  "resolution": "1080P",
+                  "ability": "reference2video",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.065,
+                  "sale_input_credit": 65,
+                  "is_peak_shifting_mode": 2
+                }
+              ],
+              "_source": "documented",
+              "_checked_at": "2026-11-20",
+              "note": "官网 playground 计价档位结构化（每行=一个价档）；仅 documented 基准价、预估仅参考、以实扣为准(U10)"
+            }
           },
           "_checked_at": "2026-11-20",
           "_source": "documented"
@@ -4225,7 +5640,49 @@
             ],
             "price_rows_count": 5,
             "_checked_at": "2026-11-20",
-            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)"
+            "note": "官网基准价；非 5s/720p 的计价规则见 price_rows（官网 playground），预估仅参考、以实扣为准(U10)",
+            "price_rows": {
+              "value": [
+                {
+                  "resolution": "540P",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.045,
+                  "sale_input_credit": 45
+                },
+                {
+                  "resolution": "720P",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.095,
+                  "sale_input_credit": 95
+                },
+                {
+                  "resolution": "1080P",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.12,
+                  "sale_input_credit": 120
+                },
+                {
+                  "resolution": "2K",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.19,
+                  "sale_input_credit": 190
+                },
+                {
+                  "resolution": "4K",
+                  "billing_unit": "per_second",
+                  "model_type": "video",
+                  "sale_input_price": 0.39,
+                  "sale_input_credit": 390
+                }
+              ],
+              "_source": "documented",
+              "_checked_at": "2026-11-20",
+              "note": "官网 playground 计价档位结构化（每行=一个价档）；仅 documented 基准价、预估仅参考、以实扣为准(U10)"
+            }
           },
           "_checked_at": "2026-11-20",
           "_source": "documented"

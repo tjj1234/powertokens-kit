@@ -204,7 +204,15 @@ function _modelCanSeeImages(e) {
 const REQ_FIELD_MAP = {
   duration_s:   { get: (m) => (m.durations || {}).value, rule: (m) => m.duration_rule },
   resolution:   { get: (m) => (m.resolutions || {}).value },
-  size:         { get: (m) => (m.sizes || {}).value },
+  // 0.8.12 P2-7：sizes 新语义只放精确像素（无官方枚举则 null）；分辨率档位迁入 size_tiers。
+  // 平滑过渡：sizes.value 非数组时回落到 size_tiers.value，避免带 size 需求的调用因语义迁移失效；
+  // 不传 requirements 时本函数不触发，旧签名默认行为逐字节不变。
+  size:         { get: (m) => {
+    const s = m.sizes || {};
+    if (Array.isArray(s.value)) return s.value;
+    const t = m.size_tiers || {};
+    return Array.isArray(t.value) ? t.value : s.value;
+  } },
   // 0.8.9 P2-5：adaptive 从 aspect_ratios.value 单列为 adaptive_supported 标记。
   // 取值时若该标记为真，把 'adaptive' 还原进可匹配列表——使升级前后对 adaptive 需求语义一致，
   // 且不改变 old 签名（不传 requirements 时本函数不触发）。

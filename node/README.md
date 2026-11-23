@@ -32,7 +32,7 @@ const { AccountClient } = require('./node/account-client');
 ```
 
 ```bash
-cd node && npm pack     # 生成 dist/powertokens-kit-core-0.8.9.tgz，自包含
+cd node && npm pack     # 生成 dist/powertokens-kit-core-0.8.12.tgz，自包含
 ```
 
 tgz 内含 `index.js` / `account-client.js` / `catalog.snapshot.json` / `catalog.schema.snapshot.json` / `README.md` / `package.json`。把解包后的 `package/` 整个放进 DSH 的 `vendor/` 即可，`loadCatalog()` 找不到仓库 catalog 时自动回退读包内快照。零运行时依赖，Node ≥ 18。
@@ -81,6 +81,14 @@ tgz 内含 `index.js` / `account-client.js` / `catalog.snapshot.json` / `catalog
   标注替代的 9 个视频模型（顶层分辨率/时长是 0.8.5 历史值）不会误回退到旧值。
 - `adaptive` 自 0.8.9 起从 `aspect_ratios.value` 移出，改用 `aspect_ratios.adaptive_supported: true`
   标记；选模与 `mediaRequestParams` 会把该标记还原成可匹配的 `adaptive` 值，语义不变。
+- **`sizes` 语义自 0.8.12 收紧**：`capabilities.media.sizes.value` 只放模型保证的**精确像素**
+  （如 `2560x1440`），无官方枚举则 `null` + `_source`；分辨率**档位**（如 `1080p/2k/4k`，小写）
+  移到 `capabilities.media.size_tiers.value`。读旧档位请改用 `size_tiers`，勿再从 `sizes` 取档位；
+  像素换算见 `pixel_map`（kit_derived 待实测，不当作支持）。传 `size` 需求时，选模与
+  `mediaRequestParams` 在 `sizes.value` 非数组时自动回落 `size_tiers.value`，旧调用不失效。
+- **计价结构化自 0.8.12**：`capabilities.media.price.price_rows` 是 playground 价档结构化数组
+  （每行含 resolution/mode/ability/billing_unit/sale_input_price/sale_input_credit 等，带
+  `_source=documented`）；`price_rows_count` 保留为条数兼容。预估仅参考、以实扣为准（U10）。
 - 无官方来源的能力值一律 `null` + `_source`（北极星只把 `documented` / `verified` 当成支持）。
 
 **重试分支优先级**：发送前视觉拦截 → 受理未知 → 2xx 已受理（不重放）→ 上下文超长 → 其余。
@@ -139,7 +147,7 @@ if (!bal.ok) console.error(bal.error.category);
 | catalog 校验 | `python pt-gateway/validate_catalog.py` | schema / 字段 / 来源枚举守门，改 catalog 后必跑 |
 | 复核脚本 | `python pt-gateway/recheck.py` | 离线对账（0 花费）；`--live-view <models.json>` 对账 `top_provider`；`--registry` 生成待复核清单 |
 | 真机复核 | `recheck.py --live --max-usd <N> --usd-per-1k-tokens <N>` | 真实调用，**会产生费用**；`--max-usd` 硬上限须 > 0，未显式给出则不跑 |
-| 测试 | `python pt-gateway/tests/run_tests.py` + `cd node && npm test` | Python 全量 / Node **83/83**（0.8.9），0 花费 |
+| 测试 | `python pt-gateway/tests/run_tests.py` + `cd node && npm test` | Python 全量 / Node **83/83**（0.8.12），0 花费 |
 
 ### 能力边界（明确不做什么）
 
@@ -278,6 +286,15 @@ const e = retryDecision({ status: 403, pinned: true, model: 'gpt-5.2' });
   （一致→confirmed，catalog null→suggestion，不一致→conflict，不自动写回正文）。
 
 
+### 0.8.12（T09 尺寸传参 + P2-7 sizes 语义/计价结构化 + 10 default 小写）
+
+- **动 catalog 字段语义，单独发版 + 发版说明（R2）**：发新 core tgz，北极星按新字段读取规则平滑跟进、换一次锁。旧签名 `selectCandidates(purpose, keyModels)` 输出逐字节一致（差分 OLD 7994B == NEW 7994B，含代码差分 + 数据差分）。
+- **P2-7 sizes 语义**：`viduq2` 的 `sizes.value=['1080p','2K','4K']` → `sizes.value=null`（无官方精确像素）+ 新 `size_tiers.value=['1080p','2k','4k']`。`REQ_FIELD_MAP.size.get` / `mediaRequestParams` 在 `sizes.value` 非数组时回落 `size_tiers.value`，传 `size` 需求的三档均映射为 `resolution` 且不判 unsupported。
+- **P2-7 计价结构化**：35 个媒体价格模型新增 `price.price_rows`（playground 价档数组，共 150 行，带 `_source=documented`），`price_rows_count` 保留兼容；以实扣为准（U10）。
+- **10 default 小写**：`resolutions.default` 的 `1080P/720P/768P` 统一小写（10 模型）。
+- **T09（Python 生成链路）**：`pt_video.py` 新增 `resolve_media_fields()` 按 catalog `param_names` 映射字段名；默认模型恒等映射 body 不变，kling 等被正确重命名。详见根目录 CHANGELOG。
+- **验收**：Node 83/83、Python 327/327、validate_catalog 全过、差分 OLD==NEW + P2-7 sizes 专项 PASS。
+
 ### 0.8.9（媒体数据补齐：北极星审核 P1 + P2-4/5/6，读取规则文档化）
 
 - **纯增量、对 0.8.8 零破坏**：旧签名 `selectCandidates(purpose, keyModels)` 输出逐字节一致
@@ -341,8 +358,8 @@ const e = retryDecision({ status: 403, pinned: true, model: 'gpt-5.2' });
 ### 打包（npm pack / vendor 离线使用）
 
 ```bash
-cd node && npm pack              # 生成 dist/powertokens-kit-core-0.8.9.tgz
-sha256sum dist/powertokens-kit-core-0.8.9.tgz
+cd node && npm pack              # 生成 dist/powertokens-kit-core-0.8.12.tgz
+sha256sum dist/powertokens-kit-core-0.8.12.tgz
 ```
 
 tgz 含 `index.js` / `account-client.js` / `catalog.snapshot.json` /

@@ -140,6 +140,53 @@ def resolve_submit_endpoint(model, kind, path=None):
             return submit
     return fallback
 
+
+# 友好参数键 -> capabilities.media.param_names 里的键。
+# param_names 的值才是 PT 请求体真正要用的字段名（如 duration_s->seconds/size->resolution）。
+# 只处理这三类生成参数；模型/提示词/媒体/开关类字段不参与重命名。
+_T09_FRIENDLY_KEYS = ("duration_s", "resolution", "aspect_ratio", "size")
+# 无 param_names / 缺某键映射时的默认真实字段名 —— 等于生成链路历史写死的字段名。
+# 作用：默认模型（wan3.0-video 等）body 逐字节不变；只有 catalog 明确给了不同映射才重命名。
+_T09_DEFAULT_REAL = {
+    "duration_s": "seconds", "resolution": "size",
+    "aspect_ratio": "ratio", "size": "size",
+}
+
+
+def resolve_media_fields(model, friendly, path=None):
+    """按 catalog 的 capabilities.media.param_names 把友好字段名映射成真实字段名（T09）。
+
+    纯规则、不发请求、不猜：
+      - friendly: {友好键: 值}，如 {"duration_s":"5","resolution":"720p","aspect_ratio":"16:9"}；
+      - 优先用 catalog param_names 的映射；无该模型/无该键映射 → 回落 _T09_DEFAULT_REAL
+        （即历史写死的字段名），保证默认模型 body 逐字节不变（R1）；
+      - 返回 (mapped, unsupported)：unsupported 收集「catalog 声明了 param_names 但该键无映射」
+        的维度（no_param_mapping）或整模型无来源（capability_unknown），供上层提示；
+        **无论哪种都不改值、不丢弃参数**，只是告知。
+    这与 node 的 mediaRequestParams 同源：字段名取自 catalog param_names，缺来源不猜。
+    """
+    mapped = {}
+    unsupported = []
+    pnames = None
+    entry = load_catalog_models(path).get(model) if model else None
+    if isinstance(entry, dict):
+        media = entry.get("capabilities")
+        media = media.get("media") if isinstance(media, dict) else None
+        if isinstance(media, dict) and isinstance(media.get("param_names"), dict):
+            pnames = media["param_names"]
+    for key, value in friendly.items():
+        if key not in _T09_FRIENDLY_KEYS:
+            mapped[key] = value          # 非生成参数原样透传，不参与映射
+            continue
+        real = (pnames or {}).get(key) or _T09_DEFAULT_REAL.get(key)
+        if pnames and key not in pnames:
+            unsupported.append({"field": key, "value": value, "reason": "no_param_mapping"})
+        elif not pnames:
+            unsupported.append({"field": key, "value": value, "reason": "capability_unknown"})
+        mapped[real] = value
+    return mapped, unsupported
+
+
 # ---------- 资产库上传（Seedance 图生视频必须先把素材上传拿 asset://）----------
 # 注意：资产库 base 是 powertokens.ai/api（带 /api 前缀），不是 api.powertokens.ai
 ASSET_BASE = "https://powertokens.ai/api"
@@ -1033,6 +1080,17 @@ def generate_video(key, model, args, timeout, force_asset=False):
     media = build_media(args, force_asset=force_asset)
     if not args.prompt and not media:
         raise ApiError(0, "必须提供 -p/--prompt 或至少一种媒体输入（--first-frame/--ref-image...）")
+    # T09：友好字段 -> PT 真实字段名（按 catalog param_names）。默认模型映射恒等，
+    # body 与历史逐字节一致；kling 等模型字段名不同才被正确重命名，避免参数被服务端忽略。
+    gen_fields, unsupported = resolve_media_fields(model, {
+        "duration_s": str(args.duration),        # 服务端为 enum<string>，必须传字符串
+        "resolution": args.resolution.upper(),
+        "aspect_ratio": args.ratio,
+    })
+    if unsupported:
+        # 只提示不改值、不阻断（R4 不猜：无来源沿用历史字段名，让链路继续）。
+        names = ", ".join(u["field"] for u in unsupported)
+        sys.stderr.write(f"[fields] 模型 {model} 未在 catalog 声明参数映射：{names}（沿用历史字段名）\n")
     if force_asset:
         # Seedance（BytePlus 系）：文本必须放在 media 数组的 text 类型里，不认顶层 prompt；
         # 若用户传了图/视频媒体（首帧/参考），其 url 必须是资产库 asset://（外部 URL 不被接受）。
@@ -1041,9 +1099,7 @@ def generate_video(key, model, args, timeout, force_asset=False):
         body = {
             "model": model,
             "media": media,
-            "size": args.resolution.upper(),
-            "ratio": args.ratio,
-            "seconds": str(args.duration),   # 服务端为 enum<string>，必须传字符串
+            **gen_fields,
             "generate_audio": not args.no_audio,
             "prompt_extend": not args.no_prompt_extend,
             "watermark": args.watermark,
@@ -1052,9 +1108,7 @@ def generate_video(key, model, args, timeout, force_asset=False):
         body = {
             "model": model,
             "prompt": args.prompt or "",
-            "size": args.resolution.upper(),
-            "ratio": args.ratio,
-            "seconds": str(args.duration),   # 服务端为 enum<string>，必须传字符串
+            **gen_fields,
             "generate_audio": not args.no_audio,
             "prompt_extend": not args.no_prompt_extend,
             "watermark": args.watermark,
@@ -1089,7 +1143,9 @@ def generate_image(key, model, args, timeout):
     """POST /v1/images/generations 同步返回 data[].url。成功返回 (urls, output_paths)。"""
     body = {"model": model, "prompt": args.prompt or ""}
     if args.aspect_ratio:
-        body["aspect_ratio"] = args.aspect_ratio   # 图片宽高比枚举串，如 1:1/16:9
+        # T09：按 catalog param_names 映射字段名（图片模型现均恒等映射，body 不变）。
+        ar_fields, _ = resolve_media_fields(model, {"aspect_ratio": args.aspect_ratio})
+        body.update(ar_fields)   # 宽高比枚举串，如 1:1/16:9
     if getattr(args, "n", None):
         body["n"] = args.n
     if getattr(args, "response_format", None):

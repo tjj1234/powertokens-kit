@@ -6,6 +6,44 @@
 
 ---
 
+## 0.8.12 — 2026-11-20 · T09 尺寸传参 + P2-7 sizes 语义/计价结构化 + 10 default 小写（顺序 4）
+
+**来源**：统一排期计划顺序 4（T09 + P2-7），用户 11-20 批准开工；动 catalog 字段语义，按 R2 单独发版 + 发版说明（照 0.8.9 格式）。**本版动 catalog → 发新 core tgz，北极星按新字段读取规则平滑跟进、换一次锁。**
+
+### 交付四项（供北极星审核换锁）
+
+1. **新旧差分**：OLD 7994B == NEW 7994B 逐字节一致。
+   - A) 代码差分：`OLD index.js` vs `NEW index.js`，同一 NEW catalog，旧签名 `selectCandidates(purpose, keyModels)`（5 chat 用途 + 4 媒体用途 × 无参/detail + 指定模型 + keyModel 过滤）输出逐字节一致。
+   - B) 数据差分：同一 NEW index.js，OLD catalog(0.8.9) vs NEW catalog(0.8.12)，旧签名输出逐字节一致——证明 sizes/price_rows/default 数据改动不改变旧签名行为。
+   - **P2-7 sizes 专项**：`mediaRequestParams('viduq2', {size})` 在 `sizes.value=null` 时回落 `size_tiers.value`，`1080p`/`2K`/`4k` 三档均正确映射为 `resolution` 且不判 unsupported（大小写不敏感）。
+2. **SHA-256**：tgz `30a6f3e963900aa94098359a8647df22df4c8fb333009382af8ee8d557667f1f`（60494B）；包内 catalog `030301a2aa19c8de63f5daa1c78fe0915fb892e9d703af9fdaef533a5cef6924`（227707B、LF、0 CRLF）。
+3. **改动清单**：见下方表格；无权威来源的值一律 `null` + `_source`（R4），不猜。
+4. **sizes 新旧语义**：见下方专节；`node/README.md` 与 catalog 顶层 `note` 已写读取规则。
+
+### 数据改动（两份 catalog 同步：pt-gateway + node 快照）
+
+| 批次 | 内容 | 数量 |
+|---|---|---|
+| P2-7 sizes 语义 | `viduq2` 原 `sizes.value=['1080p','2K','4K']`（档位）迁出：`sizes.value=null`（无官方精确像素），档位小写落 `size_tiers.value=['1080p','2k','4k']` | 1 模型 |
+| P2-7 计价结构化 | 35 个媒体价格模型新增 `price.price_rows`（playground 价档结构化数组，共 150 行；每行含 resolution/mode/ability/billing_unit/sale_input_price/sale_input_credit 等有值字段，`_source=documented`）；`price_rows_count` 保留兼容 | 35 模型 / 150 行 |
+| 10 default 小写 | `resolutions.default` 大写档位统一小写：`1080P→1080p`(7)、`720P→720p`(2)、`768P→768p`(1) | 10 模型 |
+
+- **保留 null + _source 的项（R4 不猜）**：`viduq2.sizes` 的 `value/default/_source` 全为 null（原厂仅给档位名+比例、无精确像素枚举）；`price_rows` 每行只保留有值字段，全 0/空维度（has_audio/is_peak_shifting_mode 等无值）不落键，表示「该档未声明此维度」不作能力承诺；其余模型既有 `reference_image.*`/`pixel_map.basis`/`usd_5s_720p` 等 null 项保持不变（本版不填、不猜）。
+- **计价口径**：`price_rows` 为 documented 基准价，预估仅参考、以实扣为准（U10）；未做付费实测，不新增 verified 价格。
+
+### sizes 新旧语义（读旧档位请改用 size_tiers）
+
+- **旧语义（≤0.8.11）**：`capabilities.media.sizes.value` 放分辨率档位名（如 `['1080p','2K','4K']`），与实际「精确像素」字段语义混淆。
+- **新语义（0.8.12）**：`sizes` 只放模型保证的**精确像素**（如 `2560x1440`）；无官方精确像素枚举则 `value=null` + `_source`。分辨率**档位**移到新字段 `size_tiers.value`（如 `1080p/2k/4k`，统一小写）。像素换算见 `pixel_map`（kit_derived 待实测，不当作支持）。
+- **平滑过渡**：node 侧 `REQ_FIELD_MAP.size.get` 在 `sizes.value` 非数组时回落 `size_tiers.value`，传 `size` 需求的旧调用不失效；`mediaRequestParams` 同口径。`selectCandidates` 不传 `requirements` 时完全不触发，默认行为逐字节不变。
+
+### 代码与验收
+
+- **T09 尺寸传参**：`pt_video.py` 新增 `resolve_media_fields(model, friendly, path)`，按 catalog `capabilities.media.param_names` 把友好字段名映射为 PT 真实字段名（`duration_s→seconds`、`resolution→size`、`aspect_ratio→ratio` 等）。默认模型（wan3.0-video，映射恒等）提交 body 逐字节不变；kling 等映射不同的模型字段被正确重命名，避免参数被服务端忽略；无 param_names 模型沿用历史字段名、不猜不丢（R4）。视频/图片提交链路接入，参考图仍由 `build_media` 传出（M3 已覆盖）。
+- **测试**：新增 `test_unit_media_params.py`（8 例）；Python 全套 **327/327**、Node **83/83**、validate_catalog 全过（含两 catalog 一致）、差分 OLD==NEW + P2-7 sizes 专项 PASS。未调用 PT、0 花费。
+
+---
+
 ## 0.8.11 — 2026-11-23 · 下载可靠性 + 错误可见 + 请求追踪（顺序 3，不发新 core 包）
 
 **只改 Python 引擎 + 测试 + .gitattributes，不动 catalog 数据与 node core。** core tgz SHA `89966e85…` / catalog SHA `e0397450…` 与 0.8.9/0.8.10 完全一致；北极星无需换锁。
