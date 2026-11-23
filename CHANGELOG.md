@@ -6,6 +6,19 @@
 
 ---
 
+## 0.8.11 — 2026-11-23 · 下载可靠性 + 错误可见 + 请求追踪（顺序 3，不发新 core 包）
+
+**只改 Python 引擎 + 测试 + .gitattributes，不动 catalog 数据与 node core。** core tgz SHA `89966e85…` / catalog SHA `e0397450…` 与 0.8.9/0.8.10 完全一致；北极星无需换锁。
+
+- **T02 下载残缺文件**：`download_binary()` 改为写 `<path>.part` 临时文件 → 校验完整（非空 + Content-Length 一致 + 非 HTML 错误页）→ `os.replace` 原子落盘；任何失败删除临时文件、绝不留下残缺目标文件、不返回成功。T06 安全逻辑（第三方地址永不接触 API Key）完整保留。
+- **T05 查询失败标「未知」**：`list_key_models()` 新增 `strict` 参数（默认 False 保持 fail-open 兼容）；`models` 命令用 strict 模式，查询失败抛 `ModelListUnavailable`、`availability=unknown`、退出码 4（非 0），明确区分「查询失败（未知）」与「确实不可用」。
+- **T08 请求编号追踪**：`_api_call()` 从响应头 `X-Oneapi-Request-Id` 提取 request id（大小写不敏感）→ 附加 `_request_id` 到返回对象 + 累积到模块级 `_REQUEST_LOG`（`get_request_log()` 可取副本）；提交号写入 `LAST_SUBMIT_REQUEST_ID`，结果 JSON 增 `request_id` 字段。网关复用同一 `_api_call`，自动覆盖。仅旁路记录，不改变正常返回语义。
+- **`.gitattributes`**：新增 `*.py text eol=lf`，消除 Windows `core.autocrlf` 导致的「同一文件两个 SHA」（本地 CRLF vs 线上 LF）。工作区 `pt_video.py` 已归一化为 LF，从此工作区/线上/git blob 三者统一。
+- **测试**：新增 15 例（T02 5 + T05 4 + T08 6）；Python 全套 **319/319**、Node **83/83**、validate_catalog 全过；T06 下载安全 5/5 回归通过。0 花费、未调用 PT。
+- **pt_video.py 新 SHA256（LF 版，kit 侧记录）**：`1b0ceebb899414b1b07b7fc6d5053fa5d92d5ad33598cdbc96c3aa0c1f7c98e5`。按用户确认，北极星使用其自有仓库的改造版、不替换 kit 文件，此 SHA 仅 kit 侧留档，北极星无需据此同步。
+
+---
+
 ## 0.8.10 — 2026-11-23 · T01 提交入口按 catalog 选择（不发新 core 包）
 
 **只改 Python 引擎 + 文档，不动 catalog 数据与 node core。** core tgz / catalog 两个 SHA 与 0.8.9 完全一致。

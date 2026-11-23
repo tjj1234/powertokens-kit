@@ -429,6 +429,39 @@ def resolve_key():
 
 
 # ---------- 官方 REST 调用（仅标准库）----------
+# T08：请求编号逐笔对账。SSOT §15/C4 确认 X-Oneapi-Request-Id 即 request id，
+# logs/query 三键（request_id/task_id/consume_id）可查同一条。每次响应都记一笔，
+# 供命令行与网关（复用本模块）按编号对账；仅为旁路记录，不改变正常返回语义。
+REQUEST_ID_HEADER = "X-Oneapi-Request-Id"
+_REQUEST_LOG = []
+LAST_SUBMIT_REQUEST_ID = None   # 最近一次提交拿到的 request id，写进结果对象供对账
+
+
+def get_request_log():
+    """返回已记录的请求编号日志（副本）；每项含 method/path/request_id。"""
+    return [dict(x) for x in _REQUEST_LOG]
+
+
+def clear_request_log():
+    """清空请求编号日志（供长驻进程按批次对账）。"""
+    _REQUEST_LOG.clear()
+
+
+def _remember_request_id(resp_headers, method, path):
+    """从响应头提取 request id 并记一笔；无该头则记 request_id=None。返回提取值或 None。"""
+    rid = None
+    try:
+        if resp_headers is not None:
+            for k, v in resp_headers.items():
+                if k.lower() == REQUEST_ID_HEADER.lower():
+                    rid = v
+                    break
+    except Exception:
+        rid = None
+    _REQUEST_LOG.append({"method": method, "path": path, "request_id": rid})
+    return rid
+
+
 def _headers(key, extra=None):
     h = {"Authorization": f"Bearer {key}", "User-Agent": "pt-media-skill",
          "Content-Type": "application/json", "Accept": "application/json"}
@@ -443,9 +476,14 @@ def _api_call(method, path, key, body=None, timeout=30):
     req = urllib.request.Request(url, data=data, headers=_headers(key), method=method)
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
+            rid = _remember_request_id(getattr(resp, "headers", None), method, path)
             raw = resp.read().decode("utf-8")
-            return json.loads(raw) if raw else {}
+            result = json.loads(raw) if raw else {}
+            if rid and isinstance(result, dict):
+                result["_request_id"] = rid
+            return result
     except urllib.error.HTTPError as e:
+        _remember_request_id(getattr(e, "headers", None), method, path)
         detail = ""
         try:
             detail = json.loads(e.read().decode("utf-8"))
@@ -473,7 +511,18 @@ class ApiError(Exception):
         super().__init__(f"HTTP {status}: {message}")
 
 
-def list_key_models(key, kind="all"):
+class ModelListUnavailable(ApiError):
+    """T05：GET /v1/models 查询失败——可用性「未知」，不等于「不可用」。
+
+    查询失败时 Key 下有哪些模型是不知道的，绝不能当成「该模型不可用」展示。
+    仅在 strict=True 的调用路径（models 命令）抛出；其他调用点保持 fail-open 旧行为。
+    """
+
+    def __init__(self, message):
+        super().__init__(0, message)
+
+
+def list_key_models(key, kind="all", strict=False):
     """拉取该 Key / 分组可见的模型视图（/v1/models 反映 Key 限额与分组过滤）。
 
     2026-11-13 PT 书面答复确认此口径正确：列表按「Key 模型限额 → 分组启用模型 →
@@ -484,10 +533,16 @@ def list_key_models(key, kind="all"):
     try:
         data = _api_call("GET", "/v1/models", key, timeout=15)
     except ApiError as e:
-        sys.stderr.write(f"[warn] 查询 /v1/models 失败: {e}\n")
+        msg = f"查询 /v1/models 失败: {e}"
+        if strict:
+            raise ModelListUnavailable(msg) from e
+        sys.stderr.write(f"[warn] {msg}\n")
         return []
     except Exception as e:
-        sys.stderr.write(f"[warn] 查询 /v1/models 异常: {e}\n")
+        msg = f"查询 /v1/models 异常: {e}"
+        if strict:
+            raise ModelListUnavailable(msg) from e
+        sys.stderr.write(f"[warn] {msg}\n")
         return []
     ids = []
     items = data.get("data", data if isinstance(data, list) else [])
@@ -584,9 +639,13 @@ def precheck_explicit_model(key, model, kind="video"):
 
 
 # ---------- 模型目录（定价 + 参数）----------
-def build_catalog(key, kind="all"):
-    """返回模型目录列表：合并静态单价表与 live 可用列表。"""
-    live = list_key_models(key, kind) if key else []
+def build_catalog(key, kind="all", strict=False):
+    """返回模型目录列表：合并静态单价表与 live 可用列表。
+
+    strict=True 时 live 列表查询失败抛 ModelListUnavailable（可用性未知），
+    供 models 命令区分「查询失败」与「确实无模型」；默认 False 保持旧行为。
+    """
+    live = list_key_models(key, kind, strict=strict) if key else []
     live_set = {m.lower() for m in live}
     rows, seen = [], set()
 
@@ -636,7 +695,16 @@ def cmd_models(argv):
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
     key = resolve_key()
-    rows = build_catalog(key, args.type)
+    try:
+        rows = build_catalog(key, args.type, strict=bool(key))
+    except ModelListUnavailable as e:
+        # T05：查询失败 = 可用性「未知」，绝不能显示成「不可用」还报成功（exit 0）
+        sys.stderr.write(f"[error] {e.message}\n")
+        sys.stderr.write("[error] 模型可用性未知（查询失败，非'不可用'）；请稍后重试或检查 Key/网络\n")
+        if args.json:
+            print(json.dumps({"ok": False, "availability": "unknown",
+                              "error": str(e.message)}, ensure_ascii=False))
+        return 4
     if args.json:
         print(json.dumps(rows, ensure_ascii=False, indent=2))
         return 0
@@ -766,6 +834,8 @@ def submit_task(key, body, endpoint=None):
     保持旧签名兼容（北极星副本 / 外部脚本按旧方式调用行为不变）。
     """
     resp = _api_call("POST", endpoint or VIDEO_SUBMIT, key, body=body, timeout=SUBMIT_TIMEOUT)
+    global LAST_SUBMIT_REQUEST_ID
+    LAST_SUBMIT_REQUEST_ID = resp.get("_request_id")
     tid = resp.get("id") or resp.get("task_id")
     if not tid:
         raise ApiError(0, f"提交响应缺少 task_id：{json.dumps(resp, ensure_ascii=False)}")
@@ -829,14 +899,50 @@ def download_binary(url, path, key):
     历史 bug：先带 Bearer key 请求产物 URL，失败再裸请求——导致每次下载都先把
     API Key 发给第三方产物地址（R2/OSS）。修正为先裸请求；只有目标是可信 PT
     域名且裸请求明确 401/403 时，才带 key 重试一次。第三方地址永不接触 Key。
+
+    可靠性约束（T02）：先写同目录 ``<path>.part`` 临时文件，校验完整（非空 +
+    Content-Length 一致 + 非 HTML 错误页）后再原子改名为目标文件；任何失败都
+    删除临时文件、绝不留下残缺的目标文件，也不向调用方返回成功。
     """
     def _save(req):
-        with urllib.request.urlopen(req, timeout=120) as r, open(path, "wb") as f:
-            while True:
-                chunk = r.read(DOWNLOAD_CHUNK)
-                if not chunk:
-                    break
-                f.write(chunk)
+        tmp = str(path) + ".part"
+        total = 0
+        expected = None
+        try:
+            with urllib.request.urlopen(req, timeout=120) as r:
+                headers = getattr(r, "headers", None)
+                if headers is not None:
+                    try:
+                        cl = headers.get("Content-Length")
+                        expected = int(cl) if cl is not None else None
+                    except (TypeError, ValueError):
+                        expected = None
+                Path(path).parent.mkdir(parents=True, exist_ok=True)
+                with open(tmp, "wb") as f:
+                    while True:
+                        chunk = r.read(DOWNLOAD_CHUNK)
+                        if not chunk:
+                            break
+                        f.write(chunk)
+                        total += len(chunk)
+            # 完整性校验：空文件 / 长度不符 / HTML 错误页一律判失败
+            if total == 0:
+                raise ApiError(0, f"下载产物为空：{url}")
+            if expected is not None and total != expected:
+                raise ApiError(0, f"下载不完整：实际 {total} 字节，声明 {expected} 字节：{url}")
+            with open(tmp, "rb") as f:
+                head = f.read(512).lstrip().lower()
+            if head.startswith(b"<") and (b"<html" in head or b"<!doctype" in head):
+                raise ApiError(0, f"下载内容是 HTML 错误页而非产物：{url}")
+            os.replace(tmp, path)  # 原子落盘：成功前目标文件始终不存在/不变
+        except Exception:
+            # 任何失败都清掉临时文件，绝不留下残缺文件供上层误用
+            try:
+                if os.path.exists(tmp):
+                    os.remove(tmp)
+            except OSError:
+                pass
+            raise
 
     bare = urllib.request.Request(url, headers={"User-Agent": "pt-media-skill"})
     try:
@@ -1181,6 +1287,7 @@ def _finish_video(model, url, output, tid, args, kind="video"):
     if args.json:
         print(json.dumps({"ok": True, "kind": kind, "task_id": tid, "model": model,
                           "url": url, "output": output,
+                          "request_id": LAST_SUBMIT_REQUEST_ID,
                           "params": {"duration_s": args.duration, "resolution": args.resolution.upper(),
                                      "ratio": args.ratio, "seed": args.seed, "prompt": args.prompt}},
                          ensure_ascii=False))
@@ -1195,6 +1302,7 @@ def _finish_image(model, urls, outputs, args):
     if args.json:
         print(json.dumps({"ok": True, "kind": "image", "model": model,
                           "urls": urls, "outputs": outputs,
+                          "request_id": LAST_SUBMIT_REQUEST_ID,
                           "params": {"aspect_ratio": args.aspect_ratio, "n": args.n,
                                      "seed": args.seed, "prompt": args.prompt}},
                          ensure_ascii=False))
