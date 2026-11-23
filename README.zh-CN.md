@@ -234,12 +234,14 @@ python mcp_server.py         # stdio；agent 客户端会自动拉起
 | 子命令 | 作用 | 备注 |
 |---|---|---|
 | `check` | Key 体检 | exit 0=就绪，2=缺 Key |
-| `config --set-key <k>` | 保存 Key 到 config.json | — |
+| `config --set-key <k>` | 保存生成域 API Key（`sk-pt-…`）到 config.json | — |
+| `config --set-access-token <pt_live_…>` | 保存账户域个人访问令牌 | 供 `balance`/`usage`/`logs` 用（T04） |
+| `config --set-key-id <数字>` | 保存数字 `key_id` | `balance`/`usage` 必需（T04） |
 | `config --set-model <id\|auto>` | 保存默认模型 | 默认 `auto` |
-| `config --show` | 查看配置（Key 脱敏） | — |
+| `config --show` | 查看配置（令牌只显示尾4位） | — |
 | `auto-model [--type image\|video\|seedance]` | 打印 auto 首选模型（不生成） | — |
 | `models [-t video\|image\|seedance\|all] [--json]` | 列出模型 + 定价 + 支持参数 | 无 Key 也能看公开目录 |
-| `estimate -m <id> -d <s> -r <p>` | 仅估算消耗（美元） | 不扣费 |
+| `estimate -m <id> -d <s> -r <p> [--live]` | 仅估算消耗（美元） | 不扣费；T03：读 catalog 带 `_source` 的价，`--live` 走账户域实时预估 |
 | `generate -m <id\|auto> -p ... [--type ...]` | 生成（视频轮询 / 图片同步） | 核心命令 |
 | `upload -f <图片路径> [--group-name <组名>]` | 上传素材到资产库，拿 `asset://<id>` | **免费** |
 | `seedance enable\|disable\|status` | 管理 Seedance 协议本地标记 | 见 §10 |
@@ -248,7 +250,7 @@ python mcp_server.py         # stdio；agent 客户端会自动拉起
 | `logs [-k <key>]` | **消费记录查询** | `GET /v1/logs/query`；只读 |
 | `agreement [-k <key>]` | **资产库协议签署状态查询** | `GET /v1/asset/agreement/status`；只读 |
 
-> `balance` / `usage` / `logs` / `agreement` 四个命令均为**只读**——不会产生生成、不会扣费。鉴权沿用「裸 key」（`Authorization: <key>`，不带 Bearer）打到 `powertokens.ai/api` 域（仪表盘 / 资产后端），与资产上传同域同鉴权。见 §16。
+> `balance` / `usage` / `logs` / `agreement` 四个命令均为**只读**——不会产生生成、不会扣费。T04：鉴权改用**裸 `pt_live_` 个人访问令牌**（`Authorization: <token>`，不带 Bearer）打到 `powertokens.ai/api` 域，**不是生成域 API Key**；`balance`/`usage` 还需要数字 `key_id`。设置 `PT_ACCESS_TOKEN` + `PT_KEY_ID`（或 `config --set-access-token` / `--set-key-id`）；旧 `-k`/`POWERTOKENS_API_KEY` 仍作裸 key 兜底兼容。见 §16。
 
 ### `generate` 完整参数
 
@@ -490,16 +492,18 @@ python mcp_server.py           # stdio；agent 客户端自动拉起
 
 当前取值分布：`/v1/chat/completions` 37、`/v1/videos` 30、`/v1/images/generations` 11、`/v1/audio/speech` 8（共 86 个模型）。kling 视频系列当前 `submit` = `/v1/videos`。
 
-**账户 / 计费 / 资产库端点 —— 不同域、不同鉴权**：§9 的四个只读命令（`balance`、`usage`、`logs`、`agreement`）打到**独立的 `https://powertokens.ai/api` 域**（仪表盘 / 资产后端），**不是** `api.powertokens.ai`，且使用**裸 key 鉴权**（`Authorization: <key>`，不带 Bearer）——与资产上传同域同鉴权。
+**账户 / 计费 / 资产库端点 —— 不同域、不同鉴权**：§9 的四个只读命令（`balance`、`usage`、`logs`、`agreement`）打到**独立的 `https://powertokens.ai/api` 域**（仪表盘 / 资产后端），**不是** `api.powertokens.ai`，且使用**裸 `pt_live_` 个人访问令牌**（`Authorization: <token>`，不带 Bearer）——与生成域 API Key 是**两套凭证、不可混用**（SSOT C1 真机裁决）。`balance`/`usage` 还需要**数字 `key_id`**。
+
+凭证来源（T04，按优先级）：`-k/--key` 若以 `pt_live_` 开头 → 环境变量 `PT_ACCESS_TOKEN` + `PT_KEY_ID` → config.json 的 `access_token`/`key_id` → 旧 `POWERTOKENS_API_KEY`（裸 key 兜底，不猜 key_id）。个人令牌账户级、明文只展示一次，平台**没有接口能反查 key_id**，需显式设置。缺凭证时命令打印首次配置引导并以 401 退出。
 
 | 用途 | 方法 + 路径（域 `powertokens.ai/api`） | 要点 |
 |---|---|---|
-| 余额查询（按 Key） | `GET /v1/billing/balance` | 返回 balance / currency `credits` / 缓存标志 / key_id |
-| 账单查询（按模型类型） | `GET /v1/billing/usage` | 可选 `start_date`/`end_date`（YYYY-MM-DD）；按模型 `total_cost` 明细 + 合计 |
-| 消费记录查询 | `GET /v1/logs/query` | consume_id / request_id / task_id / endpoint / model / status / quota / usage / billing |
+| 余额查询（按 Key） | `GET /v1/billing/balance` | 需 `key_id`（数字）；返回 balance / currency `credits` / 缓存标志 |
+| 账单查询（按模型类型） | `GET /v1/billing/usage` | 需 `key_id` + `start_date`/`end_date`（YYYY-MM-DD）；按模型 `total_cost` |
+| 消费记录查询 | `GET /v1/logs/query` | 按 request_id / task_id / consume_id 精确查单条 |
 | 资产库协议签署状态 | `GET /v1/asset/agreement/status` | account_id / agreement_accepted / asset_library_enabled |
 
-> ⚠️ **未真机验证**：沙箱无可用 Key。若这些端点返回 401/403，该域可能要的是网页登录令牌而非 API Key，请用真实 Key 实测确认。
+> 注：真机已确认裸令牌鉴权（C1）。业务成败以响应体 `code` 为准（无效令牌可能 HTTP 200 但 `code=500`），不能只看状态码。无官方来源的值留空不猜（R4）。
 
 常见错误：
 - `cannot unmarshal number into ... seconds of type string`：服务端 `seconds` 是 `enum<string>`，必须传字符串（引擎已处理）。

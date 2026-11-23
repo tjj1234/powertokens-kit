@@ -6,6 +6,33 @@
 
 ---
 
+## 0.8.13 — 2026-11-23 · T04 账户凭证 + T03 实时报价 + T07 产物后缀（顺序 5，说明性发版无新 core 包）
+
+**来源**：统一排期计划顺序 5（T04 + T03 + T07），用户 11-23 批准开工。**本版只改 `pt_video.py` + 两版 README + 新测试，不动 catalog / node core → 不发新 tgz，北极星无需换锁；core tgz 与 catalog SHA 沿用 0.8.12。**
+
+### 改动
+
+1. **T04 账户域凭证**（修"账户命令仍用模型 Key"）：
+   - 新增 `resolve_account_credentials()`，优先级：`-k`（`pt_live_` 开头当令牌）→ `PT_ACCESS_TOKEN`/`PT_KEY_ID` → config.json 的 `access_token`/`key_id` → 旧 `POWERTOKENS_API_KEY`（裸 key 兜底，不猜 key_id）。
+   - `_account_get()` 保持旧签名；内部把数字 `key_id` 合并进 `balance`/`usage` 的 query（非数字脱敏串不传，R4）。令牌走裸 `Authorization`（SSOT C1 裁决，不带 Bearer）。缺凭证时打印首次配置引导并以 401 退出。
+   - `config` 新增 `--set-access-token` / `--set-key-id`（`--show` 令牌只显示尾4位）；key_id 非纯数字直接拒绝。
+2. **T03 实时报价**（修"写死旧价 0.20"）：
+   - `PRICE_VIDEO_5S_720P["wan3.0-video"]` 由 `0.20` 更正为 `0.5`（catalog verified 实扣，U10 裁决）。
+   - 新增 `catalog_price_usd()`（只读、带 `_source`）；`estimate_cost()` 末尾新增可选参数 `catalog_models` / `prefer_catalog`（默认优先 catalog，旧调用可 `prefer_catalog=False` 回落写死表）。
+   - `estimate` 子命令输出 `price_source` + "以实扣为准"提示；新增 `--live`（有 `pt_live_` 凭证+数字 key_id 时走账户域 `POST /v1/billing/estimate`，不扣费，失败静默回落 catalog）。
+3. **T07 产物后缀**（修"JPEG 被存成 .png"）：
+   - 新增纯函数 `detect_file_extension()`（魔数优先 → Content-Type 兜底 → default；识别 png/jpg/webp/gif/bmp/mp4）。
+   - `generate_image` 默认命名下载后按魔数校正后缀；**显式 `-o` 仍尊重用户后缀**（不改旧行为）。
+4. **文档**：两版 README 的 §9 命令表、§16 账户域鉴权、FAQ 同步 T04/T03 口径。
+
+### 守门与验收
+
+- **旧行为兼容**：T04 旧 `-k`/`POWERTOKENS_API_KEY` 裸 key 兜底；T03 `prefer_catalog=False` 走写死表、函数签名向后兼容；T07 显式 `-o` 不改后缀。北极星不用 `pt_video.py`，零影响。
+- **测试**：新增 `test_unit_seq5.py` 20 例（T04 7 + T03 6 + T07 7）；Python 全量 **347/347**（327→347）、0 花费、未调用 PT。
+- **SHA**：core tgz `30a6f3e963900aa94098359a8647df22df4c8fb333009382af8ee8d557667f1f`、包内 catalog `030301a2aa19c8de63f5daa1c78fe0915fb892e9d703af9fdaef533a5cef6924`，与 0.8.12 完全相同（无新资产）。
+
+---
+
 ## 0.8.12 — 2026-11-20 · T09 尺寸传参 + P2-7 sizes 语义/计价结构化 + 10 default 小写（顺序 4）
 
 **来源**：统一排期计划顺序 4（T09 + P2-7），用户 11-20 批准开工；动 catalog 字段语义，按 R2 单独发版 + 发版说明（照 0.8.9 格式）。**本版动 catalog → 发新 core tgz，北极星按新字段读取规则平滑跟进、换一次锁。**

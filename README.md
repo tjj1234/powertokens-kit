@@ -234,12 +234,14 @@ All commands: `python pt_video.py <subcommand> [args]`.
 | Subcommand | Purpose | Notes |
 |---|---|---|
 | `check` | Key health check | exit 0=ready, 2=missing Key |
-| `config --set-key <k>` | Save Key to config.json | — |
+| `config --set-key <k>` | Save generation API Key (`sk-pt-…`) to config.json | — |
+| `config --set-access-token <pt_live_…>` | Save account-domain personal access token | for `balance`/`usage`/`logs` (T04) |
+| `config --set-key-id <digits>` | Save numeric `key_id` | required by `balance`/`usage` (T04) |
 | `config --set-model <id\|auto>` | Save default model | default `auto` |
-| `config --show` | View config (Key masked) | — |
+| `config --show` | View config (tokens masked to last 4) | — |
 | `auto-model [--type image\|video\|seedance]` | Print the auto-preferred model (no generation) | — |
 | `models [-t video\|image\|seedance\|all] [--json]` | List models + pricing + supported params | public catalog visible without Key |
-| `estimate -m <id> -d <s> -r <p>` | Estimate cost only (USD) | no charge |
+| `estimate -m <id> -d <s> -r <p> [--live]` | Estimate cost only (USD) | no charge; T03: catalog price with `_source`, `--live` for account-domain real-time estimate |
 | `generate -m <id\|auto> -p ... [--type ...]` | Generate (video polling / image sync) | core command |
 | `upload -f <image path> [--group-name <group>]` | Upload asset to library, get `asset://<id>` | **free** |
 | `seedance enable\|disable\|status` | Manage Seedance agreement local flag | see §10 |
@@ -248,7 +250,7 @@ All commands: `python pt_video.py <subcommand> [args]`.
 | `logs [-k <key>]` | **Query consumption records** | `GET /v1/logs/query`; read-only |
 | `agreement [-k <key>]` | **Query asset-library agreement status** | `GET /v1/asset/agreement/status`; read-only |
 
-> All four `balance` / `usage` / `logs` / `agreement` commands are **read-only** — they never generate or deduct credits. Auth uses the bare Key (`Authorization: <key>`, no `Bearer`) against the `powertokens.ai/api` host (the dashboard/asset backend), the same domain and auth style as asset upload. See §16.
+> All four `balance` / `usage` / `logs` / `agreement` commands are **read-only** — they never generate or deduct credits. Auth uses a **bare `pt_live_` personal access token** (`Authorization: <token>`, no `Bearer`) against the `powertokens.ai/api` host — NOT the generation API Key. `balance`/`usage` also need a **numeric `key_id`**. Set `PT_ACCESS_TOKEN` + `PT_KEY_ID` (or `config --set-access-token` / `--set-key-id`); the old `-k` / `POWERTOKENS_API_KEY` still works as a bare-key fallback for backward compatibility. See §16.
 
 ### `generate` full parameters
 
@@ -490,16 +492,18 @@ Since 0.8.10, `pt_video.py` resolves the submit endpoint from the catalog by `mo
 
 Current distribution: `/v1/chat/completions` 37, `/v1/videos` 30, `/v1/images/generations` 11, `/v1/audio/speech` 8 (86 models total). Kling video series currently has `submit` = `/v1/videos`.
 
-**Account / billing / asset-library endpoints — different host & auth**: the four read-only commands in §9 (`balance`, `usage`, `logs`, `agreement`) hit a **separate host `https://powertokens.ai/api`** (the dashboard / asset backend), **not** `api.powertokens.ai`, and use **bare-key auth** (`Authorization: <key>`, no `Bearer`) — the same domain and auth style as asset upload.
+**Account / billing / asset-library endpoints — different host & auth**: the four read-only commands in §9 (`balance`, `usage`, `logs`, `agreement`) hit a **separate host `https://powertokens.ai/api`** (the dashboard / asset backend), **not** `api.powertokens.ai`, and use a **bare `pt_live_` personal access token** (`Authorization: <token>`, no `Bearer`). This is a **different credential from the generation API Key** — the two must not be mixed (SSOT C1, real-device verified). `balance`/`usage` additionally require a **numeric `key_id`**.
+
+Credential sources (T04, in priority order): `-k/--key` if it starts with `pt_live_` → env `PT_ACCESS_TOKEN` + `PT_KEY_ID` → config.json `access_token`/`key_id` → legacy `POWERTOKENS_API_KEY` (bare-key fallback, no key_id guessed). The personal token is account-level, shown in plaintext only once, and cannot be reverse-resolved to a `key_id` (no such API) — set both explicitly. On missing credentials the command prints a first-time setup guide and exits 401.
 
 | Purpose | Method + path (host `powertokens.ai/api`) | Key points |
 |---|---|---|
-| Account balance (by Key) | `GET /v1/billing/balance` | returns balance / currency `credits` / cached flag / key_id |
-| Billing summary by model | `GET /v1/billing/usage` | optional `start_date` / `end_date` (YYYY-MM-DD); per-model `total_cost` + grand total |
-| Consumption records | `GET /v1/logs/query` | consume_id / request_id / task_id / endpoint / model / status / quota / usage / billing |
+| Account balance (by Key) | `GET /v1/billing/balance` | requires `key_id` (numeric); returns balance / currency `credits` / cached flag |
+| Billing summary by model | `GET /v1/billing/usage` | requires `key_id` + `start_date` / `end_date` (YYYY-MM-DD); per-model `total_cost` |
+| Consumption records | `GET /v1/logs/query` | single-record lookup by request_id / task_id / consume_id |
 | Asset-library agreement status | `GET /v1/asset/agreement/status` | account_id / agreement_accepted / asset_library_enabled |
 
-> ⚠️ **Not verified on real hardware**: the sandbox has no usable Key. If these endpoints return 401/403, the `powertokens.ai/api` host may require a web-login token rather than the API Key — verify with a real Key.
+> Note: a real device confirmed the bare-token auth (C1). Business success is judged by the response-body `code` (an invalid token may still return HTTP 200 with `code=500`), not by HTTP status alone. Values without an official source are left unset rather than guessed (R4).
 
 Common errors:
 - `cannot unmarshal number into ... seconds of type string`: the server's `seconds` is `enum<string>` and must be passed as a string (the engine handles this).
@@ -543,8 +547,8 @@ A: Yes (see §11) — asset ids are cross-account resolvable, but mind the secur
 **Q: MCP server fails to start, missing `mcp`?**
 A: `pip install -e ".[mcp]"` or `pip install "mcp[cli]>=1.2"`.
 
-**Q: The `balance`/`usage`/`logs`/`agreement` commands return 401/403?**
-A: These hit the `powertokens.ai/api` host with bare-key auth (see §16). Confirm you're passing the right Key via `-k` or `POWERTOKENS_API_KEY`; if 401/403 persists, the host may need a web-login token instead of the API Key.
+**Q: The `balance`/`usage`/`logs`/`agreement` commands return 401/403 or `code=500`?**
+A: These hit the `powertokens.ai/api` host with a **bare `pt_live_` token** (not the generation API Key — see §16). Set `PT_ACCESS_TOKEN` + `PT_KEY_ID`, or run `config --set-access-token` / `--set-key-id`. `balance`/`usage` need a numeric `key_id`; there is no API to reverse-resolve it from the token, so set it explicitly. Note an invalid token can return HTTP 200 with body `code=500`, so judge by `code`, not status.
 
 ---
 

@@ -253,8 +253,10 @@ AUTO_MAX_TRIES = 4
 # 系数：时长线性（5s→10s = ×2）、1080p = 720p ×2。单位：美元（$）。
 # 视频单价已实测；图片单价待补充（生成会扣费，且当前 key 余额有限，未探测）。
 # Seedance 全系单价单列（走资产库协议 + asset:// 素材，与普通视频分开计价）
+# T03：wan3.0-video 旧写死价 0.20 已过期，catalog 实测实扣为 0.5（verified，U10 裁决）。
+# 本表仅作离线兜底；estimate 优先读 catalog（带 _source）与账户域实时预估。
 PRICE_VIDEO_5S_720P = {
-    "wan3.0-video": 0.20,
+    "wan3.0-video": 0.5,
     "wan3.0-video-prime": 0.70,
     "kling-v2-1-master": 1.40,
     "kling-video-o1": 0.42,
@@ -371,22 +373,48 @@ def kind_of_model(mid):
 
 
 # ---------- 消耗估算 ----------
-def estimate_cost(model, duration, resolution, kind="video"):
-    """返回该次生成的预估消耗（美元），未知模型返回 None。"""
+def catalog_price_usd(model, catalog_models=None, kind="video"):
+    """T03：从 catalog 读 5s/720p 基准价，返回 (price_usd, source)；无来源返回 (None, None)。
+
+    只读、纯函数、零联网。价来源带 _source（documented/verified），按 U10 以实扣为准、
+    预估只作参考。catalog_models 缺省时读本地 catalog（读不到返回空，不抛）。
+    """
+    models = catalog_models if catalog_models is not None else load_catalog_models()
+    entry = (models or {}).get(model) or {}
+    media = ((entry.get("capabilities") or {}).get("media") or {})
+    price = media.get("price") or {}
+    val = price.get("usd_5s_720p")
+    src = price.get("_source")
+    if isinstance(val, (int, float)) and val > 0:
+        return float(val), src
+    return None, None
+
+
+def estimate_cost(model, duration, resolution, kind="video", catalog_models=None,
+                  prefer_catalog=True):
+    """返回该次生成的预估消耗（美元），未知模型返回 None。
+
+    T03：默认优先读 catalog 带 _source 的价格（wan3.0-video 现为 0.5 verified），
+    读不到回落写死表；prefer_catalog=False 可强制走旧写死表（兼容/单测）。
+    函数签名向后兼容：新增参数都在末尾且有默认值。
+    """
     if not model:
         return None
     lm = model.lower()
-    if kind == "seedance":
-        table = PRICE_SEEDANCE_5S_720P
-    elif kind == "image":
-        table = IMAGE_PRICE
-    else:
-        table = PRICE_VIDEO_5S_720P
     base = None
-    for key in sorted(table, key=len, reverse=True):
-        if key in lm:
-            base = table[key]
-            break
+    if prefer_catalog and kind in ("video", "seedance"):
+        base, _src = catalog_price_usd(model, catalog_models=catalog_models, kind=kind)
+    if base is None:
+        if kind == "seedance":
+            table = PRICE_SEEDANCE_5S_720P
+        elif kind == "image":
+            table = IMAGE_PRICE
+        else:
+            table = PRICE_VIDEO_5S_720P
+        for key in sorted(table, key=len, reverse=True):
+            if key in lm:
+                base = table[key]
+                break
     if base is None:
         return None
     if kind == "image":
@@ -793,6 +821,8 @@ def cmd_config(argv):
     parser = argparse.ArgumentParser(prog="pt_video.py config")
     parser.add_argument("--set-key")
     parser.add_argument("--set-model")
+    parser.add_argument("--set-access-token", help="账户域个人访问令牌（pt_live_ 开头，用于 balance/usage/logs）")
+    parser.add_argument("--set-key-id", help="账户域 key_id（纯数字，balance/usage 必需）")
     parser.add_argument("--show", action="store_true")
     args = parser.parse_args(argv)
     cfg = load_config()
@@ -800,13 +830,30 @@ def cmd_config(argv):
         cfg["api_key"] = args.set_key
         save_config(cfg)
         print(f"[ok] 已保存 api_key 到 {CONFIG_PATH}（权限 0600）")
+    if args.set_access_token:
+        cfg["access_token"] = args.set_access_token
+        save_config(cfg)
+        print(f"[ok] 已保存 access_token 到 {CONFIG_PATH}（权限 0600；仅显示尾4位：****{args.set_access_token[-4:]}）")
+    if args.set_key_id:
+        raw = str(args.set_key_id).strip()
+        if not raw.isdigit():
+            sys.stderr.write("[error] key_id 必须是纯数字（PT 没有接口能反查，请到仪表盘查看）\n")
+            return 2
+        cfg["key_id"] = int(raw)
+        save_config(cfg)
+        print(f"[ok] 已保存 key_id={cfg['key_id']} 到 {CONFIG_PATH}")
     if args.set_model:
         cfg["default_model"] = args.set_model
         save_config(cfg)
         print(f"[ok] 已保存 default_model={args.set_model}（generate 未写 -m 时优先用它；auto=按账号自动选）")
-    if args.show or (not args.set_key and not args.set_model):
+    if args.show or (not any([args.set_key, args.set_model, args.set_access_token, args.set_key_id])):
         masked = ("****" + cfg["api_key"][-4:]) if cfg.get("api_key") else "(未设置)"
+        tok = cfg.get("access_token", "")
+        masked_tok = (f"pt_live_****{tok[-4:]}（len={len(tok)}）" if tok.startswith("pt_live_")
+                      else ("****" + tok[-4:] if tok else "(未设置)"))
         print(json.dumps({"api_key": masked,
+                          "access_token": masked_tok,
+                          "key_id": cfg.get("key_id"),
                           "default_model": cfg.get("default_model", "") or "auto",
                           "config_path": str(CONFIG_PATH), "onboard": ONBOARD_URL},
                          ensure_ascii=False, indent=2))
@@ -834,17 +881,64 @@ def cmd_estimate(argv):
     parser.add_argument("-d", "--duration", type=int, default=5)
     parser.add_argument("-r", "--resolution", default="720p")
     parser.add_argument("--type", default="auto", choices=["video", "image", "auto"])
+    parser.add_argument("--live", action="store_true",
+                        help="有 pt_live_ 凭证时走账户域实时预估（不扣费）；失败自动回落 catalog 估算")
     args = parser.parse_args(argv)
     kind = args.type
     if kind == "auto":
         kind = kind_of_model(args.model)
+    source = "builtin_table"
     c = estimate_cost(args.model, args.duration, args.resolution, kind)
+    # T03：优先用 catalog 带 _source 的价格覆盖（wan3.0-video 0.5 verified）
+    cat_price, cat_src = catalog_price_usd(args.model, kind=kind)
+    if cat_price is not None and kind in ("video", "seedance"):
+        factor = max(float(args.duration or 5), 1) / 5.0
+        if "1080" in (args.resolution or ""):
+            factor *= 2.0
+        c = round(cat_price * factor, 3)
+        source = f"catalog:{cat_src or 'unknown'}"
+    if args.live:
+        live = _live_estimate(args.model, kind, args.duration, args.resolution)
+        if live is not None:
+            c, source = live, "live:estimate"
     if c is None:
         print(f"[estimate] {args.model}: 单价表无此模型，无法估算（已知模型见 `models`）")
         return 1
     print(json.dumps({"model": args.model, "kind": kind, "duration_s": args.duration,
-                      "resolution": args.resolution, "est_cost_usd": c}, ensure_ascii=False))
+                      "resolution": args.resolution, "est_cost_usd": c,
+                      "price_source": source, "note": "预估仅供参考，以实际扣费为准（U10）"},
+                     ensure_ascii=False))
     return 0
+
+
+def _live_estimate(model, kind, duration, resolution):
+    """T03：账户域实时预估（POST /v1/billing/estimate，不扣费）。缺凭证/缺模块/出错返回 None。
+
+    保护式 import：pt_video.py 可独立分发、不依赖 pt-gateway 目录；独立副本没有
+    account_client 时自动跳过，回落 catalog 估算，绝不因此中断命令。
+    """
+    token, key_id = resolve_account_credentials()
+    if not token or not key_id or not str(key_id).strip().isdigit():
+        return None
+    try:
+        import sys as _sys
+        gw = str(Path(__file__).resolve().parent / "pt-gateway")
+        if gw not in _sys.path:
+            _sys.path.insert(0, gw)
+        from account_client import AccountClient
+        client = AccountClient.from_env()
+        req = {"model": model, "duration": duration, "resolution": resolution}
+        resp = client.estimate_cost(model=model, endpoint=None, request=req,
+                                    key_id=int(key_id),
+                                    kind="video" if kind in ("video", "seedance") else kind)
+        if resp.get("ok") and isinstance(resp.get("data"), dict):
+            data = resp["data"]
+            for k in ("usd", "cost_usd", "total_usd", "estimated_usd", "price"):
+                if isinstance(data.get(k), (int, float)):
+                    return float(data[k])
+    except Exception:
+        pass
+    return None
 
 
 # ---------- 生成：媒体构造（视频/图片/seedance 共用，支持 asset://）----------
@@ -938,6 +1032,57 @@ def _trusted_pt_host(url):
     except Exception:
         return False
     return host == "powertokens.ai" or host.endswith(".powertokens.ai")
+
+
+# ---------- T07：产物真实后缀识别（魔数优先，Content-Type 兜底）----------
+# 旧行为：generate 默认把任何产物存成 .png，JPEG/WebP/GIF 被错标为 .png。
+# 这里只做"识别"，不改 download_binary 的落盘与安全逻辑；显式 -o 指定后缀时仍尊重用户。
+_MAGIC_EXTS = (
+    (b"\x89png\r\n\x1a\n", ".png"),
+    (b"\xff\xd8\xff", ".jpg"),
+    (b"gif87a", ".gif"),
+    (b"gif89a", ".gif"),
+    (b"bm", ".bmp"),
+    (b"ri", ".webp"),   # RIFF....WEBP，仅凭前两字节不够，下面复核 WEBP 标记
+)
+_CT_EXT_MAP = {
+    "image/png": ".png", "image/jpeg": ".jpg", "image/jpg": ".jpg",
+    "image/webp": ".webp", "image/gif": ".gif", "image/bmp": ".bmp",
+    "video/mp4": ".mp4", "video/quicktime": ".mov", "video/webm": ".webm",
+    "application/octet-stream": None,   # 无信息量，不据此判断
+}
+
+
+def detect_file_extension(path=None, head=None, content_type=None, default=".png"):
+    """按魔数 / Content-Type 推断真实后缀（含前导点）；判断不了返回 default。
+
+    纯函数、零依赖、零联网。优先级：魔数 > Content-Type > default。
+    - head: 文件头字节（至少 12 字节即可）；给了 path 则自动读前 16 字节。
+    - content_type: HTTP Content-Type，可带 charset 参数（如 'image/jpeg; charset=binary'）。
+    """
+    data = head
+    if data is None and path:
+        try:
+            with open(path, "rb") as f:
+                data = f.read(16)
+        except OSError:
+            data = None
+    data = data or b""
+    low = data[:16].lower()
+    # RIFF....WEBP 需要第 8-12 字节确认，单独判断避免把其它 RIFF 误判为 webp
+    if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return ".webp"
+    if len(data) >= 8 and data[4:8] == b"ftyp":
+        return ".mp4"
+    for magic, ext in _MAGIC_EXTS:
+        if ext == ".webp":
+            continue  # 已在上面精确判断
+        if low.startswith(magic):
+            return ext
+    ct = (content_type or "").split(";", 1)[0].strip().lower()
+    if ct in _CT_EXT_MAP and _CT_EXT_MAP[ct]:
+        return _CT_EXT_MAP[ct]
+    return default
 
 
 def download_binary(url, path, key):
@@ -1172,8 +1317,20 @@ def generate_image(key, model, args, timeout):
                 fname = str(p.parent / f"{p.stem}_{i+1}{p.suffix}")
             else:
                 fname = args.output or str(out_dir / f"{model}_{i+1}.png")
+            explicit_output = bool(args.output)   # T07：显式 -o 时尊重用户后缀，不改
             try:
                 download_binary(url, fname, key)
+                # T07：默认命名下按魔数校正真实后缀（JPEG 不再存成 .png）。
+                # 仅在用户未显式指定 -o 时才改名，避免覆盖用户意图。
+                if not explicit_output:
+                    real_ext = detect_file_extension(path=fname, default=Path(fname).suffix or ".png")
+                    if real_ext and Path(fname).suffix.lower() != real_ext.lower():
+                        renamed = str(Path(fname).with_suffix(real_ext))
+                        try:
+                            os.replace(fname, renamed)
+                            fname = renamed
+                        except OSError:
+                            pass   # 改名失败不影响已下载产物，保留原名
                 outputs.append(fname)
                 sys.stderr.write(f"[download] 已保存：{fname}\n")
             except Exception as e:
@@ -1405,13 +1562,65 @@ def cmd_seedance(argv):
 
 
 
+# ---------- T04：账户域凭证（裸 pt_live_ 令牌 + 数字 key_id）----------
+# 依据 SSOT C1 真机裁决：账户域 https://powertokens.ai/api 用裸 pt_live_ 令牌（不带 Bearer），
+# balance/usage 还要 key_id（请求侧必须是数字）；与生成域 Bearer <API Key> 是两套凭证，不可混用。
+# 旧行为兼容：仍接受 -k/POWERTOKENS_API_KEY 当裸 key 用（老用户零迁移），
+# 但推荐用 PT_ACCESS_TOKEN + PT_KEY_ID；缺凭证时给首次配置引导。
+ACCOUNT_CREDENTIAL_HINT = (
+    "[需要账户凭证] 余额/账单/消费记录属于账户域，需要个人访问令牌（不是模型 API Key）。\n"
+    "  1) 打开 " + ONBOARD_URL + " → 登录 → 创建个人访问令牌（形如 pt_live_xxxx）\n"
+    "  2) 设置环境变量：export PT_ACCESS_TOKEN=pt_live_xxxx  和  export PT_KEY_ID=12345（纯数字）\n"
+    "  3) 或命令行：python pt_video.py config --set-access-token <令牌> --set-key-id <数字>\n"
+    "  说明：令牌是账户级、明文只展示一次；key_id 需到仪表盘查看，平台没有接口能反查。\n"
+)
+
+
+def resolve_account_credentials(explicit_token=None):
+    """解析账户域凭证，返回 (token, key_id)。纯本地、不联网、不落盘新凭证。
+
+    优先级：
+      1) -k 显式传入：pt_live_ 开头当令牌；否则当旧模型 Key（裸，兼容老行为）
+      2) 环境变量 PT_ACCESS_TOKEN / PT_KEY_ID
+      3) config.json 的 access_token / key_id
+      4) 回落 POWERTOKENS_API_KEY（旧行为，裸 key）
+    """
+    cfg = load_config()
+    token = explicit_token
+    if token and token.startswith("pt_live_"):
+        return token, cfg.get("key_id") or os.environ.get("PT_KEY_ID")
+    if token:
+        # 旧的 -k 模型 Key：作为裸 key 兼容返回，key_id 从 env/config 尽力补
+        return token, cfg.get("key_id") or os.environ.get("PT_KEY_ID")
+    token = os.environ.get("PT_ACCESS_TOKEN") or cfg.get("access_token")
+    key_id = os.environ.get("PT_KEY_ID") or cfg.get("key_id")
+    if token:
+        return token, key_id
+    legacy = os.environ.get("POWERTOKENS_API_KEY") or cfg.get("api_key")
+    return (legacy or ""), key_id
+
+
 def _account_get(key, action, params=None):
-    """统一封装账户 / 计费只读查询；缺 key 直接抛 ApiError(401)。"""
-    if not key:
-        key = os.environ.get("POWERTOKENS_API_KEY")
-    if not key:
-        raise ApiError(401, "缺少 API Key：请用 -k/--key 传入，或设置环境变量 POWERTOKENS_API_KEY")
-    return _account_call("GET", action, key, params=params)
+    """统一封装账户 / 计费只读查询；缺凭证抛 ApiError(401)（T04：支持 pt_live_ + key_id）。
+
+    签名保持不变（旧调用方零改动），内部解析凭证：
+      - token 走裸 Authorization（C1 裁决，不带 Bearer）
+      - balance/usage 需要数字 key_id，自动合并到 query params
+      - 旧 -k 模型 Key 仍可用（裸 key 兼容），但缺 key_id 时账户接口可能返回业务错误，
+        由上层按响应体 code 判断，这里不臆造 key_id（R4）。
+    """
+    token, key_id = resolve_account_credentials(key)
+    if not token:
+        raise ApiError(401, ACCOUNT_CREDENTIAL_HINT)
+    merged = dict(params or {})
+    needs_key_id = action in (ACCOUNT_BALANCE, ACCOUNT_USAGE)
+    if needs_key_id and key_id is not None:
+        # key_id 请求侧必须数字；非数字（脱敏串/占位）不猜、不传，交给响应体报错（R4）。
+        # 内联校验而非 import account_client：本文件需独立分发，不依赖 pt-gateway 目录存在。
+        raw = str(key_id).strip()
+        if raw.isdigit():
+            merged["key_id"] = int(raw)
+    return _account_call("GET", action, token, params=merged or None)
 
 
 def cmd_balance(argv):
