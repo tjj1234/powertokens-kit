@@ -6,6 +6,18 @@
 
 ---
 
+## 0.8.10 — 2026-11-23 · T01 提交入口按 catalog 选择（不发新 core 包）
+
+**只改 Python 引擎 + 文档，不动 catalog 数据与 node core。** core tgz / catalog 两个 SHA 与 0.8.9 完全一致。
+
+- **T01（同事实测）**：`pt_video.py` 提交视频 / 图片前按 `model` 从 catalog 读 `submit` 选择入口（新增 `resolve_submit_endpoint()` / `load_catalog_models()`），不再一律写死。读不到 catalog / 模型未登记 / 入口跨类型 → 回落 `VIDEO_SUBMIT` / `IMAGE_ENDPOINT`（不抛错）。`submit_task()` 新增可选 `endpoint` 参数，不传则旧签名行为不变。
+- **为什么这样改**：catalog 早已有 `submit`（86）+ `vendor_endpoint`（86）对照，同事「没有模型↔接口对照」的前提不成立。真问题是引擎没去读字段；kling 等模型真实可用入口需真机确认，按 R4 不猜、不动 catalog 数据。
+- **北极星零影响**：北极星副本可不含 `catalog.json`，此时行为与旧版逐字节一致；A5 按本版 `pt_video.py` 新 SHA256 同步副本。
+- **不发新 core 包**：本版不改 `node/` 任何入包文件、不改 `catalog.json`。core tgz SHA256 仍为 `89966e857fd85a5e915ec70ae55b6e88976fadbdf3014b93734f9d3adeb022d0`，包内 catalog SHA256 仍为 `e039745078115456d82624f812ac81e90b998dab0e1c39e314c406a2e9952ca8`（均与 0.8.9 相同）。`node/README.md` 若有改动先提交，打包并入顺序 4 那次 catalog 变更。
+- **文档**：`submit` / `vendor_endpoint` 语义写入根目录 `README.md` §16.1 与 `README.zh-CN.md` §16.1（均不在 core tgz 内）。
+- **测试**：新增 `test_unit_submit_endpoint.py`（12 例：正常读取 / 缺 catalog 兜底 / 坏 JSON / 未登记模型 / 跨类型脏数据 / 旧签名兼容 / 真实 catalog）。Python 全量与 T06 下载安全回归全过。
+- 未调用 PT、0 花费；生成链路其它部分、账户客户端、node core、catalog 数据 0 改动。
+
 ## 0.8.9 — 2026-11-23 · 媒体数据补齐（北极星审核 P1 + P2-4/5/6，读取规则文档化）
 
 **来源**：北极星 11-23 对 0.8.8 的审核反馈 + 第三节答复（全部采纳），按第五节顺序 1 实施。

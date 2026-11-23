@@ -474,6 +474,22 @@ Generation endpoints base: `https://api.powertokens.ai`, auth: `Authorization: B
 | List available models | `GET /v1/models` | returns the model list callable by the current Key (for auto candidate / pre-check) |
 | Upload asset | `POST powertokens.ai/api/.../upload` | async: returns `task_id` → poll `get-asset-id` for `asset_id` → reference `asset://<id>` |
 
+### 16.1 Model → submit-endpoint mapping (T01, 0.8.10)
+
+Each model in `pt-gateway/catalog.json` carries two endpoint fields with different meanings — **do not use `vendor_endpoint` as the call endpoint**:
+
+| Field | Meaning | Who should use it |
+|---|---|---|
+| `submit` | The **PT gateway unified endpoint callers should request** | ✅ use it when submitting tasks |
+| `vendor_endpoint` | The upstream vendor's real interface, for docs / debugging only | ❌ callers must not use it directly |
+
+Since 0.8.10, `pt_video.py` resolves the submit endpoint from the catalog by `model` before posting (`resolve_submit_endpoint()`), and **falls back to the hard-coded constant** (`VIDEO_SUBMIT` / `IMAGE_ENDPOINT`) when the catalog is missing, the model is unregistered, or the mapped endpoint is cross-type (a video model mapped to `/images`). Consequences:
+- A standalone skill copy **without** `catalog.json` behaves exactly as before;
+- If a model's usable PT endpoint changes later (e.g. kling), **edit only the catalog `submit`** — no engine code change;
+- A new endpoint must be confirmed on a live call before being written to the catalog; never guess (rule R4).
+
+Current distribution: `/v1/chat/completions` 37, `/v1/videos` 30, `/v1/images/generations` 11, `/v1/audio/speech` 8 (86 models total). Kling video series currently has `submit` = `/v1/videos`.
+
 **Account / billing / asset-library endpoints — different host & auth**: the four read-only commands in §9 (`balance`, `usage`, `logs`, `agreement`) hit a **separate host `https://powertokens.ai/api`** (the dashboard / asset backend), **not** `api.powertokens.ai`, and use **bare-key auth** (`Authorization: <key>`, no `Bearer`) — the same domain and auth style as asset upload.
 
 | Purpose | Method + path (host `powertokens.ai/api`) | Key points |

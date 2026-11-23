@@ -93,6 +93,53 @@ VIDEO_SUBMIT = "/v1/videos"
 VIDEO_POLL = "/v1/videos/{id}"
 IMAGE_ENDPOINT = "/v1/images/generations"   # 实测确认：OpenAI 风格，带 /generations 后缀，同步返回
 
+# ---------- T01：提交入口按 catalog 的 model→submit 对照选择（0.8.10）----------
+# 设计原则（不破坏北极星）：
+#   - catalog 只读、可选：读得到就用它的 submit；读不到/字段缺失/值异常一律回落上面的写死常量。
+#   - 北极星 / 独立分发的 skill 副本可以不含 pt-gateway/catalog.json —— 此时行为与旧版逐字节一致。
+#   - 不猜新入口：kling 等模型的"真实可用入口"需真机确认，catalog 里是什么就用什么，不臆造。
+_CATALOG_PATH = SCRIPT_DIR / "pt-gateway" / "catalog.json"
+_catalog_models_cache = None
+
+
+def load_catalog_models(path=None):
+    """只读加载 catalog 的 models 映射；任何异常都返回 {}（不抛、不联网、不缓存失败）。
+
+    路径可用参数注入便于单测；默认取 skill 目录旁的 pt-gateway/catalog.json。
+    成功结果缓存到模块级变量，避免每次提交都读盘。
+    """
+    global _catalog_models_cache
+    p = Path(path) if path else _CATALOG_PATH
+    if path is None and _catalog_models_cache is not None:
+        return _catalog_models_cache
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+        models = data.get("models") if isinstance(data, dict) else None
+        if not isinstance(models, dict):
+            models = {}
+    except (OSError, ValueError, TypeError):
+        models = {}
+    if path is None:
+        _catalog_models_cache = models
+    return models
+
+
+def resolve_submit_endpoint(model, kind, path=None):
+    """按 (model, kind) 从 catalog 选提交入口；无可靠映射则回落写死常量。
+
+    kind: 'video' → 回落 VIDEO_SUBMIT，只接受 catalog 中含 '/videos' 的入口；
+          'image' → 回落 IMAGE_ENDPOINT，只接受含 '/images' 的入口。
+    跨类型（例如给视频模型配了 /v1/images/...）视为脏数据，回落常量，防止提交到错误入口。
+    """
+    fallback = VIDEO_SUBMIT if kind == "video" else IMAGE_ENDPOINT
+    needle = "/videos" if kind == "video" else "/images"
+    entry = load_catalog_models(path).get(model) if model else None
+    if isinstance(entry, dict):
+        submit = entry.get("submit")
+        if isinstance(submit, str) and submit.startswith("/") and needle in submit:
+            return submit
+    return fallback
+
 # ---------- 资产库上传（Seedance 图生视频必须先把素材上传拿 asset://）----------
 # 注意：资产库 base 是 powertokens.ai/api（带 /api 前缀），不是 api.powertokens.ai
 ASSET_BASE = "https://powertokens.ai/api"
@@ -712,9 +759,13 @@ def build_media(args, force_asset=False):
 
 
 # ---------- 视频生成：提交 + 自动轮询 ----------
-def submit_task(key, body):
-    """POST /v1/videos，返回 task_id（str）。提交 HTTP 超时 = SUBMIT_TIMEOUT。"""
-    resp = _api_call("POST", VIDEO_SUBMIT, key, body=body, timeout=SUBMIT_TIMEOUT)
+def submit_task(key, body, endpoint=None):
+    """POST 提交视频任务，返回 task_id（str）。提交 HTTP 超时 = SUBMIT_TIMEOUT。
+
+    endpoint 由调用方按 catalog 的 model→submit 解析后传入；不传则回落 VIDEO_SUBMIT，
+    保持旧签名兼容（北极星副本 / 外部脚本按旧方式调用行为不变）。
+    """
+    resp = _api_call("POST", endpoint or VIDEO_SUBMIT, key, body=body, timeout=SUBMIT_TIMEOUT)
     tid = resp.get("id") or resp.get("task_id")
     if not tid:
         raise ApiError(0, f"提交响应缺少 task_id：{json.dumps(resp, ensure_ascii=False)}")
@@ -907,8 +958,9 @@ def generate_video(key, model, args, timeout, force_asset=False):
     if args.seed is not None:
         body["seed"] = args.seed
 
-    sys.stderr.write(f"[submit] POST {PT_BASE}{VIDEO_SUBMIT}  model={model} seconds={args.duration} size={args.resolution.upper()} ratio={args.ratio}\n")
-    task_id, _ = submit_task(key, body)
+    submit_endpoint = resolve_submit_endpoint(model, "video")
+    sys.stderr.write(f"[submit] POST {PT_BASE}{submit_endpoint}  model={model} seconds={args.duration} size={args.resolution.upper()} ratio={args.ratio}\n")
+    task_id, _ = submit_task(key, body, endpoint=submit_endpoint)
     sys.stderr.write(f"[submit] 已提交，task_id={task_id}，开始轮询（每 {POLL_INTERVAL}s）...\n")
     task = poll_task(key, task_id, timeout=timeout)
     url = result_url(task)
@@ -940,8 +992,9 @@ def generate_image(key, model, args, timeout):
         body["seed"] = args.seed
     # 图生图（subject_reference）待实测字段结构，当前图片生成以文生图为主。
 
-    sys.stderr.write(f"[submit] POST {PT_BASE}{IMAGE_ENDPOINT}  model={model} aspect_ratio={args.aspect_ratio}\n")
-    resp = _api_call("POST", IMAGE_ENDPOINT, key, body=body, timeout=IMAGE_HTTP_TIMEOUT)
+    submit_endpoint = resolve_submit_endpoint(model, "image")
+    sys.stderr.write(f"[submit] POST {PT_BASE}{submit_endpoint}  model={model} aspect_ratio={args.aspect_ratio}\n")
+    resp = _api_call("POST", submit_endpoint, key, body=body, timeout=IMAGE_HTTP_TIMEOUT)
     data = resp.get("data") or []
     urls = [it.get("url") for it in data if isinstance(it, dict) and it.get("url")]
     if not urls:

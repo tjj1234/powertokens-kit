@@ -474,6 +474,22 @@ python mcp_server.py           # stdio；agent 客户端自动拉起
 | 列出可用模型 | `GET /v1/models` | 返回当前 Key 可调用的模型列表（用于 auto 候选 / 预校验） |
 | 上传资产 | `POST powertokens.ai/api/.../upload` | 异步：返回 `task_id` → 轮询 `get-asset-id` 拿 `asset_id` → 引用 `asset://<id>` |
 
+### 16.1 模型 → 提交入口对照（T01，0.8.10）
+
+`pt-gateway/catalog.json` 里每个模型有两个端点字段，含义不同，**不要把 `vendor_endpoint` 当成调用入口**：
+
+| 字段 | 含义 | 谁该用 |
+|---|---|---|
+| `submit` | **调用方（本引擎 / 网关）应请求的 PT 网关统一入口** | ✅ 提交任务时用它 |
+| `vendor_endpoint` | 上游原厂真实接口，仅供文档 / 内部排障 | ❌ 调用方不直接用 |
+
+`pt_video.py` 自 0.8.10 起：视频 / 图片提交前先按 `model` 从 catalog 读 `submit` 选择入口（`resolve_submit_endpoint()`），读不到 catalog、模型未登记、或入口跨类型（视频模型配了 `/images`）时**回落写死常量**（`VIDEO_SUBMIT` / `IMAGE_ENDPOINT`）。因此：
+- 独立分发的 skill 副本即使**不带** `catalog.json`，行为与旧版完全一致；
+- 以后若某模型（如 kling）的 PT 网关可用入口变化，**只改 catalog 的 `submit` 即可**，无需改引擎代码；
+- 新入口必须先真机确认再写入 catalog；无来源一律不猜（规则 R4）。
+
+当前取值分布：`/v1/chat/completions` 37、`/v1/videos` 30、`/v1/images/generations` 11、`/v1/audio/speech` 8（共 86 个模型）。kling 视频系列当前 `submit` = `/v1/videos`。
+
 **账户 / 计费 / 资产库端点 —— 不同域、不同鉴权**：§9 的四个只读命令（`balance`、`usage`、`logs`、`agreement`）打到**独立的 `https://powertokens.ai/api` 域**（仪表盘 / 资产后端），**不是** `api.powertokens.ai`，且使用**裸 key 鉴权**（`Authorization: <key>`，不带 Bearer）——与资产上传同域同鉴权。
 
 | 用途 | 方法 + 路径（域 `powertokens.ai/api`） | 要点 |
