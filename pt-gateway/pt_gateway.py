@@ -373,16 +373,24 @@ class TaskGateway:
         # 2) 图片：同步直返
         if kind == "image":
             model2 = self._resolve_model("image", model)
-            body = {"model": model2, "prompt": prompt or ""}
-            if aspect_ratio:
-                body["aspect_ratio"] = aspect_ratio
-            if n:
-                body["n"] = int(n)
-            sys.stderr.write(f"[gateway] POST {IMAGE_ENDPOINT} model={model2} kind=image\n")
-            resp = _api_call("POST", IMAGE_ENDPOINT, self.key, body=body, timeout=120)
+            # 复核 T09（2026-11-24）：CLI 与网关共用统一构造函数，参考图/尺寸/比例真正送出。
+            params = params or {}
+            image_size = params.get("size") or params.get("resolution")
+            body, unsupported = pt_video.build_image_request_body(
+                model2, prompt,
+                aspect_ratio=aspect_ratio, n=int(n) if n else None,
+                ref_image=ref_image, size=image_size,
+            )
+            for u in unsupported:
+                sys.stderr.write(f"[gateway][warn] 参数 {u['field']}={u['value']!r} 无官方字段映射，"
+                                 f"未发送（{u['reason']}）：{model2}\n")
+            submit_endpoint = pt_video.resolve_submit_endpoint(model2, "image")
+            sys.stderr.write(f"[gateway] POST {submit_endpoint} model={model2} kind=image\n")
+            resp = _api_call("POST", submit_endpoint, self.key, body=body, timeout=120)
             urls = [d.get("url") for d in (resp.get("data") or []) if d.get("url")]
             return {"ok": True, "kind": "image", "execution": "sync",
-                    "model": model2, "urls": urls, "raw": resp}
+                    "model": model2, "urls": urls, "raw": resp,
+                    "unsupported_params": unsupported}
 
         # 3) audio：TTS 同步生成（vendor 端点 /ali/...，不走 /v1/videos）
         if kind == "audio":
@@ -531,20 +539,32 @@ class TaskGateway:
     def submit(self, model, prompt="", duration=5, resolution="720p", ratio="16:9",
                first_frame=None, ref_image=None, ref_video=None, no_audio=False,
                no_prompt_extend=False, watermark=False, seed=None, timeout=POLL_TIMEOUT,
-               wait=False):
-        """提交一个异步视频任务。返回 {task_id, kind}；wait=True 则轮询到终态并返回归一化状态。"""
+               wait=False, strict=False):
+        """提交一个异步视频任务。返回 {task_id, kind}；wait=True 则轮询到终态并返回归一化状态。
+
+        复核 T01（2026-11-24）：提交前按 catalog 的 model→submit 解析入口，不再一律写死
+        /v1/videos。`strict=True`（默认关闭，兼容旧行为）时，模型无 catalog 映射则直接拒绝，
+        避免对兼容性未知的模型盲目提交。
+        """
         self._need_key()
         kind = kind_of_model(model)
         if kind not in ASYNC_KINDS:
             raise ApiError(0, f"模型 {model} 非异步视频类（kind={kind}）；网关只处理 video / seedance")
+        endpoint = pt_video.resolve_submit_endpoint(model, kind)
+        if strict:
+            entry = pt_video.load_catalog_models().get(model)
+            submit_val = (entry or {}).get("submit") if isinstance(entry, dict) else None
+            if not submit_val:
+                raise ApiError(0, f"模型 {model} 在 catalog 无 submit 映射，兼容性未知；"
+                                  f"strict 模式拒绝盲目提交（关闭 strict 可回落 {endpoint}）")
         media = _build_media(first_frame, ref_image, ref_video)
         body = build_submit_body(model, kind, prompt, media, dict(
             duration=duration, resolution=resolution, ratio=ratio,
             no_audio=no_audio, no_prompt_extend=no_prompt_extend,
             watermark=watermark, seed=seed,
         ))
-        sys.stderr.write(f"[gateway] POST /v1/videos model={model} kind={kind}\n")
-        tid, _ = submit_task(self.key, body)
+        sys.stderr.write(f"[gateway] POST {endpoint} model={model} kind={kind}\n")
+        tid, _ = submit_task(self.key, body, endpoint=endpoint)
         if wait:
             task = poll_task(self.key, tid, timeout=timeout)
             return {**normalize_status(task), "kind": kind}

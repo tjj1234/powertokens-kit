@@ -134,3 +134,30 @@ test('C01: 继承 keyModels 过滤', () => {
     assert.equal(t.models.length, 0);
   }
 });
+
+// ---------- 复核 2026-11-24：看图意图 + 图片成本排序 ----------
+test('C01 review: 看图/识字意图优先于生成图片', () => {
+  assert.equal(parseRecommendIntent('请看图，告诉我图片中写了什么').purpose, 'vision');
+  assert.equal(parseRecommendIntent('视觉理解：分析这张图片中的账单').purpose, 'vision');
+  // 生成类不被误伤
+  assert.equal(parseRecommendIntent('生成一张海报').purpose, 'text2image');
+  assert.equal(parseRecommendIntent('portrait photo of a woman').purpose, 'text2image');
+  const r = recommendModels('请看图，告诉我图片中写了什么', null, { catalog: cat });
+  assert.equal(r.purpose, 'vision');
+});
+
+test('C01 review: 图片成本排序读 documented price_rows（便宜的在前）', () => {
+  const r = recommendModels('低成本生成一张图片', null, { catalog: cat });
+  const priced = r.tiers.cost.models.filter((m) => m.signals.price);
+  assert.ok(priced.length >= 2, '图片候选应有可比的 documented 价格');
+  // image-01 每张 $0.004 < seedream $0.034 < qwen $0.04
+  const ids = r.tiers.cost.models.map((m) => m.id);
+  const iImage01 = ids.indexOf('image-01');
+  const iSeedream = ids.indexOf('seedream-5-0-260128');
+  assert.ok(iImage01 >= 0 && iSeedream >= 0 && iImage01 < iSeedream,
+    '每张 4 积分的 image-01 应排在 34 积分的 seedream 之前');
+  for (const m of priced) {
+    assert.ok(m.signals.price.source === 'documented' || m.signals.price.source === 'verified');
+    assert.ok(String(m.signals.price.basis).startsWith('price_rows'));
+  }
+});

@@ -129,5 +129,63 @@ class TestDownloadSecurity(unittest.TestCase):
         self.assertFalse(pt_video._trusted_pt_host("not a url"))
 
 
+class TestDownloadSecurityHardening(unittest.TestCase):
+    """2026-11-24 复核加固：跨来源跳转 / HTTP 降级 / JSON 错误正文。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.path = os.path.join(self.tmp.name, "out.mp4")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    # ---- 6) 鉴权后跨来源跳转：跳转请求不得带 Authorization ----
+    def test_auth_redirect_to_third_party_drops_key(self):
+        seen = []
+
+        def fake_urlopen(req, timeout=None):
+            auth = req.get_header("Authorization")
+            seen.append((req.full_url, bool(auth)))
+            if not auth:
+                raise _http_error(401)
+            moved = pt_video.urllib.request.HTTPRedirectHandler().redirect_request(
+                req, None, 302, "Found", {}, "https://thirdparty.invalid/result.mp4")
+            seen.append((moved.full_url, bool(moved.get_header("Authorization"))))
+            return _Resp(b"video")
+
+        with mock.patch.object(pt_video.urllib.request, "urlopen", side_effect=fake_urlopen):
+            pt_video.download_binary("https://api.powertokens.ai/result.mp4", self.path, _TEST_KEY)
+        # seen[0]: 裸请求（无 key）；seen[1]: 带 key 重试的官方地址；最后一次：第三方跳转
+        self.assertFalse(seen[0][1], "裸请求不应带 key")
+        third = [s for s in seen if "thirdparty" in s[0]]
+        self.assertTrue(third, "应观察到跨来源跳转请求")
+        self.assertFalse(third[-1][1], "跨来源跳转不得携带 Authorization")
+
+    # ---- 7) 官方 HTTP 地址 401：拒绝降级明文重试 ----
+    def test_http_auth_never_retries(self):
+        seen = []
+
+        def fake_urlopen(req, timeout=None):
+            seen.append(bool(req.get_header("Authorization")))
+            if not req.get_header("Authorization"):
+                raise _http_error(401)
+            return _Resp(b"video")
+
+        with mock.patch.object(pt_video.urllib.request, "urlopen", side_effect=fake_urlopen):
+            with self.assertRaises(pt_video.urllib.error.HTTPError):
+                pt_video.download_binary("http://api.powertokens.ai/result.mp4", self.path, _TEST_KEY)
+        self.assertEqual([False], seen, "HTTP 地址不得带 key 重试")
+
+    # ---- 8) JSON 错误正文：不得存成媒体产物 ----
+    def test_json_error_body_rejected(self):
+        payload = b'{"error":"download refused"}'
+        resp = _Resp(payload)
+        resp.headers = {"Content-Type": "application/json", "Content-Length": str(len(payload))}
+        with mock.patch.object(pt_video.urllib.request, "urlopen", return_value=resp):
+            with self.assertRaises(pt_video.ApiError):
+                pt_video.download_binary("https://result.invalid/file.mp4", self.path, _TEST_KEY)
+        self.assertFalse(os.path.exists(self.path), "JSON 错误正文不得落盘为产物")
+
+
 if __name__ == "__main__":
     unittest.main()

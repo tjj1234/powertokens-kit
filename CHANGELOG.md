@@ -6,6 +6,45 @@
 
 ---
 
+## 0.9.1 — 2026-11-24 · 复核报告 9 项修复（下载安全/状态/图片参数 + C01 修正）
+
+**来源**：同事 11-24《PowerTokens Kit 修改复核报告》——复核确认 0.9.0 机制已新增，但补测复现了下载跳转带密钥、下载失败误报成功、图片参数未送出、实时估价未接通、C01 看图意图/成本排序等问题。用户批准后按优先级（T06 > T02 > T09）修复。**北极星锁定 0.9.0，三条红线全程守住。**
+
+### 三条红线（发版前逐字节核对）
+
+1. **Node 六函数零改动**：`loadCatalog` / `selectCandidates` / `classifyError` / `retryDecision` / `reasoningParams` / `catalogVersion` 函数体 SHA 与 0.9.0 完全一致（baseline before/after 比对 NONE）。图片请求构造/接口解析保留在 Python 侧，**未放进 Node**；网关 `submit(strict=False)` 为新增可选参数，默认关闭。
+2. **account-client.js 五方法零改动**：`getBalance` / `getKeyStatus` / `getUsageRecord` / `listUsageRecords` / `getAgreementStatus` 返回结构与抛错行为逐字节不变。正文业务状态校验做成 Python CLI 的 `--strict` **默认关闭**选项，Node 侧未碰。
+3. **catalog 本版零改动**：`seedream-5-0-260128` / `wan2.7-t2v` / `wan2.7-i2v` 现有字段不删、不改含义、未新增；T09 字段名取自 en.zip 官方字段表（代码内常量）+ catalog `param_names` 优先，不动 catalog → catalog SHA 与 0.9.0 相同，北极星**无需因 catalog 换锁**。
+
+### 修复清单（按优先级）
+
+| 项 | 问题 | 修复 | 位置 |
+|---|---|---|---|
+| **T06** | 鉴权后跨来源跳转仍带 Key；HTTP 地址也带 Key 重试 | 鉴权重试仅 HTTPS；Authorization 走 `add_unredirected_header`（urllib 重定向不跨来源转发）；JSON 错误正文/非媒体 Content-Type 拦截 | `pt_video.py` `download_binary()` |
+| **T02** | 要求下载却下载失败时仍 `ok:true`、退出 0 | 分开"生成成功/下载成功"：无文件时 `status:"partial"`、`ok:false`、退出码 3，保留 task_id/url 供补下载；`--no-download` 仍 ok | `_run_one` / `_finish_video` / `_finish_image` |
+| **T09** | 参考图/指定尺寸没真正送出 | 新增统一构造 `build_image_request_body()`，CLI 与网关共用；按官方字段 `image`/`size` 送出 ref_image/size；无来源参数进 `unsupported` 明确告警不静默丢；CLI 新增 `--size` | `pt_video.py` + `pt_gateway.py` |
+| **T08** | 图片 request_id 丢失或拿到上次视频编号 | 图片同步请求用独立 `LAST_IMAGE_REQUEST_ID`，不再读视频提交的共享变量 | `generate_image` / `_finish_image` |
+| **T03** | 实时估价配置凭证丢失、返回值读不出 | 用已解析凭证直接构造客户端（不再 `from_env`）；解析 `estimated_quota/quota_per_unit`；endpoint 复用 model→submit | `_live_estimate` |
+| **T01** | 网关提交仍写死 /v1/videos | 网关按 catalog `submit` 解析入口；新增 `strict=False`（默认关闭）拒绝无映射模型 | `pt_gateway.py` `submit()` |
+| **C01-a** | "请看图，告诉我写了什么"被判成 text2image | vision 意图组前置 + 扩充看图/识字/分析关键词；生成类不受影响 | `node/index.js` 新函数 `C01_PURPOSE_HINTS`/`parseRecommendIntent` |
+| **C01-b** | 图片成本排序把 34 积分排 4 积分前 | `_priceSignal` 兜底读 documented `price_rows`（per_image / per_second×5），标注 basis；无来源仍不打分 | `node/index.js` `_priceSignal` |
+| **补充** | 账户 HTTP 200 + code:500 仍 ok:true；JPEG 存成 .png 无告警 | 四个账户命令新增 `--strict`（默认关闭）；显式 `-o` 后缀与真实格式不符时告警 | `pt_video.py` |
+
+### 交付四项（供换锁核对）
+
+1. **旧调用差分 OLD==NEW**：`git show HEAD:node/index.js`（0.9.0）vs 工作区新版，同一 catalog，旧签名 `selectCandidates(purpose, keyModels[, {detail,pinnedModel,requirements}])` **21 用例 mismatches=0**；Node 六函数/account-client 五方法/三模型字段 baseline SHA 全部 NONE。
+2. **SHA-256**：tgz `a3f8df5d996a20919b67fc5cab23fda115a4600a79152f3890e66474787a3900`（65684B）；包内 catalog 沿用 0.9.0 `fcfce6f0f5ac31a188fa12239ef47ecbb46e233618ff2d33d4f3baa9cc7f2687`（227707B、LF、0 CRLF，本版未改 catalog）。6 文件自包含，干净安装 PASS（`kit_version`=0.9.1）。
+3. **改动清单**：8 个既有文件 +457/-75（含 CHANGELOG +39；核心 `pt_video.py` +263/-56、`pt_gateway.py` +32/-12、`node/index.js` +33/-4 仅 C01 两函数区）+ 2 个新测试文件共 265 行（`test_unit_seq7.py` 116、`test_unit_seq7_review.py` 149）。catalog 0 改动。
+4. **红线语义**：C01 修正只发生在 0.9.0 新增的推荐函数里，北极星不调用即零影响；网关 strict / 账户 strict 均默认关闭。
+
+### 守门与验收
+
+- 全量测试：Python **367/367**（356+11）、Node **98/98**（96+2）、validate_catalog 全过、旧调用差分 21/21 OLD==NEW、三红线 baseline NONE。
+- 9 项复核逐条离线复现验证：下载三项（跳转/HTTP/JSON）ALL FIXED；T02/T08 四项 ALL FIXED；T09 两条路径 ref+size 均送出；T01 网关映射 + strict OK；T03 返回 0.123 USD；C01 意图 4 例 + 成本排序 image-01<seedream<qwen。
+- 全程 mock 传输层、虚拟 key/token，**0 次真实生成调用、0 费用**；未改任何凭证配置文件。
+
+---
+
 ## 0.9.0 — 2026-11-23 · C01 按需求推荐（新增可选）+ P3 price_rows 小写（顺序 6）
 
 **来源**：统一排期计划顺序 6（C01），用户 11-23 批准开工并明确"改选模逻辑须做成新增可选、旧调用输出不变"。**本版动 node core（新增函数）+ catalog（P3 大小写）→ 发新 core tgz，北极星换一次锁。**

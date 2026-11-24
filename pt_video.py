@@ -187,6 +187,89 @@ def resolve_media_fields(model, friendly, path=None):
     return mapped, unsupported
 
 
+# 复核 T09（2026-11-24）：图片请求统一构造。
+# 字段名来源优先级：catalog capabilities.media.param_names > 下表（en.zip 官方字段，documented）> 明确拒绝。
+# 下表只列 PT 官方 OpenAPI（en.zip）里确有该字段的模型 slug；没有的一律不猜，进 unsupported。
+_IMAGE_OFFICIAL_FIELDS = {
+    # slug: {友好键: 官方请求体字段名}（来源 en.zip OpenAPI，_source=documented）
+    "seedream-5-0-260128": {"ref_image": "image", "size": "size", "resolution": "size",
+                            "aspect_ratio": "aspect_ratio", "response_format": "response_format",
+                            "seed": "seed"},
+    "seedream-4-5-251128": {"ref_image": "image", "size": "size", "resolution": "size",
+                            "response_format": "response_format", "seed": "seed"},
+    "seedream-4-0-250828": {"ref_image": "image", "size": "size", "resolution": "size",
+                            "response_format": "response_format", "seed": "seed"},
+    "dola-seedream-5-0-pro-260628": {"ref_image": "image", "size": "size", "resolution": "size",
+                                     "response_format": "response_format", "seed": "seed"},
+    "qwen-image-3.0-pro": {"ref_image": "image", "size": "size", "resolution": "size",
+                           "n": "n", "seed": "seed"},
+    "qwen-image-2.0-pro": {"ref_image": "image", "size": "size", "resolution": "size",
+                           "n": "n", "seed": "seed"},
+    "wan2.7-image-pro": {"ref_image": "image", "size": "size", "resolution": "size",
+                         "n": "n", "seed": "seed"},
+    "image-01": {"aspect_ratio": "aspect_ratio", "n": "n", "seed": "seed",
+                 "response_format": "response_format"},
+}
+# 友好键 -> catalog param_names 里的键（T09 已有），图片侧额外支持 ref_image。
+_IMAGE_FRIENDLY_TO_PARAM = {
+    "ref_image": "ref_image", "size": "size", "resolution": "resolution",
+    "aspect_ratio": "aspect_ratio", "n": "n", "seed": "seed", "response_format": "response_format",
+}
+
+
+def build_image_request_body(model, prompt, *, aspect_ratio=None, n=None, response_format=None,
+                             seed=None, ref_image=None, size=None, resolution=None, path=None):
+    """统一构造 /v1/images/generations 请求体（复核 T09，CLI 与网关共用）。
+
+    设计：
+      - model/prompt 必带；n/response_format/seed/size/resolution/ref_image/aspect_ratio 按需带；
+      - 字段名先查 catalog capabilities.media.param_names，再查 _IMAGE_OFFICIAL_FIELDS
+        （en.zip 官方字段，documented）；两者都没有 → 记入 unsupported 并**不**写进 body
+        （明确拒绝，不静默丢弃、也不猜字段名，守 R4）；
+      - 返回 (body, unsupported)。unsupported 每项 {field, value, reason}。
+      - ref_image 支持 str 或 list：官方字段 `image` 接受单个或数组 URL/Base64。
+    """
+    body = {"model": model, "prompt": prompt or ""}
+    unsupported = []
+    provided = {
+        "aspect_ratio": aspect_ratio, "n": n, "response_format": response_format,
+        "seed": seed, "ref_image": ref_image, "size": size, "resolution": resolution,
+    }
+    # 字段映射来源：catalog param_names 优先，官方表兜底
+    entry = load_catalog_models(path).get(model) if model else None
+    pnames = None
+    if isinstance(entry, dict):
+        caps = entry.get("capabilities")
+        media = caps.get("media") if isinstance(caps, dict) else None
+        if isinstance(media, dict) and isinstance(media.get("param_names"), dict):
+            pnames = media["param_names"]
+    official = _IMAGE_OFFICIAL_FIELDS.get(model, {})
+
+    for friendly, value in provided.items():
+        if value is None or value == [] or value == "":
+            continue
+        key = _IMAGE_FRIENDLY_TO_PARAM.get(friendly)
+        # catalog param_names 的值即真实字段名；但图片模型历史上更常见官方表，
+        # 两者都查：param_names 命中优先，否则官方表。
+        real = None
+        if pnames and key in pnames:
+            real = pnames[key]
+        elif friendly in official:
+            real = official[friendly]
+        elif key and pnames is None and friendly in ("aspect_ratio", "n", "seed", "response_format"):
+            # 通用字段在无映射来源时按历史写死字段名透传（旧行为兼容）
+            real = friendly
+        if not real:
+            unsupported.append({"field": friendly, "value": value,
+                                "reason": "no_official_field_mapping"})
+            continue
+        # size 与 resolution 都映射到 size 时，只保留一个（size 优先）
+        if real == "size" and "size" in body and friendly == "resolution":
+            continue
+        body[real] = value
+    return body, unsupported
+
+
 # ---------- 资产库上传（Seedance 图生视频必须先把素材上传拿 asset://）----------
 # 注意：资产库 base 是 powertokens.ai/api（带 /api 前缀），不是 api.powertokens.ai
 ASSET_BASE = "https://powertokens.ai/api"
@@ -509,7 +592,8 @@ def resolve_key():
 # 供命令行与网关（复用本模块）按编号对账；仅为旁路记录，不改变正常返回语义。
 REQUEST_ID_HEADER = "X-Oneapi-Request-Id"
 _REQUEST_LOG = []
-LAST_SUBMIT_REQUEST_ID = None   # 最近一次提交拿到的 request id，写进结果对象供对账
+LAST_SUBMIT_REQUEST_ID = None   # 最近一次【视频提交】拿到的 request id，写进视频结果对象供对账
+LAST_IMAGE_REQUEST_ID = None    # 复核 T08（2026-11-24）：图片同步请求独立编号，避免读到上一次视频提交的编号
 
 
 def get_request_log():
@@ -926,13 +1010,22 @@ def _live_estimate(model, kind, duration, resolution):
         if gw not in _sys.path:
             _sys.path.insert(0, gw)
         from account_client import AccountClient
-        client = AccountClient.from_env()
+        # 复核 T03（2026-11-24）：用已解析好的凭证直接构造客户端——config.json 里的
+        # token/key_id 也要能用，不能只靠 from_env() 读环境变量（否则配置里存的令牌丢失）。
+        client = AccountClient(token=token, key_id=int(key_id))
+        # endpoint 与请求体口径与真实生成链路一致（T01 复用 model→submit 解析）。
+        endpoint = resolve_submit_endpoint(model, kind) if kind in ("video", "seedance") else resolve_submit_endpoint(model, "image")
         req = {"model": model, "duration": duration, "resolution": resolution}
-        resp = client.estimate_cost(model=model, endpoint=None, request=req,
+        resp = client.estimate_cost(model=model, endpoint=endpoint, request=req,
                                     key_id=int(key_id),
                                     kind="video" if kind in ("video", "seedance") else kind)
         if resp.get("ok") and isinstance(resp.get("data"), dict):
             data = resp["data"]
+            # PT 实际返回 {estimated_quota, quota_per_unit}（积分口径）；按 credits_per_usd 换算。
+            quota = data.get("estimated_quota")
+            per_unit = data.get("quota_per_unit") or 1000  # catalog currency.credits_per_usd=1000（official）
+            if isinstance(quota, (int, float)) and isinstance(per_unit, (int, float)) and per_unit:
+                return round(float(quota) / float(per_unit), 6)
             for k in ("usd", "cost_usd", "total_usd", "estimated_usd", "price"):
                 if isinstance(data.get(k), (int, float)):
                     return float(data[k])
@@ -1093,13 +1186,20 @@ def download_binary(url, path, key):
     域名且裸请求明确 401/403 时，才带 key 重试一次。第三方地址永不接触 Key。
 
     可靠性约束（T02）：先写同目录 ``<path>.part`` 临时文件，校验完整（非空 +
-    Content-Length 一致 + 非 HTML 错误页）后再原子改名为目标文件；任何失败都
+    Content-Length 一致 + 非 HTML/JSON 错误正文）后再原子改名为目标文件；任何失败都
     删除临时文件、绝不留下残缺的目标文件，也不向调用方返回成功。
+
+    复核加固（2026-11-24）：
+      - 鉴权重试仅允许 HTTPS（拒绝降级到明文 HTTP 泄露 Key）；
+      - Authorization 走 ``add_unredirected_header``，urllib 原生重定向不会把它
+        转发到其它来源（跨来源跳转不再带 Key）；
+      - 完整性校验识别 JSON 错误正文（如 {"error":"..."}）与非媒体 Content-Type。
     """
     def _save(req):
         tmp = str(path) + ".part"
         total = 0
         expected = None
+        ctype = ""
         try:
             with urllib.request.urlopen(req, timeout=120) as r:
                 headers = getattr(r, "headers", None)
@@ -1109,6 +1209,10 @@ def download_binary(url, path, key):
                         expected = int(cl) if cl is not None else None
                     except (TypeError, ValueError):
                         expected = None
+                    try:
+                        ctype = (headers.get("Content-Type") or "").lower()
+                    except Exception:
+                        ctype = ""
                 Path(path).parent.mkdir(parents=True, exist_ok=True)
                 with open(tmp, "wb") as f:
                     while True:
@@ -1117,15 +1221,20 @@ def download_binary(url, path, key):
                             break
                         f.write(chunk)
                         total += len(chunk)
-            # 完整性校验：空文件 / 长度不符 / HTML 错误页一律判失败
+            # 完整性校验：空文件 / 长度不符 / HTML 或 JSON 错误正文一律判失败
             if total == 0:
                 raise ApiError(0, f"下载产物为空：{url}")
             if expected is not None and total != expected:
                 raise ApiError(0, f"下载不完整：实际 {total} 字节，声明 {expected} 字节：{url}")
             with open(tmp, "rb") as f:
-                head = f.read(512).lstrip().lower()
-            if head.startswith(b"<") and (b"<html" in head or b"<!doctype" in head):
+                head = f.read(512)
+            probe = head.lstrip().lstrip(b"\xef\xbb\xbf").lower()
+            if probe.startswith(b"<") and (b"<html" in probe[:200] or b"<!doctype" in probe[:200]):
                 raise ApiError(0, f"下载内容是 HTML 错误页而非产物：{url}")
+            if probe[:1] in (b"{", b"["):
+                raise ApiError(0, f"下载内容是 JSON 错误正文而非产物：{url}")
+            if "application/json" in ctype or "text/html" in ctype:
+                raise ApiError(0, f"下载 Content-Type 非媒体（{ctype}）：{url}")
             os.replace(tmp, path)  # 原子落盘：成功前目标文件始终不存在/不变
         except Exception:
             # 任何失败都清掉临时文件，绝不留下残缺文件供上层误用
@@ -1141,10 +1250,17 @@ def download_binary(url, path, key):
         _save(bare)
         return True
     except urllib.error.HTTPError as e:
-        # 只有明确 401/403 且目标是 PT 官方域名，才允许带 key 重试；
-        # 第三方产物地址即便 401/403 也绝不携带 Key。
-        if e.code in (401, 403) and _trusted_pt_host(url) and key:
-            req2 = urllib.request.Request(url, headers=_headers(key))
+        # 只有明确 401/403、目标是 PT 官方域名、且是 HTTPS，才允许带 key 重试一次；
+        # 第三方地址即便 401/403 也绝不携带 Key；明文 HTTP 一律不重试（防降级泄露）。
+        https = (urllib.parse.urlparse(url).scheme or "").lower() == "https"
+        if e.code in (401, 403) and https and _trusted_pt_host(url) and key:
+            h2 = _headers(key)
+            auth = h2.pop("Authorization", None)
+            req2 = urllib.request.Request(url, headers=h2)
+            if auth:
+                # 关键：unredirected header 不随 urllib 重定向复制到其它来源的 URL，
+                # 因此官方地址鉴权后跳转到第三方时，Authorization 不会被带过去。
+                req2.add_unredirected_header("Authorization", auth)
             _save(req2)
             return True
         raise
@@ -1286,22 +1402,30 @@ def generate_video(key, model, args, timeout, force_asset=False):
 # ---------- 图片生成：同步提交 ----------
 def generate_image(key, model, args, timeout):
     """POST /v1/images/generations 同步返回 data[].url。成功返回 (urls, output_paths)。"""
-    body = {"model": model, "prompt": args.prompt or ""}
-    if args.aspect_ratio:
-        # T09：按 catalog param_names 映射字段名（图片模型现均恒等映射，body 不变）。
-        ar_fields, _ = resolve_media_fields(model, {"aspect_ratio": args.aspect_ratio})
-        body.update(ar_fields)   # 宽高比枚举串，如 1:1/16:9
-    if getattr(args, "n", None):
-        body["n"] = args.n
-    if getattr(args, "response_format", None):
-        body["response_format"] = args.response_format
-    if args.seed is not None:
-        body["seed"] = args.seed
-    # 图生图（subject_reference）待实测字段结构，当前图片生成以文生图为主。
+    # 复核 T09（2026-11-24）：统一按官方字段名构造请求体，参考图/尺寸真正送出；
+    # 模型无官方字段映射的参数进 unsupported，明确告警而非静默丢弃（R4）。
+    body, unsupported = build_image_request_body(
+        model, args.prompt,
+        aspect_ratio=getattr(args, "aspect_ratio", None),
+        n=getattr(args, "n", None),
+        response_format=getattr(args, "response_format", None),
+        seed=getattr(args, "seed", None),
+        ref_image=getattr(args, "ref_image", None) or None,
+        size=getattr(args, "size", None) or None,
+        # resolution 是视频参数，不进图片请求体；图片尺寸只看显式 --size。
+    )
+    for u in unsupported:
+        sys.stderr.write(f"[warn] 参数 {u['field']}={u['value']!r} 无官方字段映射，未发送"
+                         f"（{u['reason']}）：{model}\n")
 
     submit_endpoint = resolve_submit_endpoint(model, "image")
     sys.stderr.write(f"[submit] POST {PT_BASE}{submit_endpoint}  model={model} aspect_ratio={args.aspect_ratio}\n")
     resp = _api_call("POST", submit_endpoint, key, body=body, timeout=IMAGE_HTTP_TIMEOUT)
+    # 复核 T08（2026-11-24）：图片是同步请求，request_id 随本次响应返回，
+    # 存到图片专用变量；_finish_image 不再读共享的 LAST_SUBMIT_REQUEST_ID，
+    # 避免同进程里先提交过视频时把旧视频编号写进图片结果。
+    global LAST_IMAGE_REQUEST_ID
+    LAST_IMAGE_REQUEST_ID = resp.get("_request_id")
     data = resp.get("data") or []
     urls = [it.get("url") for it in data if isinstance(it, dict) and it.get("url")]
     if not urls:
@@ -1322,15 +1446,20 @@ def generate_image(key, model, args, timeout):
                 download_binary(url, fname, key)
                 # T07：默认命名下按魔数校正真实后缀（JPEG 不再存成 .png）。
                 # 仅在用户未显式指定 -o 时才改名，避免覆盖用户意图。
+                real_ext = detect_file_extension(path=fname, default=Path(fname).suffix or ".png")
+                suffix_mismatch = real_ext and Path(fname).suffix.lower() != real_ext.lower()
                 if not explicit_output:
-                    real_ext = detect_file_extension(path=fname, default=Path(fname).suffix or ".png")
-                    if real_ext and Path(fname).suffix.lower() != real_ext.lower():
+                    if suffix_mismatch:
                         renamed = str(Path(fname).with_suffix(real_ext))
                         try:
                             os.replace(fname, renamed)
                             fname = renamed
                         except OSError:
                             pass   # 改名失败不影响已下载产物，保留原名
+                elif suffix_mismatch:
+                    # 复核补充（2026-11-24）：显式 -o 尊重用户后缀不改名，但要告警实际格式不符。
+                    sys.stderr.write(f"[warn] 指定后缀 {Path(fname).suffix} 与产物真实格式 {real_ext} 不符"
+                                     f"（已按你的 -o 保留原名）：{fname}\n")
                 outputs.append(fname)
                 sys.stderr.write(f"[download] 已保存：{fname}\n")
             except Exception as e:
@@ -1392,6 +1521,7 @@ def cmd_generate(argv):
     parser.add_argument("--ratio", default="adaptive", help="视频比例 adaptive/16:9/4:3/1:1/3:4/9:16")
     # 图片参数
     parser.add_argument("--aspect-ratio", default="1:1", help="图片宽高比 1:1/16:9/4:3/...（图片，默认 1:1）")
+    parser.add_argument("--size", default=None, help="图片尺寸档位（如 2K/3K/1024*1024，按模型官方枚举；无映射则告警不发送）")
     parser.add_argument("--n", type=int, default=1, help="图片数量 1-9（图片）")
     parser.add_argument("--response-format", default="url", choices=["url", "base64"], help="图片返回形式（图片）")
     # 共用
@@ -1478,51 +1608,83 @@ def cmd_generate(argv):
 
 
 def _run_one(key, model, kind, args):
+    # 复核 T02（2026-11-24）：生成成功 ≠ 下载成功。用户要求下载（未 --no-download）
+    # 却没拿到文件时，返回部分完成状态 + 非零退出码 3（保留 task_id/url 供补下载）。
+    want_download = not getattr(args, "no_download", False)
     if kind == "seedance":
         # 未签协议时弹开通引导（不阻断）；Seedance 文生视频把 prompt 放进 media 的 text 类型，
         # 若用户传了图/视频媒体则其 url 必须是资产库 asset://；成功生成后记为已签。
         seedance_enable_flow(key, model)
         url, output, tid = generate_video(key, model, args, args.timeout, force_asset=True)
         mark_seedance_signed()
-        _finish_video(model, url, output, tid, args, kind="seedance")
-        return 0
+        dl_ok = bool(output) if want_download else True
+        _finish_video(model, url, output, tid, args, kind="seedance", dl_ok=dl_ok)
+        return 0 if dl_ok else 3
     if kind == "image":
         urls, outputs, _ = generate_image(key, model, args, IMAGE_HTTP_TIMEOUT)
-        _finish_image(model, urls, outputs, args)
-        return 0
+        dl_ok = bool(outputs) if want_download else True
+        _finish_image(model, urls, outputs, args, dl_ok=dl_ok)
+        return 0 if dl_ok else 3
     else:
         url, output, tid = generate_video(key, model, args, args.timeout)
-        _finish_video(model, url, output, tid, args, kind="video")
-        return 0
+        dl_ok = bool(output) if want_download else True
+        _finish_video(model, url, output, tid, args, kind="video", dl_ok=dl_ok)
+        return 0 if dl_ok else 3
 
 
-def _finish_video(model, url, output, tid, args, kind="video"):
+def _finish_video(model, url, output, tid, args, kind="video", dl_ok=None):
+    """输出视频最终结果。dl_ok=None 时按旧逻辑（有 output 即成功）推断，保持旧签名兼容；
+    _run_one 显式传下载状态，用于「要求下载却没拿到文件」时返回部分完成（复核 T02）。"""
+    if dl_ok is None:
+        dl_ok = bool(output) or getattr(args, "no_download", False)
+    status = "ok" if dl_ok else "partial"
     if args.json:
-        print(json.dumps({"ok": True, "kind": kind, "task_id": tid, "model": model,
-                          "url": url, "output": output,
-                          "request_id": LAST_SUBMIT_REQUEST_ID,
-                          "params": {"duration_s": args.duration, "resolution": args.resolution.upper(),
-                                     "ratio": args.ratio, "seed": args.seed, "prompt": args.prompt}},
-                         ensure_ascii=False))
+        result = {"ok": bool(dl_ok), "kind": kind, "task_id": tid, "model": model,
+                  "url": url, "output": output,
+                  "generation_ok": True,          # 生成/任务本身已成功（有 url + task_id）
+                  "download_ok": bool(output) if not getattr(args, "no_download", False) else None,
+                  "status": status,
+                  "request_id": LAST_SUBMIT_REQUEST_ID,
+                  "params": {"duration_s": args.duration, "resolution": args.resolution.upper(),
+                             "ratio": args.ratio, "seed": args.seed, "prompt": args.prompt}}
+        if not dl_ok:
+            result["note"] = "生成已完成但产物下载失败；url 仍可用于补下载（见 stderr 警告）"
+        print(json.dumps(result, ensure_ascii=False))
     else:
         print_generation_summary(model, "video", args.duration, args.resolution.upper(),
                                  args.prompt, [output] if output else [], [url] if url else [],
                                  seed=args.seed, ratio=args.ratio)
-        print(f"[done] task_id={tid}")
+        if not dl_ok:
+            print(f"[partial] 生成成功但下载失败，产物链接仍可用：{url}")
+        else:
+            print(f"[done] task_id={tid}")
 
 
-def _finish_image(model, urls, outputs, args):
+def _finish_image(model, urls, outputs, args, dl_ok=None):
+    """输出图片最终结果。dl_ok=None 时按旧逻辑推断，保持旧签名兼容。
+    request_id 取本次图片同步请求的 LAST_IMAGE_REQUEST_ID（复核 T08），不再读视频提交编号。"""
+    if dl_ok is None:
+        dl_ok = bool(outputs) or getattr(args, "no_download", False)
+    status = "ok" if dl_ok else "partial"
     if args.json:
-        print(json.dumps({"ok": True, "kind": "image", "model": model,
-                          "urls": urls, "outputs": outputs,
-                          "request_id": LAST_SUBMIT_REQUEST_ID,
-                          "params": {"aspect_ratio": args.aspect_ratio, "n": args.n,
-                                     "seed": args.seed, "prompt": args.prompt}},
-                         ensure_ascii=False))
+        result = {"ok": bool(dl_ok), "kind": "image", "model": model,
+                  "urls": urls, "outputs": outputs,
+                  "generation_ok": bool(urls),
+                  "download_ok": bool(outputs) if not getattr(args, "no_download", False) else None,
+                  "status": status,
+                  "request_id": LAST_IMAGE_REQUEST_ID,
+                  "params": {"aspect_ratio": args.aspect_ratio, "n": args.n,
+                             "seed": args.seed, "prompt": args.prompt}}
+        if not dl_ok:
+            result["note"] = "生成已完成但产物下载失败；urls 仍可用于补下载（见 stderr 警告）"
+        print(json.dumps(result, ensure_ascii=False))
     else:
         print_generation_summary(model, "image", None, args.aspect_ratio, args.prompt,
                                  outputs, urls, seed=args.seed, ratio=args.aspect_ratio)
-        print(f"[done] {len(urls)} 张")
+        if not dl_ok:
+            print(f"[partial] 生成成功但下载失败，产物链接仍可用：{urls}")
+        else:
+            print(f"[done] {len(urls)} 张")
 
 
 def cmd_seedance(argv):
@@ -1623,13 +1785,46 @@ def _account_get(key, action, params=None):
     return _account_call("GET", action, token, params=merged or None)
 
 
+def _account_business_error(data):
+    """复核补充（2026-11-24）：检查账户响应正文里的业务状态。
+
+    PT 账户域常见「HTTP 200 + body code=500 + msg=invalid token」，仅看 HTTP 会误报成功。
+    返回 (is_error, msg)：code 明确为失败码则为 True；成功码/无 code 则为 False。
+    纯函数、零依赖；由各账户命令的 --strict 选项控制是否启用（默认关闭，兼容旧行为 / 红线2）。
+    """
+    if not isinstance(data, dict):
+        return False, None
+    code = data.get("code")
+    if code is None:
+        return False, None
+    ok_codes = (200, "200", 0, "0")
+    fail_codes = (500, "500", 401, "401", 402, "402", 403, "403", 400, "400")
+    if code in ok_codes:
+        return False, None
+    if code in fail_codes or isinstance(code, int) and code >= 400:
+        return True, str(data.get("msg") or data.get("message") or code)
+    return False, None
+
+
+def _account_strict_flag(argv, prog):
+    """给账户命令解析 --strict；返回 (args, strict)。不改旧调用（不传则 False）。"""
+    parser = argparse.ArgumentParser(prog="pt_video.py " + prog)
+    parser.add_argument("-k", "--key", default=None, help="API Key（缺省读 POWERTOKENS_API_KEY）")
+    parser.add_argument("--strict", action="store_true",
+                        help="校验响应正文业务码（如 HTTP 200 + code=500）；默认关闭以兼容旧行为")
+    return parser.parse_args(argv)
+
+
 def cmd_balance(argv):
     """余额查询（按 Key 粒度）：GET /v1/billing/balance。只读，不产生消耗。"""
-    parser = argparse.ArgumentParser(prog="pt_video.py balance")
-    parser.add_argument("-k", "--key", default=None, help="API Key（缺省读 POWERTOKENS_API_KEY）")
-    args = parser.parse_args(argv)
+    args = _account_strict_flag(argv, "balance")
     try:
         data = _account_get(args.key, ACCOUNT_BALANCE)
+        if getattr(args, "strict", False):
+            bad, msg = _account_business_error(data)
+            if bad:
+                sys.stderr.write(f"[balance] 业务失败：{msg}\n")
+                return 1
         print(json.dumps({"ok": True, "endpoint": "balance", "raw": data}, ensure_ascii=False))
     except ApiError as e:
         sys.stderr.write("[balance] 失败：" + str(e) + "\n")
@@ -1643,6 +1838,7 @@ def cmd_usage(argv):
     parser.add_argument("-k", "--key", default=None, help="API Key（缺省读 POWERTOKENS_API_KEY）")
     parser.add_argument("--start-date", default=None, help="起始日期 YYYY-MM-DD（可选）")
     parser.add_argument("--end-date", default=None, help="结束日期 YYYY-MM-DD（可选）")
+    parser.add_argument("--strict", action="store_true", help="校验响应正文业务码；默认关闭")
     args = parser.parse_args(argv)
     params = {}
     if args.start_date:
@@ -1651,6 +1847,11 @@ def cmd_usage(argv):
         params["end_date"] = args.end_date
     try:
         data = _account_get(args.key, ACCOUNT_USAGE, params=params or None)
+        if getattr(args, "strict", False):
+            bad, msg = _account_business_error(data)
+            if bad:
+                sys.stderr.write(f"[usage] 业务失败：{msg}\n")
+                return 1
         print(json.dumps({"ok": True, "endpoint": "usage", "raw": data}, ensure_ascii=False))
     except ApiError as e:
         sys.stderr.write("[usage] 失败：" + str(e) + "\n")
@@ -1660,11 +1861,14 @@ def cmd_usage(argv):
 
 def cmd_logs(argv):
     """消费记录查询：GET /v1/logs/query。只读。"""
-    parser = argparse.ArgumentParser(prog="pt_video.py logs")
-    parser.add_argument("-k", "--key", default=None, help="API Key（缺省读 POWERTOKENS_API_KEY）")
-    args = parser.parse_args(argv)
+    args = _account_strict_flag(argv, "logs")
     try:
         data = _account_get(args.key, ACCOUNT_LOGS)
+        if getattr(args, "strict", False):
+            bad, msg = _account_business_error(data)
+            if bad:
+                sys.stderr.write(f"[logs] 业务失败：{msg}\n")
+                return 1
         print(json.dumps({"ok": True, "endpoint": "logs", "raw": data}, ensure_ascii=False))
     except ApiError as e:
         sys.stderr.write("[logs] 失败：" + str(e) + "\n")
@@ -1674,11 +1878,14 @@ def cmd_logs(argv):
 
 def cmd_agreement(argv):
     """资产库协议签署状态查询：GET /v1/asset/agreement/status。只读。"""
-    parser = argparse.ArgumentParser(prog="pt_video.py agreement")
-    parser.add_argument("-k", "--key", default=None, help="API Key（缺省读 POWERTOKENS_API_KEY）")
-    args = parser.parse_args(argv)
+    args = _account_strict_flag(argv, "agreement")
     try:
         data = _account_get(args.key, ACCOUNT_AGREEMENT)
+        if getattr(args, "strict", False):
+            bad, msg = _account_business_error(data)
+            if bad:
+                sys.stderr.write(f"[agreement] 业务失败：{msg}\n")
+                return 1
         print(json.dumps({"ok": True, "endpoint": "agreement", "raw": data}, ensure_ascii=False))
     except ApiError as e:
         sys.stderr.write("[agreement] 失败：" + str(e) + "\n")

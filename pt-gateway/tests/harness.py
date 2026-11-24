@@ -178,8 +178,10 @@ class GatewayTestBase(unittest.TestCase):
         """打桩 submit_task 并记录提交体（视频请求体断言靠它）。"""
         self.submit_calls = []
 
-        def _submit(key, body):
-            self.submit_calls.append({"key": mask_key(key), "body": body})
+        def _submit(key, body, endpoint=None):
+            # 复核 2026-11-24：submit_task 支持 endpoint（catalog model→submit 映射），
+            # 夹具补该可选参数以匹配真实签名；记录 endpoint 供断言。
+            self.submit_calls.append({"key": mask_key(key), "body": body, "endpoint": endpoint})
             return task_id, resp or {"id": task_id}
 
         pt_gateway.submit_task = _submit

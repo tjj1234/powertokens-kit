@@ -438,14 +438,22 @@ function selectCandidates(purpose, keyModels, options = {}) {
 // 自然语言关键词 → 用途 / 策略（纯规则、不联网、不调 LLM）。
 // 命中多条时取第一个匹配（数组顺序即优先级）；都没命中走 opts 默认值。
 const C01_PURPOSE_HINTS = [
+  // 复核 2026-11-24：'理解图片'意图必须优先于'生成图片'——否则「请看图，告诉我图片
+  // 写了什么」会先命中 text2image 的 '图片' 关键词，推荐出画图模型。故 vision 组前置，
+  // 并补齐看图/识字/分析类明确措辞；只有纯生成词（海报/绘画/生成图）才落到 text2image。
+  ['vision', ['看图', '视觉理解', '视觉', '图里写', '图片中写', '图片写了', '识别图片', '图片识别',
+              '图片理解', '读懂图片', '分析图片', '分析这张图片', '描述图片', '图片内容',
+              '文字识别', '识字', 'ocr',
+              'vision', 'read text in image', 'what is in the image', 'describe the image',
+              'analyze the image', 'understand the image']],
   ['image2video', ['图生视频', '首帧', '参考图生成视频', 'image to video', 'i2v', 'img2video']],
   ['text2video', ['视频', '短片', '影片', '动画', 'video', 'clip', 'cinematic']],
   ['image2image', ['图生图', '改图', '编辑图片', 'image to image', 'i2i']],
-  ['text2image', ['图片', '海报', '封面', '绘画', '生成图', 'image', 'picture', 'poster', 'photo']],
+  ['text2image', ['图片', '海报', '封面', '绘画', '生成图', '画一张', 'image', 'picture',
+                  'poster', 'photo', 'draw']],
   ['long_report', ['长文', '报告', '论文', 'long report', 'report']],
   ['search', ['搜索', '联网', '查资料', '最新', 'search', 'web']],
   ['agent', ['代理', '工具调用', 'agent', 'tool']],
-  ['vision', ['看图', '图片理解', '视觉', 'vision']],
   ['general', ['通用', '一般', 'general']],
 ];
 const C01_STRATEGY_HINTS = [
@@ -509,13 +517,34 @@ function _capabilityBreadth(entry) {
 }
 
 // 成本信号：只取 documented/verified 的价格；无来源返回 null（不猜、不打分）。
+// 复核 2026-11-24：图片模型 usd_5s_720p 为 null，但 price_rows 有 documented 的 per_image
+// 价（如 image-01 每张 $0.004、seedream 每张 $0.034）。成本排序必须读它，否则会保持
+// catalog 原顺序、把贵的排前面。优先级：usd_5s_720p > price_rows 可比价。
 function _priceSignal(entry) {
   const media = (entry && entry.capabilities && entry.capabilities.media) || {};
   const price = media.price || {};
-  const val = price.usd_5s_720p;
   const src = price._source;
+  const val = price.usd_5s_720p;
   if (typeof val === 'number' && val > 0 && (src === 'documented' || src === 'verified')) {
-    return { usd: val, source: src };
+    return { usd: val, source: src, basis: 'usd_5s_720p' };
+  }
+  const rowsNode = price.price_rows;
+  const rows = rowsNode && Array.isArray(rowsNode.value) ? rowsNode.value : [];
+  const rowSrc = (rowsNode && rowsNode._source) || src;
+  if (!(rowSrc === 'documented' || rowSrc === 'verified') || rows.length === 0) return null;
+  const perImage = rows.filter((r) => r && r.billing_unit === 'per_image' &&
+    typeof r.sale_input_price === 'number' && r.sale_input_price > 0);
+  if (perImage.length) {
+    // 多档位按最低标价比较（可比口径：每张），明确标注 basis 供审计，不是实扣。
+    const best = perImage.reduce((a, b) => (a.sale_input_price <= b.sale_input_price ? a : b));
+    return { usd: best.sale_input_price, source: rowSrc, basis: 'price_rows.per_image' };
+  }
+  const perSecond = rows.filter((r) => r && r.billing_unit === 'per_second' &&
+    typeof r.sale_input_price === 'number' && r.sale_input_price > 0 &&
+    (!r.resolution || String(r.resolution).toLowerCase() === '720p'));
+  if (perSecond.length) {
+    const best = perSecond.reduce((a, b) => (a.sale_input_price <= b.sale_input_price ? a : b));
+    return { usd: best.sale_input_price * 5, source: rowSrc, basis: 'price_rows.per_second_x5' };
   }
   return null;
 }
