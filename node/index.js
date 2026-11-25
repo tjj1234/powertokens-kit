@@ -437,25 +437,45 @@ function selectCandidates(purpose, keyModels, options = {}) {
 
 // 自然语言关键词 → 用途 / 策略（纯规则、不联网、不调 LLM）。
 // 命中多条时取第一个匹配（数组顺序即优先级）；都没命中走 opts 默认值。
-const C01_PURPOSE_HINTS = [
-  // 复核 2026-11-24：'理解图片'意图必须优先于'生成图片'——否则「请看图，告诉我图片
-  // 写了什么」会先命中 text2image 的 '图片' 关键词，推荐出画图模型。故 vision 组前置，
-  // 并补齐看图/识字/分析类明确措辞；只有纯生成词（海报/绘画/生成图）才落到 text2image。
-  ['vision', ['看图', '视觉理解', '视觉', '图里写', '图片中写', '图片写了', '识别图片', '图片识别',
-              '图片理解', '读懂图片', '分析图片', '分析这张图片', '描述图片', '图片内容',
-              '文字识别', '识字', 'ocr',
-              'vision', 'read text in image', 'what is in the image', 'describe the image',
-              'analyze the image', 'understand the image']],
+// 复核 0.9.2 #4：意图判定改为「先定交付物类型，再谈描述词」。
+// 0.9.1 把含泛词「视觉/图片内容」的 vision 组整体前置，导致「视觉冲击力强的海报」
+// 「根据图片内容生成一段视频」被误判成看图模型——创作动作必须优先于描述词。
+// 分组：CREATION（用户要产出一个东西，按交付物名词定类型）优先于 UNDERSTAND（理解已有图片）。
+// 只有明确的「读/理解」动作词才进 vision；单独「视觉/图片内容」不再触发。
+const C01_CREATION_HINTS = [
   ['image2video', ['图生视频', '首帧', '参考图生成视频', 'image to video', 'i2v', 'img2video']],
-  ['text2video', ['视频', '短片', '影片', '动画', 'video', 'clip', 'cinematic']],
+  ['text2video', ['生成视频', '生成一段视频', '做视频', '来做视频', '视频', '短片', '影片',
+                  '动画', 'video', 'clip', 'cinematic']],
   ['image2image', ['图生图', '改图', '编辑图片', 'image to image', 'i2i']],
-  ['text2image', ['图片', '海报', '封面', '绘画', '生成图', '画一张', 'image', 'picture',
-                  'poster', 'photo', 'draw']],
+  ['text2image', ['生成图', '生成图片', '生成一张', '画一张', '画个', '画一幅', '画', '海报',
+                  '封面', '绘画', 'picture', 'poster', 'portrait photo', 'draw']],
+];
+const C01_UNDERSTAND_HINTS = [
+  '看图', '看看图', '图里写', '图片中写', '图片写了', '写了什么', '写什么', '识别图片',
+  '图片识别', '图片理解', '视觉理解', '读懂图片', '读图', '分析图片', '分析这张图',
+  '描述图片', '描述这张图', '文字识别', '识字', 'ocr',
+  'read text in image', 'what is in the image', 'describe the image',
+  'analyze the image', 'understand the image',
+];
+const C01_PURPOSE_HINTS = [
   ['long_report', ['长文', '报告', '论文', 'long report', 'report']],
   ['search', ['搜索', '联网', '查资料', '最新', 'search', 'web']],
   ['agent', ['代理', '工具调用', 'agent', 'tool']],
   ['general', ['通用', '一般', 'general']],
 ];
+
+// 交付物判定：创作动词/名词优先；只有无创作意图时的明确理解动作才是 vision。
+function _c01DetectPurpose(low) {
+  for (const [p, hints] of C01_CREATION_HINTS) {
+    if (hints.some((h) => low.includes(h))) return p;
+  }
+  // 「图片/图/photo/image」本身是中性的：配理解动作才算 vision，否则不据此判 vision。
+  if (C01_UNDERSTAND_HINTS.some((h) => low.includes(h))) return 'vision';
+  for (const [p, hints] of C01_PURPOSE_HINTS) {
+    if (hints.some((h) => low.includes(h))) return p;
+  }
+  return null;
+}
 const C01_STRATEGY_HINTS = [
   ['cost', ['便宜', '省钱', '低成本', '成本优先', '划算', '性价比', 'cheap', 'cost', 'budget', 'affordable', 'inexpensive']],
   ['quality', ['真实', '好看', '效果', '高质量', '画质', '精细', '质量优先', '效果优先', 'quality', 'best', 'realistic', 'hd', 'premium']],
@@ -469,9 +489,9 @@ function parseRecommendIntent(intent, opts = {}) {
   let strategy = opts.strategy || null;
   let from = 'option';
   if (!purpose) {
-    for (const [p, hints] of C01_PURPOSE_HINTS) {
-      if (hints.some((h) => low.includes(h))) { purpose = p; from = 'intent'; break; }
-    }
+    // 复核 0.9.2 #4：用交付物优先判定替代旧的关键词表顺序匹配
+    purpose = _c01DetectPurpose(low);
+    if (purpose) from = 'intent';
   }
   let strategyFrom = 'option';
   const detected = [];

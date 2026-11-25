@@ -124,15 +124,26 @@ def load_catalog_models(path=None):
     return models
 
 
-def resolve_submit_endpoint(model, kind, path=None):
+def resolve_submit_endpoint(model, kind, path=None, strict=False):
     """按 (model, kind) 从 catalog 选提交入口；无可靠映射则回落写死常量。
 
-    kind: 'video' → 回落 VIDEO_SUBMIT，只接受 catalog 中含 '/videos' 的入口；
+    复核 0.9.2 #1：seedance 与 video 同为异步视频类（走 /v1/videos），
+    不能再让 seedance 掉进 image 分支（0.9.1 曾把 seedance 误发到 /v1/images/generations）。
+    kind: 'video'/'seedance' → 回落 VIDEO_SUBMIT，只接受 catalog 中含 '/videos' 的入口；
           'image' → 回落 IMAGE_ENDPOINT，只接受含 '/images' 的入口。
+    未知 kind：strict=True 时报错，不默认当图片（避免错误入口）；strict=False 回落图片（兼容旧行为）。
     跨类型（例如给视频模型配了 /v1/images/...）视为脏数据，回落常量，防止提交到错误入口。
     """
-    fallback = VIDEO_SUBMIT if kind == "video" else IMAGE_ENDPOINT
-    needle = "/videos" if kind == "video" else "/images"
+    KIND_FALLBACK = {"video": (VIDEO_SUBMIT, "/videos"),
+                     "seedance": (VIDEO_SUBMIT, "/videos"),
+                     "image": (IMAGE_ENDPOINT, "/images")}
+    if kind not in KIND_FALLBACK:
+        if strict:
+            raise ApiError(0, f"未知媒体类型 kind={kind!r}，无法解析提交入口（strict 模式拒绝盲目提交）")
+        # 兼容旧行为：未知类型此前一律按图片处理
+        fallback, needle = IMAGE_ENDPOINT, "/images"
+    else:
+        fallback, needle = KIND_FALLBACK[kind]
     entry = load_catalog_models(path).get(model) if model else None
     if isinstance(entry, dict):
         submit = entry.get("submit")
@@ -964,6 +975,8 @@ def cmd_estimate(argv):
     parser.add_argument("-m", "--model", required=True)
     parser.add_argument("-d", "--duration", type=int, default=5)
     parser.add_argument("-r", "--resolution", default="720p")
+    parser.add_argument("--ratio", default="16:9", help="画面比例，参与实时估价（与生成一致）")
+    parser.add_argument("-n", "--n", type=int, default=None, help="图片张数，参与实时估价（与生成一致）")
     parser.add_argument("--type", default="auto", choices=["video", "image", "auto"])
     parser.add_argument("--live", action="store_true",
                         help="有 pt_live_ 凭证时走账户域实时预估（不扣费）；失败自动回落 catalog 估算")
@@ -981,25 +994,62 @@ def cmd_estimate(argv):
             factor *= 2.0
         c = round(cat_price * factor, 3)
         source = f"catalog:{cat_src or 'unknown'}"
+    live_fallback = None
     if args.live:
-        live = _live_estimate(args.model, kind, args.duration, args.resolution)
+        live = _live_estimate(args.model, kind, args.duration, args.resolution,
+                              ratio=args.ratio, n=args.n)
         if live is not None:
             c, source = live, "live:estimate"
+        else:
+            # 复核 0.9.2 #3：实时估价失败时明确告知回落，不能让调用方误以为是实时值
+            live_fallback = "实时估价不可用，已回落到目录价/内置表估算"
+            sys.stderr.write(f"[estimate] {live_fallback}\n")
     if c is None:
         print(f"[estimate] {args.model}: 单价表无此模型，无法估算（已知模型见 `models`）")
         return 1
-    print(json.dumps({"model": args.model, "kind": kind, "duration_s": args.duration,
-                      "resolution": args.resolution, "est_cost_usd": c,
-                      "price_source": source, "note": "预估仅供参考，以实际扣费为准（U10）"},
-                     ensure_ascii=False))
+    out = {"model": args.model, "kind": kind, "duration_s": args.duration,
+           "resolution": args.resolution, "est_cost_usd": c,
+           "price_source": source, "note": "预估仅供参考，以实际扣费为准（U10）"}
+    if live_fallback:
+        out["live_fallback"] = live_fallback
+    print(json.dumps(out, ensure_ascii=False))
     return 0
 
 
-def _live_estimate(model, kind, duration, resolution):
+def build_billable_request(model, kind, duration, resolution, ratio=None, n=None):
+    """复核 0.9.2 #3：构造与真实生成链路同源的「计费相关参数」。
+
+    估价与生成共用同一套字段映射（resolve_media_fields，按 catalog param_names），
+    避免估价收 duration/resolution 而真实生成发 seconds/size/ratio 的口径错位。
+    - 视频/seedance：duration_s→字符串、resolution→大写、aspect_ratio，与 generate_video 一致。
+    - 图片：size（若给）、n（张数）、aspect_ratio，与 generate_image 一致。
+    同时保留 duration/resolution/n 兼容字段（PT 估价接口字段名无官方来源，R4 双写不猜）。
+    """
+    ratio = ratio or "16:9"
+    friendly = {"aspect_ratio": ratio}
+    is_vid = kind in ("video", "seedance")
+    if is_vid:
+        friendly["duration_s"] = str(duration)
+        friendly["resolution"] = str(resolution or "").upper()
+    mapped, _ = resolve_media_fields(model, friendly)
+    req = {"model": model, **mapped}
+    # 兼容字段：真实生成 body 里 duration_s/resolution 已经过映射；这里再显式带上
+    # 用户原始意图，确保 PT 估价接口无论按哪套字段名解析都能拿到计费条件（R4 不猜）。
+    req["duration"] = duration
+    req["resolution"] = resolution
+    if not is_vid:
+        req["aspect_ratio"] = ratio
+        if n is not None:
+            req["n"] = n
+    return req
+
+
+def _live_estimate(model, kind, duration, resolution, ratio=None, n=None):
     """T03：账户域实时预估（POST /v1/billing/estimate，不扣费）。缺凭证/缺模块/出错返回 None。
 
     保护式 import：pt_video.py 可独立分发、不依赖 pt-gateway 目录；独立副本没有
     account_client 时自动跳过，回落 catalog 估算，绝不因此中断命令。
+    复核 0.9.2 #3：请求参数改用 build_billable_request，与真实生成链路同源。
     """
     token, key_id = resolve_account_credentials()
     if not token or not key_id or not str(key_id).strip().isdigit():
@@ -1015,7 +1065,7 @@ def _live_estimate(model, kind, duration, resolution):
         client = AccountClient(token=token, key_id=int(key_id))
         # endpoint 与请求体口径与真实生成链路一致（T01 复用 model→submit 解析）。
         endpoint = resolve_submit_endpoint(model, kind) if kind in ("video", "seedance") else resolve_submit_endpoint(model, "image")
-        req = {"model": model, "duration": duration, "resolution": resolution}
+        req = build_billable_request(model, kind, duration, resolution, ratio=ratio, n=n)
         resp = client.estimate_cost(model=model, endpoint=endpoint, request=req,
                                     key_id=int(key_id),
                                     kind="video" if kind in ("video", "seedance") else kind)
@@ -1417,6 +1467,12 @@ def generate_image(key, model, args, timeout):
     for u in unsupported:
         sys.stderr.write(f"[warn] 参数 {u['field']}={u['value']!r} 无官方字段映射，未发送"
                          f"（{u['reason']}）：{model}\n")
+    # 复核 0.9.2 #6：--strict-params 默认关闭（兼容旧行为）；开启时明确要求
+    # （参考图/尺寸等）无法满足就不提交，避免花钱生成不符合要求的结果。
+    if unsupported and getattr(args, "strict_params", False):
+        names = ", ".join(f"{u['field']}={u['value']!r}" for u in unsupported)
+        raise ApiError(0, f"模型 {model} 无法执行你明确指定的参数：{names}；"
+                          f"已停止提交（关闭 --strict-params 可忽略这些参数继续）")
 
     submit_endpoint = resolve_submit_endpoint(model, "image")
     sys.stderr.write(f"[submit] POST {PT_BASE}{submit_endpoint}  model={model} aspect_ratio={args.aspect_ratio}\n")
@@ -1432,6 +1488,7 @@ def generate_image(key, model, args, timeout):
         meta = resp.get("metadata") or {}
         sys.stderr.write(f"[warn] 响应未含 data[].url：{json.dumps(resp, ensure_ascii=False)[:300]}\n")
     outputs = []
+    failed_urls = []   # 复核 0.9.2 #2：逐个记录下载失败的链接，供部分失败判定与补下载
     if urls and not args.no_download:
         out_dir = Path(args.output).resolve().parent if args.output else (SCRIPT_DIR / "out")
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -1463,8 +1520,9 @@ def generate_image(key, model, args, timeout):
                 outputs.append(fname)
                 sys.stderr.write(f"[download] 已保存：{fname}\n")
             except Exception as e:
+                failed_urls.append(url)
                 sys.stderr.write(f"[warn] 下载第 {i+1} 张失败（链接仍可用）：{e}\n")
-    return urls, outputs, None
+    return urls, outputs, failed_urls
 
 
 # ---------- Seedance 协议开通流程（全系通用；本地标记 + 报错回退）----------
@@ -1538,6 +1596,8 @@ def cmd_generate(argv):
     parser.add_argument("--no-download", action="store_true", help="只返回链接，不下载")
     parser.add_argument("--timeout", type=int, default=POLL_TIMEOUT, help=f"视频轮询总上限秒（默认 {POLL_TIMEOUT}）")
     parser.add_argument("--json", action="store_true", help="最终以 JSON 输出结果（便于 MCP 解析）")
+    parser.add_argument("--strict-params", action="store_true",
+                        help="明确指定的参数（参考图/尺寸等）无官方映射时停止提交，不花钱生成不符要求的结果；默认关闭")
     args = parser.parse_args(argv)
 
     key = resolve_key()
@@ -1621,9 +1681,14 @@ def _run_one(key, model, kind, args):
         _finish_video(model, url, output, tid, args, kind="seedance", dl_ok=dl_ok)
         return 0 if dl_ok else 3
     if kind == "image":
-        urls, outputs, _ = generate_image(key, model, args, IMAGE_HTTP_TIMEOUT)
-        dl_ok = bool(outputs) if want_download else True
-        _finish_image(model, urls, outputs, args, dl_ok=dl_ok)
+        urls, outputs, failed_urls = generate_image(key, model, args, IMAGE_HTTP_TIMEOUT)
+        # 复核 0.9.2 #2：要求下载时，成功数必须等于应下载数——全失败或部分失败都算 partial。
+        # no_download 时 dl_ok=True（未要求下载，不算失败）。
+        if want_download:
+            dl_ok = bool(urls) and not failed_urls and len(outputs) == len(urls)
+        else:
+            dl_ok = True
+        _finish_image(model, urls, outputs, args, dl_ok=dl_ok, failed_urls=failed_urls)
         return 0 if dl_ok else 3
     else:
         url, output, tid = generate_video(key, model, args, args.timeout)
@@ -1660,29 +1725,36 @@ def _finish_video(model, url, output, tid, args, kind="video", dl_ok=None):
             print(f"[done] task_id={tid}")
 
 
-def _finish_image(model, urls, outputs, args, dl_ok=None):
+def _finish_image(model, urls, outputs, args, dl_ok=None, failed_urls=None):
     """输出图片最终结果。dl_ok=None 时按旧逻辑推断，保持旧签名兼容。
-    request_id 取本次图片同步请求的 LAST_IMAGE_REQUEST_ID（复核 T08），不再读视频提交编号。"""
+    request_id 取本次图片同步请求的 LAST_IMAGE_REQUEST_ID（复核 T08），不再读视频提交编号。
+    复核 0.9.2 #2：failed_urls 列出部分下载失败的链接，供调用方补下载而不重复生成。"""
     if dl_ok is None:
         dl_ok = bool(outputs) or getattr(args, "no_download", False)
+    failed_urls = list(failed_urls or [])
     status = "ok" if dl_ok else "partial"
     if args.json:
         result = {"ok": bool(dl_ok), "kind": "image", "model": model,
                   "urls": urls, "outputs": outputs,
                   "generation_ok": bool(urls),
-                  "download_ok": bool(outputs) if not getattr(args, "no_download", False) else None,
+                  "download_ok": dl_ok if not getattr(args, "no_download", False) else None,
                   "status": status,
+                  "download_failed_urls": failed_urls,
                   "request_id": LAST_IMAGE_REQUEST_ID,
                   "params": {"aspect_ratio": args.aspect_ratio, "n": args.n,
                              "seed": args.seed, "prompt": args.prompt}}
         if not dl_ok:
-            result["note"] = "生成已完成但产物下载失败；urls 仍可用于补下载（见 stderr 警告）"
+            result["note"] = ("生成已完成但部分/全部产物下载失败；"
+                              "download_failed_urls 为失败链接，urls 含全部链接，均可用于补下载（见 stderr 警告）")
         print(json.dumps(result, ensure_ascii=False))
     else:
         print_generation_summary(model, "image", None, args.aspect_ratio, args.prompt,
                                  outputs, urls, seed=args.seed, ratio=args.aspect_ratio)
         if not dl_ok:
-            print(f"[partial] 生成成功但下载失败，产物链接仍可用：{urls}")
+            if failed_urls:
+                print(f"[partial] 生成成功但 {len(failed_urls)}/{len(urls)} 张下载失败，失败链接仍可用：{failed_urls}")
+            else:
+                print(f"[partial] 生成成功但下载失败，产物链接仍可用：{urls}")
         else:
             print(f"[done] {len(urls)} 张")
 
@@ -1794,15 +1866,33 @@ def _account_business_error(data):
     """
     if not isinstance(data, dict):
         return False, None
+    # 复核 0.9.2 #5：统一规范化业务码，不再只列举部分字符串码。
+    # codex 实测 code:"429"（字符串）在 --strict 下仍报成功——旧 fail_codes 无 "429"，
+    # 且 isinstance(str, int) 为假导致 >=400 判定失效。另纳入 success:false 形态。
+    msg = str(data.get("msg") or data.get("message") or "")
+    if data.get("success") is False:
+        return True, msg or "success=false"
     code = data.get("code")
     if code is None:
         return False, None
-    ok_codes = (200, "200", 0, "0")
-    fail_codes = (500, "500", 401, "401", 402, "402", 403, "403", 400, "400")
-    if code in ok_codes:
+    # 统一转 int 比较（数字或纯数字字符串）；无法转 int 的按字符串白/黑名单处理。
+    try:
+        ncode = int(code)
+    except (ValueError, TypeError):
+        ncode = None
+    if ncode is not None:
+        if ncode in (0, 200):
+            return False, None
+        if ncode >= 400:
+            return True, msg or str(code)
         return False, None
-    if code in fail_codes or isinstance(code, int) and code >= 400:
-        return True, str(data.get("msg") or data.get("message") or code)
+    # 非数字业务码（如 "rate_limited"）：仅明确失败字符串算失败，未知不猜（R4）
+    s = str(code).strip()
+    if s in ("200", "0", "ok", "success"):
+        return False, None
+    fail_words = ("fail", "error", "invalid", "denied", "expired", "rate_limit", "limited", "forbidden")
+    if any(w in s.lower() for w in fail_words):
+        return True, msg or s
     return False, None
 
 

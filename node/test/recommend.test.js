@@ -63,6 +63,17 @@ test('C01: 每档模型带可审计 signals（能力覆盖度/价格来源）', 
   assert.equal(m.rank, 1);
 });
 
+// ---------- 复核 0.9.2 #4：创作交付物优先于描述词 ----------
+test('C01 review 092: 创作动作不被泛词「视觉/图片内容」误判为看图', () => {
+  assert.equal(parseRecommendIntent('根据图片内容生成一段视频').purpose, 'text2video');
+  assert.equal(parseRecommendIntent('给我生成一张视觉冲击力强的海报').purpose, 'text2image');
+  // 真正的看图/理解仍归 vision
+  assert.equal(parseRecommendIntent('请看图，告诉我图片中写了什么').purpose, 'vision');
+  assert.equal(parseRecommendIntent('视觉理解：分析这张图片中的账单').purpose, 'vision');
+  const r = recommendModels('根据图片内容生成一段视频', null, { catalog: cat });
+  assert.equal(r.purpose, 'text2video');
+});
+
 // ---------- R4：不猜、只用 documented/verified ----------
 test('C01 cost: 合规价格升序，无价格者排末尾', () => {
   const r = recommendModels('视频', null, { catalog: cat });

@@ -6,6 +6,42 @@
 
 ---
 
+## 0.9.2 — 2026-11-25 · 第二轮复核 6 项修复（Seedance 入口 / 部分下载 / 估价对齐 / 意图回归 + 2 项默认行为）
+
+**来源**：同事 11-24《PowerTokens Kit 0.9.1 修改复核报告》（第二轮）——确认 0.9.1 主要修复有效，但复现了 4 个确定问题 + 2 项默认行为需明确。用户批准按两步走发版。**北极星锁定 0.9.0，本版仍不要求北极星换锁：所有修复落在 Python 侧 + Node C01 新增函数区，北极星锁的六函数及其辅助函数、account-client 五方法、catalog 三模型字段全部零改动。**
+
+### 修复清单
+
+| 项 | 问题 | 修复 | 位置 |
+|---|---|---|---|
+| **#1** | Seedance 视频被提交到图片接口（0.9.1 引入的回归） | `resolve_submit_endpoint` 把 video/seedance 同视为异步视频类（回落 `/v1/videos`）；未知 kind 在 strict 下报错而非默认当图片；网关 strict 再校验入口与类型一致 | `pt_video.py` + `pt_gateway.py` |
+| **#2** | 两张图只下载一张仍报 `ok:true`（全失败已修、部分失败漏） | 按 url 逐个记录下载状态；成功数<应下载数 → `status:"partial"`、`ok:false`、退出码 3；result 新增 `download_failed_urls`，保留已下载文件供补下载不重复生成 | `generate_image` / `_run_one` / `_finish_image` |
+| **#3** | 实时估价只对齐了凭证和金额读取，请求参数没对齐 | 新增 `build_billable_request()`，估价与真实生成共用 `resolve_media_fields` 同源字段（`seconds`/`size`/`ratio`），保留兼容字段；图片纳入张数/比例；`estimate` 增 `--ratio/-n`；实时失败明确标注已回落目录价 | `pt_video.py` |
+| **#4** | 扩大看图关键词后创作需求被误判（0.9.1 引入的回归） | 意图判定改为「先定交付物类型，创作动作优先于描述词」：新增 `_c01DetectPurpose()`，`C01_CREATION_HINTS` 优先于 `C01_UNDERSTAND_HINTS`，去掉泛词「视觉/图片内容」；「根据图片内容生成视频」→text2video、「视觉冲击力强的海报」→text2image，看图意图仍 vision | `node/index.js` **C01 新增函数区** |
+| **#5** | 字符串业务码 `code:"429"` 即使 `--strict` 仍报成功 | `_account_business_error` 统一转 int 比较（覆盖数字字符串 ≥400），纳入 `success:false`，非数字码按失败词表判定；零依赖纯函数 | `pt_video.py`（**未碰 account-client.js 五方法**） |
+| **#6** | 无官方映射的参数只告警仍提交，会花钱生成不符要求结果 | 新增 `--strict-params`（默认关闭）：开启时明确参数无法满足就停止提交；关闭时维持旧行为（告警后继续） | `pt_video.py` |
+
+### 交付四项（供核对）
+
+1. **旧调用差分 OLD==NEW**：OLD 显式取北极星锁定的 0.9.0（`f73b630`），NEW 为工作区 0.9.2；旧签名 `selectCandidates` **21 用例 mismatches=0**。
+2. **SHA-256**：tgz `cdce912212936e559728be9480d3dfbd42b8776e83055eb109100e534fcc138f`（66044B）；包内 catalog 沿用 0.9.0 `fcfce6f0f5ac31a188fa12239ef47ecbb46e233618ff2d33d4f3baa9cc7f2687`（227707B、LF、0 CRLF，本版未改 catalog）。6 文件自包含，干净安装 PASS（`kit_version`=0.9.2，意图判定/包结构均正常）。
+3. **无变化说明（用户 11-25 加严口径）**：
+   - **6 函数 + 传递调用的 12 个内部辅助函数**（`_catalog`/`_defaultCatalogPath`/`_parseBody`/`_extract`/`_skipReason`/`_needsVision`/`_modelCanSeeImages`/`_normMediaVal`/`_matchOneRequirement`/`_matchMediaRequirements`/`_pinnedReasonMessage`/`_actionFlags`）逐函数体 SHA 对 0.9.0 **全部 NONE**；额外以「非 C01 区整体字节」做强保证（NONE）。
+   - **account-client.js 五方法**（getBalance/getKeyStatus/getUsageRecord/listUsageRecords/getAgreementStatus）SHA 全部 NONE。
+   - **catalog 三模型字段**（seedream-5-0-260128/wan2.7-t2v/wan2.7-i2v）SHA 全部 NONE；catalog 字节与 0.9.0 一致。
+   - **包结构保留**：`@powertokens/kit-core` 主入口、`./account-client` 子路径、`REPO_CATALOG_PATH`/`PACKAGED_CATALOG_PATH` 常量、`exports` 四子路径与 `files` 白名单，均与 0.9.0 一致。
+   - 基准口径：以上全部对齐北极星锁定的 0.9.0（`f73b630`），而非 0.9.1。
+4. **北极星换锁**：**不需要**。本版改了 `node/index.js` C01 区，会发新 tgz；但北极星锁 0.9.0 且只调用红线六函数，不调用 C01 推荐函数，故无需换锁。catalog 锁不变。
+
+### 守门与验收
+
+- 全量测试：Python **374/374**（367+7）、Node **99/99**（98+1）、validate_catalog 全过；把 codex 4 条失败场景（Seedance 入口/部分下载/意图误判/估价参数）加入回归测试并保留已通过场景。
+- 红线：6 函数 + 12 辅助函数 + 5 方法 + 3 字段 + 4 包结构 + 非C01区整体 = 31 项，对 0.9.0 基线全部 NONE；旧调用差分 21/21 OLD==NEW。
+- 4 条失败场景离线复现转绿；#5/#6 默认行为保持兼容（账户 --strict、参数 --strict-params 均默认关闭）。
+- 全程 mock 传输层、虚拟 key/token，**0 次真实生成调用、0 费用**；未改任何凭证配置文件。
+
+---
+
 ## 0.9.1 — 2026-11-24 · 复核报告 9 项修复（下载安全/状态/图片参数 + C01 修正）
 
 **来源**：同事 11-24《PowerTokens Kit 修改复核报告》——复核确认 0.9.0 机制已新增，但补测复现了下载跳转带密钥、下载失败误报成功、图片参数未送出、实时估价未接通、C01 看图意图/成本排序等问题。用户批准后按优先级（T06 > T02 > T09）修复。**北极星锁定 0.9.0，三条红线全程守住。**

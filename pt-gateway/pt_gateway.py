@@ -545,18 +545,24 @@ class TaskGateway:
         复核 T01（2026-11-24）：提交前按 catalog 的 model→submit 解析入口，不再一律写死
         /v1/videos。`strict=True`（默认关闭，兼容旧行为）时，模型无 catalog 映射则直接拒绝，
         避免对兼容性未知的模型盲目提交。
+        复核 0.9.2 #1：strict 下再校验解析出的入口与模型类型一致（seedance/video 必须含 /videos），
+        防止脏 catalog 把异步视频模型指向图片入口。
         """
         self._need_key()
         kind = kind_of_model(model)
         if kind not in ASYNC_KINDS:
             raise ApiError(0, f"模型 {model} 非异步视频类（kind={kind}）；网关只处理 video / seedance")
-        endpoint = pt_video.resolve_submit_endpoint(model, kind)
+        endpoint = pt_video.resolve_submit_endpoint(model, kind, strict=strict)
         if strict:
             entry = pt_video.load_catalog_models().get(model)
             submit_val = (entry or {}).get("submit") if isinstance(entry, dict) else None
             if not submit_val:
                 raise ApiError(0, f"模型 {model} 在 catalog 无 submit 映射，兼容性未知；"
                                   f"strict 模式拒绝盲目提交（关闭 strict 可回落 {endpoint}）")
+            # 入口与类型一致性：异步视频必须命中 /videos，否则即使有映射也拒绝
+            if "/videos" not in endpoint and kind in ASYNC_KINDS:
+                raise ApiError(0, f"模型 {model}（kind={kind}）解析入口 {endpoint} 与异步视频类型不符，"
+                                  f"strict 模式拒绝提交到错误入口")
         media = _build_media(first_frame, ref_image, ref_video)
         body = build_submit_body(model, kind, prompt, media, dict(
             duration=duration, resolution=resolution, ratio=ratio,
