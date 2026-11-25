@@ -48,6 +48,7 @@ PowerTokens 图片 + 视频生成 —— 跨 agent 工具的可移植引擎（�
 """
 
 import argparse
+import base64
 import difflib
 import json
 import os
@@ -975,8 +976,10 @@ def cmd_estimate(argv):
     parser.add_argument("-m", "--model", required=True)
     parser.add_argument("-d", "--duration", type=int, default=5)
     parser.add_argument("-r", "--resolution", default="720p")
-    parser.add_argument("--ratio", default="16:9", help="画面比例，参与实时估价（与生成一致）")
-    parser.add_argument("-n", "--n", type=int, default=None, help="图片张数，参与实时估价（与生成一致）")
+    parser.add_argument("--ratio", default="adaptive", help="视频比例，参与实时估价（默认与 generate 的 adaptive 一致）")
+    parser.add_argument("--aspect-ratio", default="1:1", help="图片宽高比，参与实时估价（默认与 generate 的 1:1 一致）")
+    parser.add_argument("--size", default=None, help="图片尺寸档位（如 2K/3K），参与实时估价（复核 0.9.3 #2）")
+    parser.add_argument("-n", "--n", type=int, default=None, help="图片张数，参与实时估价")
     parser.add_argument("--type", default="auto", choices=["video", "image", "auto"])
     parser.add_argument("--live", action="store_true",
                         help="有 pt_live_ 凭证时走账户域实时预估（不扣费）；失败自动回落 catalog 估算")
@@ -996,8 +999,11 @@ def cmd_estimate(argv):
         source = f"catalog:{cat_src or 'unknown'}"
     live_fallback = None
     if args.live:
+        # 复核 0.9.3 #2：估价条件与生成同源——图片带 size/aspect_ratio/n，视频带 ratio。
         live = _live_estimate(args.model, kind, args.duration, args.resolution,
-                              ratio=args.ratio, n=args.n)
+                              ratio=args.ratio, n=args.n,
+                              size=getattr(args, "size", None),
+                              aspect_ratio=getattr(args, "aspect_ratio", None))
         if live is not None:
             c, source = live, "live:estimate"
         else:
@@ -1016,35 +1022,37 @@ def cmd_estimate(argv):
     return 0
 
 
-def build_billable_request(model, kind, duration, resolution, ratio=None, n=None):
-    """复核 0.9.2 #3：构造与真实生成链路同源的「计费相关参数」。
+def build_billable_request(model, kind, duration, resolution, ratio=None, n=None,
+                           size=None, aspect_ratio=None):
+    """构造与真实生成链路同源的「计费相关参数」（复核 0.9.2 #3 / 0.9.3 #2）。
 
-    估价与生成共用同一套字段映射（resolve_media_fields，按 catalog param_names），
-    避免估价收 duration/resolution 而真实生成发 seconds/size/ratio 的口径错位。
-    - 视频/seedance：duration_s→字符串、resolution→大写、aspect_ratio，与 generate_video 一致。
-    - 图片：size（若给）、n（张数）、aspect_ratio，与 generate_image 一致。
-    同时保留 duration/resolution/n 兼容字段（PT 估价接口字段名无官方来源，R4 双写不猜）。
+    0.9.3 #2 修正：图片分支不再自己写第二套映射，直接复用 build_image_request_body——
+    与 generate_image / 网关完全相同的一条构造器，字段名（size/aspect_ratio/n）天然同源；
+    图片请求不再混入 duration/resolution（那是视频字段，复核报告实测为口径错位）。
+    视频/seedance 分支继续用 resolve_media_fields，与 generate_video 的 gen_fields 同源。
+    PT 估价接口字段名无官方来源（R4）：视频额外双写 duration/resolution 兼容字段不猜。
     """
-    ratio = ratio or "16:9"
-    friendly = {"aspect_ratio": ratio}
     is_vid = kind in ("video", "seedance")
-    if is_vid:
-        friendly["duration_s"] = str(duration)
-        friendly["resolution"] = str(resolution or "").upper()
-    mapped, _ = resolve_media_fields(model, friendly)
+    if not is_vid:
+        # 与 generate_image 同一构造器；估价不需要 response_format/seed/ref_image。
+        body, _unsupported = build_image_request_body(
+            model, "", aspect_ratio=aspect_ratio or "1:1", n=n, size=size)
+        body.pop("prompt", None)  # 估价只看计费条件，prompt 不参与
+        return body
+    req_ratio = ratio or "adaptive"  # 与 generate 默认 adaptive 一致（0.9.2 曾写死 16:9）
+    mapped, _ = resolve_media_fields(model, {
+        "duration_s": str(duration),
+        "resolution": str(resolution or "").upper(),
+        "aspect_ratio": req_ratio,
+    })
     req = {"model": model, **mapped}
-    # 兼容字段：真实生成 body 里 duration_s/resolution 已经过映射；这里再显式带上
-    # 用户原始意图，确保 PT 估价接口无论按哪套字段名解析都能拿到计费条件（R4 不猜）。
     req["duration"] = duration
     req["resolution"] = resolution
-    if not is_vid:
-        req["aspect_ratio"] = ratio
-        if n is not None:
-            req["n"] = n
     return req
 
 
-def _live_estimate(model, kind, duration, resolution, ratio=None, n=None):
+def _live_estimate(model, kind, duration, resolution, ratio=None, n=None,
+                   size=None, aspect_ratio=None):
     """T03：账户域实时预估（POST /v1/billing/estimate，不扣费）。缺凭证/缺模块/出错返回 None。
 
     保护式 import：pt_video.py 可独立分发、不依赖 pt-gateway 目录；独立副本没有
@@ -1065,7 +1073,8 @@ def _live_estimate(model, kind, duration, resolution, ratio=None, n=None):
         client = AccountClient(token=token, key_id=int(key_id))
         # endpoint 与请求体口径与真实生成链路一致（T01 复用 model→submit 解析）。
         endpoint = resolve_submit_endpoint(model, kind) if kind in ("video", "seedance") else resolve_submit_endpoint(model, "image")
-        req = build_billable_request(model, kind, duration, resolution, ratio=ratio, n=n)
+        req = build_billable_request(model, kind, duration, resolution, ratio=ratio, n=n,
+                                     size=size, aspect_ratio=aspect_ratio)
         resp = client.estimate_cost(model=model, endpoint=endpoint, request=req,
                                     key_id=int(key_id),
                                     kind="video" if kind in ("video", "seedance") else kind)
@@ -1483,17 +1492,63 @@ def generate_image(key, model, args, timeout):
     global LAST_IMAGE_REQUEST_ID
     LAST_IMAGE_REQUEST_ID = resp.get("_request_id")
     data = resp.get("data") or []
-    urls = [it.get("url") for it in data if isinstance(it, dict) and it.get("url")]
+    # 复核 0.9.3 #3：response_format=base64 时服务返回 data[].b64_json 而非 url。
+    # 旧代码只取 url → 图被丢、状态矛盾（ok:true 但 generation_ok:false）。
+    # 统一为「产物项」：url 项走网络下载；b64 项直接解码落盘（无需网络，不受 no_download 影响），
+    # 并把 data URI 作为可交付标识写进 urls，generation_ok/download_ok 判定因此一致。
+    deliverables = []   # [{"src": url 或 data-uri, "b64": base64 字符串或 None}]
+    for it in data:
+        if not isinstance(it, dict):
+            continue
+        url = it.get("url")
+        b64 = it.get("b64_json") or it.get("base64") or it.get("b64")
+        if isinstance(b64, str) and b64.strip():
+            src = b64 if str(b64).strip().startswith("data:") else f"data:image/png;base64,{b64}"
+            deliverables.append({"src": src, "b64": b64})
+        elif url:
+            deliverables.append({"src": url, "b64": None})
+    urls = [d["src"] for d in deliverables]
     if not urls:
-        meta = resp.get("metadata") or {}
-        sys.stderr.write(f"[warn] 响应未含 data[].url：{json.dumps(resp, ensure_ascii=False)[:300]}\n")
+        sys.stderr.write(f"[warn] 响应未含 data[].url / data[].b64_json：{json.dumps(resp, ensure_ascii=False)[:300]}\n")
     outputs = []
     failed_urls = []   # 复核 0.9.2 #2：逐个记录下载失败的链接，供部分失败判定与补下载
-    if urls and not args.no_download:
+    if urls:
         out_dir = Path(args.output).resolve().parent if args.output else (SCRIPT_DIR / "out")
         out_dir.mkdir(parents=True, exist_ok=True)
-        for i, url in enumerate(urls):
-            if args.output and len(urls) > 1:
+        for i, item in enumerate(deliverables):
+            url = item["src"]
+            b64 = item["b64"]
+            # Base64 项：无需网络下载，no_download 也落盘（内容已在响应里，不落就丢了）
+            if b64 is not None:
+                if args.output and len(deliverables) > 1:
+                    p = Path(args.output)
+                    fname = str(p.parent / f"{p.stem}_{i+1}{p.suffix}")
+                else:
+                    fname = args.output or str(out_dir / f"{model}_{i+1}.png")
+                explicit_output = bool(args.output)
+                try:
+                    payload = str(b64).split(",", 1)[1] if str(b64).strip().startswith("data:") else str(b64)
+                    blob = base64.b64decode(payload)
+                    Path(fname).write_bytes(blob)
+                    real_ext = detect_file_extension(path=fname, default=Path(fname).suffix or ".png")
+                    suffix_mismatch = real_ext and Path(fname).suffix.lower() != real_ext.lower()
+                    if not explicit_output and suffix_mismatch:
+                        renamed = str(Path(fname).with_suffix(real_ext))
+                        try:
+                            os.replace(fname, renamed)
+                            fname = renamed
+                        except OSError:
+                            pass
+                    outputs.append(fname)
+                    sys.stderr.write(f"[download] 已保存（base64 解码）：{fname}\n")
+                except Exception as e:
+                    failed_urls.append(url)
+                    sys.stderr.write(f"[warn] 第 {i+1} 张 base64 解码落盘失败：{e}\n")
+                continue
+            # URL 项：尊重 no_download
+            if args.no_download:
+                continue
+            if args.output and len(deliverables) > 1:
                 p = Path(args.output)
                 fname = str(p.parent / f"{p.stem}_{i+1}{p.suffix}")
             else:

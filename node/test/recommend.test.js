@@ -74,6 +74,61 @@ test('C01 review 092: 创作动作不被泛词「视觉/图片内容」误判为
   assert.equal(r.purpose, 'text2video');
 });
 
+// ---------- 复核 0.9.3 #1：历轮正反例合并成一张表，防止「修 A 坏 B」 ----------
+// 每行 [输入, 期望 purpose, 首次出现的轮次]；改判定逻辑必须整表重跑。
+const INTENT_REGRESSION_TABLE = [
+  // 0.9.0 既有
+  ['来个视频', 'text2video', '0.9.0'],
+  ['生成一张海报', 'text2image', '0.9.0'],
+  ['long report 写报告', 'long_report', '0.9.0'],
+  ['随便聊聊', 'general', '0.9.0'],
+  // 0.9.1 看图/识字（generation 不得劫持理解）
+  ['请看图，告诉我图片中写了什么', 'vision', '0.9.1'],
+  ['视觉理解：分析这张图片中的账单', 'vision', '0.9.1'],
+  ['portrait photo of a woman', 'text2image', '0.9.1'],
+  // 0.9.2 创作不被泛词误伤
+  ['根据图片内容生成一段视频', 'text2video', '0.9.2'],
+  ['给我生成一张视觉冲击力强的海报', 'text2image', '0.9.2'],
+  // 0.9.3 扩大复核新暴露的三条回归
+  ['分析图片中的画面', 'vision', '0.9.3'],
+  ['请看图，告诉我海报上写了什么', 'vision', '0.9.3'],
+  ['generate an image of a cat', 'text2image', '0.9.3'],
+  // 0.9.3 补的中英文常用说法
+  ['分析这张图片', 'vision', '0.9.3'],
+  ['识别图片里的文字', 'vision', '0.9.3'],
+  ['describe the image', 'vision', '0.9.3'],
+  ['generate a video about cats', 'text2video', '0.9.3'],
+  ['generate an image of a sunset', 'text2image', '0.9.3'],
+  ['做一段视频', 'text2video', '0.9.3'],
+];
+test('C01 review 093: 历轮意图正反例全表（动作词优先，名词中性）', () => {
+  for (const [q, want, round] of INTENT_REGRESSION_TABLE) {
+    assert.equal(parseRecommendIntent(q).purpose, want, `[${round}] ${q}`);
+  }
+});
+
+// ---------- 复核 0.9.3 #5：pinned 模式不再返回空候选 ----------
+test('C01 review 093: pinnedModel 可用时三档只含该模型并保留 pinned 元信息', () => {
+  for (const km of [null, ['image-01']]) {
+    const r = recommendModels('低成本生成一张图片', km, { catalog: cat, pinnedModel: 'image-01' });
+    assert.equal(r.pinned.pinned, 'image-01');
+    assert.equal(r.pinned.available, true);
+    for (const t of Object.values(r.tiers)) {
+      assert.equal(t.models.length, 1);
+      assert.equal(t.models[0].id, 'image-01');
+    }
+    assert.equal(r.recommended.models[0].id, 'image-01');
+  }
+});
+
+test('C01 review 093: pinnedModel 不可用时明确给出原因，不伪装成无候选', () => {
+  const r = recommendModels('低成本生成一张图片', null, { catalog: cat, pinnedModel: '__nope__' });
+  assert.equal(r.pinned.available, false);
+  assert.ok(r.pinned.reasons.length >= 1);
+  for (const t of Object.values(r.tiers)) assert.equal(t.models.length, 0);
+  assert.match(r.note, /不可用/);
+});
+
 // ---------- R4：不猜、只用 documented/verified ----------
 test('C01 cost: 合规价格升序，无价格者排末尾', () => {
   const r = recommendModels('视频', null, { catalog: cat });

@@ -380,6 +380,7 @@ class TaskGateway:
                 model2, prompt,
                 aspect_ratio=aspect_ratio, n=int(n) if n else None,
                 ref_image=ref_image, size=image_size,
+                seed=seed,  # 复核 0.9.3 #4：公开签名收了 seed，此前图片分支漏传导致静默丢弃
             )
             for u in unsupported:
                 sys.stderr.write(f"[gateway][warn] 参数 {u['field']}={u['value']!r} 无官方字段映射，"

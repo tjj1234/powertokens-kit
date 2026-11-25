@@ -247,5 +247,80 @@ class TestReview092(unittest.TestCase):
         )
 
 
+class TestReview093(unittest.TestCase):
+    """扩大复核报告 2026-11-25：估价对齐 / Base64 / seed 透传。全程离线 mock。"""
+
+    def test_estimate_image_reuses_generation_builder(self):
+        """#2：图片估价请求与生成构造器逐字段同源，无 duration/resolution 视频字段。"""
+        req = pt_video.build_billable_request("seedream-5-0-260128", "image", 5, "720p",
+                                              n=2, size="3K", aspect_ratio="1:1")
+        gen_body, _ = pt_video.build_image_request_body(
+            "seedream-5-0-260128", "x", n=2, size="3K", aspect_ratio="1:1")
+        gen_billable = {k: v for k, v in gen_body.items()
+                        if k not in ("prompt", "response_format")}
+        self.assertEqual(req, gen_billable)
+        self.assertNotIn("duration", req)
+        self.assertNotIn("resolution", req)
+        self.assertNotIn("seconds", req)
+
+    def test_estimate_video_default_ratio_adaptive(self):
+        """#2：视频默认比例与 generate 一致（adaptive），字段映射同源。"""
+        req = pt_video.build_billable_request("wan3.0-video", "video", 5, "720p")
+        gen_fields, _ = pt_video.resolve_media_fields("wan3.0-video", {
+            "duration_s": "5", "resolution": "720P", "aspect_ratio": "adaptive"})
+        for k, v in gen_fields.items():
+            self.assertEqual(req.get(k), v)
+
+    def test_estimate_accepts_size_flag(self):
+        """#2：estimate 接受 --size 3K（此前 argparse 直接 exit 2）。"""
+        buf = io.StringIO()
+        code = None
+        with redirect_stdout(buf), redirect_stderr(buf):
+            try:
+                pt_video.cmd_estimate(["-m", "seedream-5-0-260128", "--size", "3K"])
+            except SystemExit as e:
+                code = e.code
+        self.assertNotEqual(2, code)
+
+    def test_base64_image_decoded_and_saved(self):
+        """#3：b64_json 解码落盘，urls 含 data URI，generation_ok 与 download_ok 一致。"""
+        import base64 as _b64
+        import tempfile
+        png = ("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8"
+               "/x8AAwMCAO+jRZkAAAAASUVORK5CYII=")
+        resp = {"data": [{"b64_json": png}], "_request_id": "b64-test"}
+        with tempfile.TemporaryDirectory() as td:
+            args = SimpleNamespace(
+                prompt="offline", duration=5, resolution="720p", ratio="16:9",
+                aspect_ratio="1:1", n=1, response_format="base64", seed=None,
+                first_frame=None, last_frame=None, ref_image=[], ref_video=[], ref_audio=[],
+                size=None, no_audio=True, no_prompt_extend=False, watermark=False,
+                output=str(__import__("pathlib").Path(td) / "r.png"),
+                no_download=False, timeout=1, json=True,
+            )
+            with mock.patch.object(pt_video, "_api_call", return_value=resp), \
+                 redirect_stderr(io.StringIO()):
+                urls, outputs, failed = pt_video.generate_image(_KEY, "image-01", args, 30)
+            self.assertEqual(1, len(urls))
+            self.assertTrue(urls[0].startswith("data:image/"))
+            self.assertEqual(1, len(outputs))
+            self.assertTrue(os.path.isfile(outputs[0]))
+            self.assertEqual([], failed)
+
+    def test_gateway_image_seed_reaches_body(self):
+        """#4：网关图片分支把 seed 传给统一构造器，真实出现在 body。"""
+        captured = {}
+
+        def fake_api(method, path, key, body=None, timeout=None):
+            captured["body"] = body
+            return {"data": [{"url": "https://result.invalid/i.jpg"}]}
+
+        gw = pt_gateway.TaskGateway(_KEY)
+        with mock.patch.object(pt_gateway, "_api_call", side_effect=fake_api), \
+             redirect_stderr(io.StringIO()):
+            gw.media_generate(kind="image", model="image-01", prompt="offline", seed=123)
+        self.assertEqual(123, captured["body"].get("seed"))
+
+
 if __name__ == "__main__":
     unittest.main()

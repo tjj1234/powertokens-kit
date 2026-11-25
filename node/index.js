@@ -435,27 +435,33 @@ function selectCandidates(purpose, keyModels, options = {}) {
 //     所有依据随结果返回（basis / signals），供调用方审核，北极星默认不调用。
 // ============================================================================
 
-// 自然语言关键词 → 用途 / 策略（纯规则、不联网、不调 LLM）。
-// 命中多条时取第一个匹配（数组顺序即优先级）；都没命中走 opts 默认值。
-// 复核 0.9.2 #4：意图判定改为「先定交付物类型，再谈描述词」。
-// 0.9.1 把含泛词「视觉/图片内容」的 vision 组整体前置，导致「视觉冲击力强的海报」
-// 「根据图片内容生成一段视频」被误判成看图模型——创作动作必须优先于描述词。
-// 分组：CREATION（用户要产出一个东西，按交付物名词定类型）优先于 UNDERSTAND（理解已有图片）。
-// 只有明确的「读/理解」动作词才进 vision；单独「视觉/图片内容」不再触发。
-const C01_CREATION_HINTS = [
-  ['image2video', ['图生视频', '首帧', '参考图生成视频', 'image to video', 'i2v', 'img2video']],
-  ['text2video', ['生成视频', '生成一段视频', '做视频', '来做视频', '视频', '短片', '影片',
-                  '动画', 'video', 'clip', 'cinematic']],
-  ['image2image', ['图生图', '改图', '编辑图片', 'image to image', 'i2i']],
-  ['text2image', ['生成图', '生成图片', '生成一张', '画一张', '画个', '画一幅', '画', '海报',
-                  '封面', '绘画', 'picture', 'poster', 'portrait photo', 'draw']],
-];
+// 自然语言 → 用途 / 策略（纯规则、不联网、不调 LLM）。
+// 复核 0.9.3 #1：不再用「整个关键词组前后对调」来修误判——0.9.1 把 vision 前置、
+// 0.9.2 把 creation 前置，只是把误判从创作侧翻到理解侧（修 A 坏 B）。改为三层：
+//   1) 显式理解动作（看图/分析/识别/读字）→ vision；被讨论的名词（海报/图片/画面）不能劫持；
+//   2) 显式创作动作（生成/画一张/做视频）→ 按交付物定类型；
+//   3) 无任何显式动作时，中性交付物名词才作为弱信号。
+// 关键：名词本身中性；「画」单字从创作表移除（否则「画面」误命中）；补英文常用说法。
 const C01_UNDERSTAND_HINTS = [
   '看图', '看看图', '图里写', '图片中写', '图片写了', '写了什么', '写什么', '识别图片',
-  '图片识别', '图片理解', '视觉理解', '读懂图片', '读图', '分析图片', '分析这张图',
-  '描述图片', '描述这张图', '文字识别', '识字', 'ocr',
+  '图片识别', '图片理解', '视觉理解', '读懂图片', '读图', '分析图', '分析图片', '分析这张图',
+  '描述图', '描述图片', '描述这张图', '文字识别', '识字', 'ocr',
   'read text in image', 'what is in the image', 'describe the image',
   'analyze the image', 'understand the image',
+];
+const C01_CREATION_HINTS = [
+  ['image2video', ['图生视频', '首帧', '参考图生成视频', 'image to video', 'i2v', 'img2video']],
+  ['text2video', ['生成视频', '生成一段视频', '做视频', '来做视频', 'generate a video',
+                  'generate video', 'make a video', 'create a video']],
+  ['image2image', ['图生图', '改图', '编辑图片', 'image to image', 'i2i']],
+  ['text2image', ['生成图', '生成图片', '生成一张', '画一张', '画个', '画一幅',
+                  'generate an image', 'generate image', 'generate a picture',
+                  'draw a picture', 'paint a picture']],
+];
+// 中性交付物名词：只在上面两层都没命中时作为弱信号（「视觉冲击力强的海报」落这里）。
+const C01_DELIVERABLE_HINTS = [
+  ['text2video', ['视频', '短片', '影片', '动画', 'video', 'clip', 'cinematic']],
+  ['text2image', ['海报', '封面', '绘画', 'picture', 'poster', 'portrait photo', 'image', 'photo']],
 ];
 const C01_PURPOSE_HINTS = [
   ['long_report', ['长文', '报告', '论文', 'long report', 'report']],
@@ -464,13 +470,18 @@ const C01_PURPOSE_HINTS = [
   ['general', ['通用', '一般', 'general']],
 ];
 
-// 交付物判定：创作动词/名词优先；只有无创作意图时的明确理解动作才是 vision。
+// 0.9.3 三层判定：显式理解动作 > 显式创作动作 > 中性名词 > 其它用途。
 function _c01DetectPurpose(low) {
+  // 1) 显式理解动作优先：被讨论对象里有「海报/图片/画面」也不改判。
+  if (C01_UNDERSTAND_HINTS.some((h) => low.includes(h))) return 'vision';
+  // 2) 显式创作动作：按交付物定类型。
   for (const [p, hints] of C01_CREATION_HINTS) {
     if (hints.some((h) => low.includes(h))) return p;
   }
-  // 「图片/图/photo/image」本身是中性的：配理解动作才算 vision，否则不据此判 vision。
-  if (C01_UNDERSTAND_HINTS.some((h) => low.includes(h))) return 'vision';
+  // 3) 无任何显式动作时，交付物名词作为弱信号。
+  for (const [p, hints] of C01_DELIVERABLE_HINTS) {
+    if (hints.some((h) => low.includes(h))) return p;
+  }
   for (const [p, hints] of C01_PURPOSE_HINTS) {
     if (hints.some((h) => low.includes(h))) return p;
   }
@@ -489,7 +500,7 @@ function parseRecommendIntent(intent, opts = {}) {
   let strategy = opts.strategy || null;
   let from = 'option';
   if (!purpose) {
-    // 复核 0.9.2 #4：用交付物优先判定替代旧的关键词表顺序匹配
+    // 复核 0.9.3 #1：三层判定（显式动作 > 中性名词），替代旧的整组前后对调
     purpose = _c01DetectPurpose(low);
     if (purpose) from = 'intent';
   }
@@ -593,7 +604,20 @@ function recommendModels(intent, keyModels, opts = {}) {
   const selOpts = { ...opts, detail: true };
   delete selOpts.strategy; delete selOpts.intent; delete selOpts.purpose; // purpose 由 parsed 决定
   const base = selectCandidates(parsed.purpose, keyModels, selOpts);
-  const candidates = Array.isArray(base.candidates) ? base.candidates : [];
+  // 复核 0.9.3 #5：pinned 模式下 selectCandidates 返回单个 candidate（非数组），
+  // 此前推荐封装只读 base.candidates → 用户已指定可用模型却得到三档全空。
+  // 这里把 pinned 的单个 candidate 作为唯一候选进入三档，并保留可用性原因供审计。
+  const pinnedMeta = (base && base.pinned !== undefined && base.pinned !== null) ? {
+    pinned: base.pinned,
+    available: Boolean(base.available),
+    reasons: Array.isArray(base.reasons) ? base.reasons : [],
+    checks: base.checks || {},
+    note: base.note || null,
+  } : null;
+  const candidates = Array.isArray(base.candidates)
+    ? base.candidates
+    : (pinnedMeta && pinnedMeta.available && base.candidate
+        ? [{ ...base.candidate, position: 0 }] : []);
 
   const scored = candidates.map((c) => {
     const e = (cat.models || {})[c.id] || {};
@@ -643,7 +667,7 @@ function recommendModels(intent, keyModels, opts = {}) {
       '成本优先：按 documented/verified 价格升序；无合规价格者排末尾、不参与打分。'),
   };
 
-  return {
+  const result = {
     intent: parsed,
     purpose: parsed.purpose,
     strategy: parsed.strategy,
@@ -651,6 +675,16 @@ function recommendModels(intent, keyModels, opts = {}) {
     recommended: tiers[parsed.strategy] ? tiers[parsed.strategy] : tiers.balanced,
     note: '三档均为新增可选输出；不改变 selectCandidates 默认行为。预估/能力仅供辅助，以实扣与官方能力为准（U10/R4）。',
   };
+  // 复核 0.9.3 #5：pinned 场景回传指定模型与其可用性，不再伪装成"没有候选"。
+  if (pinnedMeta) {
+    result.pinned = pinnedMeta;
+    if (!pinnedMeta.available) {
+      result.note = '用户指定的模型不可用；pinned 模式不自动换模型，交给用户选择（见 pinned.reasons）。';
+    } else {
+      result.note = '用户已指定模型且可用；pinned 模式不比较其它模型，三档均只含该模型。';
+    }
+  }
+  return result;
 }
 
 function _pinnedReasonMessage(code, id) {
